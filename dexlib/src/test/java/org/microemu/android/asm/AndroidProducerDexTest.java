@@ -548,4 +548,74 @@ public class AndroidProducerDexTest {
 		method.visitMaxs(2, 1);
 		method.visitEnd();
 	}
+
+	@Test
+	public void multiDexSplitsClassesAtLimitByDefault() throws Exception {
+		Path root = Files.createTempDirectory("jlmod-dex-split-");
+		Path jarInput = root.resolve("input.jar");
+		Path zipOutput = root.resolve("converted.zip");
+		try {
+			try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jarInput))) {
+				for (int i = 0; i < 55; i++) {
+					String className = "sample/AutoClass" + i;
+					ClassWriter cw = new ClassWriter(0);
+					cw.visit(Opcodes.V1_4, Opcodes.ACC_PUBLIC, className, null, "java/lang/Object", null);
+					MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+					init.visitCode();
+					init.visitVarInsn(Opcodes.ALOAD, 0);
+					init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+					init.visitInsn(Opcodes.RETURN);
+					init.visitMaxs(1, 1);
+					init.visitEnd();
+					cw.visitEnd();
+
+					out.putNextEntry(new JarEntry(className + ".class"));
+					out.write(cw.toByteArray());
+					out.closeEntry();
+				}
+			}
+
+			Main.Arguments arguments = new Main.Arguments();
+			arguments.fileNames = new String[] { jarInput.toString() };
+			arguments.outName = zipOutput.toString();
+			arguments.jarOutput = true;
+			arguments.numThreads = 1;
+			// Default maxClassesPerDex is 50
+			assertEquals(50, arguments.maxClassesPerDex);
+
+			ConversionResult result = Main.runWithResult(arguments);
+			assertTrue(result.isSuccess());
+			assertEquals(55, result.getClassesDiscovered());
+			assertEquals(55, result.getClassesConverted());
+			assertEquals(0, result.getClassesSkipped());
+
+			assertTrue(Files.exists(zipOutput));
+			try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(zipOutput.toFile())) {
+				java.util.zip.ZipEntry dex1 = zip.getEntry("classes.dex");
+				java.util.zip.ZipEntry dex2 = zip.getEntry("classes2.dex");
+				java.util.zip.ZipEntry dex3 = zip.getEntry("classes3.dex");
+				assertTrue("classes.dex must exist in converted archive", dex1 != null);
+				assertTrue("classes2.dex must exist in converted archive", dex2 != null);
+				assertTrue("classes3.dex must not exist", dex3 == null);
+
+				// Verify class count in dex1 and dex2
+				try (java.io.InputStream in1 = zip.getInputStream(dex1)) {
+					Dex d1 = new Dex(in1.readAllBytes());
+					int count1 = 0;
+					for (Object ignored : d1.classDefs()) count1++;
+					assertEquals(50, count1);
+				}
+				try (java.io.InputStream in2 = zip.getInputStream(dex2)) {
+					Dex d2 = new Dex(in2.readAllBytes());
+					int count2 = 0;
+					for (Object ignored : d2.classDefs()) count2++;
+					assertEquals(5, count2);
+				}
+			}
+		} finally {
+			Files.deleteIfExists(zipOutput);
+			Files.deleteIfExists(jarInput);
+			Files.deleteIfExists(root);
+		}
+	}
 }

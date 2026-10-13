@@ -17,12 +17,13 @@ $WorkRoot=[IO.Path]::GetFullPath($WorkRoot).Replace('\\','/')
 $SourcesRoot=[IO.Path]::GetFullPath($SourcesRoot).Replace('\\','/')
 $Sdk=[IO.Path]::GetFullPath($Sdk).Replace('\\','/')
 $ndkRoot="$Sdk/ndk/$NdkVersion"
-$hostTag=if($IsWindows){'windows-x86_64'}elseif($IsMacOS){'darwin-x86_64'}else{'linux-x86_64'}
+$isWin=$IsWindows -or ($null -ne $env:OS -and $env:OS -like "*Windows*") -or ([Environment]::OSVersion.Platform.ToString() -like "*Win*")
+$hostTag=if($isWin){'windows-x86_64'}elseif($IsMacOS){'darwin-x86_64'}else{'linux-x86_64'}
 $llvmRoot="$ndkRoot/toolchains/llvm/prebuilt/$hostTag/bin"
-$exe=if($IsWindows){'.exe'}else{''}
-$make=if($IsWindows){"$ndkRoot/prebuilt/$hostTag/bin/make.exe"}else{(Get-Command make).Source}
-if(!$GitBash){$GitBash=if($IsWindows){"$env:ProgramFiles/Git/usr/bin/bash.exe"}else{(Get-Command bash).Source}}
-$shell=if($IsWindows){Join-Path (Split-Path $GitBash) 'sh.exe'}else{(Get-Command sh).Source}
+$exe=if($isWin){'.exe'}else{''}
+$make=if($isWin){"$ndkRoot/prebuilt/$hostTag/bin/make.exe"}else{(Get-Command make).Source}
+if(!$GitBash){$GitBash=if($isWin){"$env:ProgramFiles/Git/usr/bin/bash.exe"}else{(Get-Command bash).Source}}
+$shell=if($isWin){Join-Path (Split-Path $GitBash) 'sh.exe'}else{(Get-Command sh).Source}
 foreach($required in @($GitBash,$make,"$llvmRoot/clang$exe")){if(!(Test-Path -LiteralPath $required)){throw "Missing native build tool: $required"}}
 $sourceRoot="$SourcesRoot/ffmpeg"
 $amrRoot="$SourcesRoot/opencore-amr"
@@ -54,6 +55,8 @@ foreach($abi in (($Abis -join ',') -split ',')){
  & "$PSScriptRoot/build-opencore.ps1" -Target $profile[0] -DecoderOnly -SourceRoot $amrRoot -OutputRoot $amrOut -LlvmRoot $llvmRoot -ToolSuffix $exe
  New-Item -ItemType Directory -Force -Path $buildRoot,$installRoot | Out-Null
  $configureArgs=@("--prefix=$installRoot",'--target-os=android',"--arch=$($profile[1])","--cpu=$($profile[2])",'--enable-cross-compile',
+  "--host-cc=$llvmRoot/clang$exe",
+  "--host-cflags=--target=$($profile[0]) --sysroot=$ndkRoot/toolchains/llvm/prebuilt/$hostTag/sysroot -O2",
   "--cc=$llvmRoot/clang$exe","--cxx=$llvmRoot/clang++$exe","--ar=$llvmRoot/llvm-ar$exe","--ranlib=$llvmRoot/llvm-ranlib$exe","--nm=$llvmRoot/llvm-nm$exe","--strip=$llvmRoot/llvm-strip$exe",
   "--extra-cflags=--target=$($profile[0]) --sysroot=$ndkRoot/toolchains/llvm/prebuilt/$hostTag/sysroot -O2 -fPIC -I$amrOut/include",
   "--extra-ldflags=--target=$($profile[0]) --sysroot=$ndkRoot/toolchains/llvm/prebuilt/$hostTag/sysroot -Wl,-z,max-page-size=16384 -L$amrOut/lib",
@@ -64,7 +67,8 @@ foreach($abi in (($Abis -join ',') -split ',')){
  if($profile[3]){$configureArgs+=$profile[3]}
  $quoted=@($configureArgs | ForEach-Object {"'"+$_.Replace("'","'\''")+"'"})
  $configureCommand="'$sourceRoot/configure' " + ($quoted -join ' ')
- $scriptLines=@("#!/bin/sh","set -eu",'export PATH=/usr/bin:/bin:$PATH',"cd '$buildRoot'",$configureCommand)
+ $tempDir = ([IO.Path]::GetFullPath($env:TEMP)).Replace('\','/')
+ $scriptLines=@("#!/bin/sh","set -eu",'export PATH=/usr/bin:/bin:$PATH',"export TMPDIR='$tempDir'","cd '$buildRoot'",$configureCommand)
  $script=$scriptLines -join [Environment]::NewLine
  [IO.File]::WriteAllText("$buildRoot/configure.sh",$script+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
  & $GitBash "$buildRoot/configure.sh" > "$buildRoot/configure.txt" 2>&1
@@ -75,8 +79,9 @@ foreach($abi in (($Abis -join ',') -split ',')){
   Get-Content -LiteralPath "$buildRoot/configure.txt" | Write-Output
   throw "Configure failed: $abi"
  }
- if($IsWindows){foreach($generated in @('Makefile','ffbuild/config.mak')){
+ if($isWin){foreach($generated in @('Makefile','ffbuild/config.mak')){
   $path="$buildRoot/$generated";$text=[IO.File]::ReadAllText($path)
+  $text=$text.Replace('\','/')
   $text=[regex]::Replace($text,'/([a-zA-Z])/',{param($m) "$($m.Groups[1].Value.ToUpper()):/"})
   [IO.File]::WriteAllText($path,$text,[Text.UTF8Encoding]::new($false))
  }}
@@ -84,9 +89,17 @@ foreach($abi in (($Abis -join ',') -split ',')){
  try{
   $env:PATH=(Split-Path $GitBash)+[IO.Path]::PathSeparator+$oldPath
   Push-Location $buildRoot
-  try{& $make -j8 "SHELL=$shell" > build.txt 2>&1;if($LASTEXITCODE){throw "Build failed: $abi (see $buildRoot/build.txt)"}
-   & $make install-libs "SHELL=$shell" > install.txt 2>&1;if($LASTEXITCODE){throw "Install failed: $abi (see $buildRoot/install.txt)"}
-  }finally{Pop-Location}
+  $oldEap = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    cmd.exe /c "`"$make`" -j8 `"SHELL=$shell`" > build.txt 2>&1"
+    if ($LASTEXITCODE) { throw "Build failed: $abi (see $buildRoot/build.txt)" }
+    cmd.exe /c "`"$make`" install-libs `"SHELL=$shell`" > install.txt 2>&1"
+    if ($LASTEXITCODE) { throw "Install failed: $abi (see $buildRoot/install.txt)" }
+  } finally {
+    $ErrorActionPreference = $oldEap
+    Pop-Location
+  }
  }finally{$env:PATH=$oldPath}
  & "$PSScriptRoot/install-public-headers.ps1" -SourceRoot $sourceRoot -BuildRoot $buildRoot -InstallRoot $installRoot
  $suffix=if($abi -eq 'armeabi-v7a'){'_neon'}else{''}

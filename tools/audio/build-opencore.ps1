@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-param([string]$Target='aarch64-linux-android23', [switch]$DecoderOnly,
+[CmdletBinding()]
+param(
+ [string]$Target='aarch64-linux-android23',
+ [switch]$DecoderOnly,
  [string]$SourceRoot="$PSScriptRoot/opencore-amr-0.1.6",
  [string]$OutputRoot="$PSScriptRoot/opencore-build-$Target",
- [Parameter(Mandatory)][string]$LlvmRoot,[string]$ToolSuffix='.exe')
+ [Parameter(Mandatory)][string]$LlvmRoot,
+ [string]$ToolSuffix='.exe'
+)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force -Path "$outputRoot/obj","$outputRoot/lib","$outputRoot/include/opencore-amrnb","$outputRoot/include/opencore-amrwb" | Out-Null
 foreach($mode in @('nb','wb')){
@@ -16,13 +21,14 @@ foreach($mode in @('nb','wb')){
  $includes=@("$sourceRoot/oscl","$sourceRoot/amr$mode","$amrRoot/amr_$mode/dec/src","$amrRoot/amr_$mode/dec/include","$amrRoot/common/dec/include")
  if($mode -eq 'nb'){$includes+=@("$amrRoot/amr_nb/common/include","$amrRoot/amr_nb/enc/src")}
  $jobs=for($i=0;$i -lt $sources.Count;$i++){[pscustomobject]@{source=$sources[$i];obj="$outputRoot/obj/$mode-$i.o"}}
- $failures=@($jobs | ForEach-Object -Parallel {
-   $flags=@("--target=$using:Target",'-x','c','-std=c99','-O2','-fPIC','-Wno-deprecated-non-prototype','-Wno-incompatible-pointer-types')
-   foreach($include in $using:includes){$flags+="-I$include"}
-   if($using:DecoderOnly -and $using:mode -eq 'nb'){$flags+='-DDISABLE_AMRNB_ENCODER'}
-   & "$using:llvmRoot/clang$using:ToolSuffix" @flags -c $_.source -o $_.obj 2>&1 | Out-Null
-   if($LASTEXITCODE -ne 0){$_.source}
- } -ThrottleLimit 8)
+ $failures=@()
+ foreach($job in $jobs){
+   $flags=@("--target=$Target",'-x','c','-std=c99','-O2','-fPIC','-Wno-deprecated-non-prototype','-Wno-incompatible-pointer-types')
+   foreach($include in $includes){$flags+="-I$include"}
+   if($DecoderOnly -and $mode -eq 'nb'){$flags+='-DDISABLE_AMRNB_ENCODER'}
+   & "$llvmRoot/clang$ToolSuffix" @flags -c $job.source -o $job.obj 2>&1 | Out-Null
+   if($LASTEXITCODE -ne 0){$failures+=$job.source}
+ }
  if($failures.Count){throw "Failed: $($failures -join ', ')"}
  $objects=@($jobs.obj)
  & "$llvmRoot/llvm-ar$ToolSuffix" rcs "$outputRoot/lib/libopencore-amr$mode.a" @objects

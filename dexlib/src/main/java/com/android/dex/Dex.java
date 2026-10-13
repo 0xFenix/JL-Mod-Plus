@@ -75,6 +75,10 @@ public final class Dex {
         this.tableOfContents.readFrom(this);
     }
 
+    public Dex(byte[] data) throws IOException {
+        this(ByteBuffer.wrap(data));
+    }
+
     /**
      * Creates a new dex buffer from the dex file {@code file}.
      */

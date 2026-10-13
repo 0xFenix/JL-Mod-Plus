@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference='Stop'
 $OutRoot=[IO.Path]::GetFullPath($OutRoot).Replace('\\','/')
 $Manifest=[IO.Path]::GetFullPath($Manifest).Replace('\\','/')
-$tar=(Get-Command tar).Source
+$tar = if (Test-Path "$env:WINDIR\System32\tar.exe") { "$env:WINDIR\System32\tar.exe" } else { (Get-Command tar).Source }
 $spec=Get-Content -Raw -LiteralPath $Manifest | ConvertFrom-Json
 $archiveRoot="$OutRoot/archives"
 New-Item -ItemType Directory -Force -Path $OutRoot,$archiveRoot | Out-Null

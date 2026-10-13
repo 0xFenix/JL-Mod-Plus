@@ -129,6 +129,7 @@ public final class AppReconverter {
                 try {
                     conversionResult = Main.convert(new String[]{
                             "--no-optimize",
+                            "--max-classes-per-dex=50",
                             "--output=" + staging.getAbsolutePath() + Config.MIDLET_DEX_ARCH,
                             retainedJar.getAbsolutePath(),
                     });

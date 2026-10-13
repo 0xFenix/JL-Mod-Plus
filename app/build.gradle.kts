@@ -125,10 +125,22 @@ abstract class BuildNativeAudioDependenciesTask @Inject constructor(
 
     @TaskAction
     fun build() {
+        val shellExecutable = run {
+            val isWin = System.getProperty("os.name").lowercase(Locale.ROOT).contains("windows")
+            val candidate = if (isWin) "pwsh.exe" else "pwsh"
+            val pathDirs = System.getenv("PATH")?.split(File.pathSeparatorChar) ?: emptyList<String>()
+            if (pathDirs.any { File(it, candidate).isFile }) {
+                candidate
+            } else if (isWin) {
+                "powershell"
+            } else {
+                "pwsh"
+            }
+        }
         sourcePreparationService.get().prepareOnce {
             execOperations.exec {
                 commandLine(
-                    "pwsh", "-NoProfile", "-File", sourcePreparationScript.get().asFile,
+                    shellExecutable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", sourcePreparationScript.get().asFile,
                     "-OutRoot", sourcesDirectory.get().asFile,
                     "-Manifest", sourceManifest.get().asFile,
                     "-ForceExtract"
@@ -137,7 +149,7 @@ abstract class BuildNativeAudioDependenciesTask @Inject constructor(
         }
         execOperations.exec {
             commandLine(
-                "pwsh", "-NoProfile", "-File", script.get().asFile,
+                shellExecutable, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.get().asFile,
                 "-OutRoot", dependencyRoot.get().asFile,
                 "-WorkRoot", workDirectory.get().asFile,
                 "-SourcesRoot", sourcesDirectory.get().asFile,
@@ -306,7 +318,7 @@ android {
         targetSdk = targetSdkVersion
         versionCode = appVersionCode
         versionName = appVersionName
-        resValue("string", "app_name", "JL-Mod Plus")
+        resValue("string", "app_name", "J2me Loader APTX4869")
         // Per-commit provenance is generated lazily through the public variant Sources API below.
         // Keep it out of configuration-time resValue/BuildConfig inputs so Configuration Cache can
         // survive a JLMOD_BUILD_COMMIT change without invalidating Kotlin/Java compilation.
@@ -358,7 +370,6 @@ android {
             if (hasSharedDebugKeystore) {
                 signingConfig = signingConfigs.getByName("sharedDebug")
             }
-            applicationIdSuffix = ".debug"
             isJniDebuggable = true
             if (nativeBuildEnabled) ndk {
                 // Normal debug builds remain arm64-only. Hosted runtime tests opt into x86_64
@@ -458,6 +469,11 @@ androidComponents {
         )
 
         val fullEmulator = variant.flavorName == "emulator"
+        variant.outputs.forEach { output ->
+            val filter = output.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
+            val suffix = if (filter != null) "-${filter.identifier}" else ""
+            output.outputFileName.set("J2me-Loader-APTX4869${suffix}.apk")
+        }
         variant.buildConfigFields?.put(
             "FULL_EMULATOR",
             BuildConfigField(
@@ -476,10 +492,6 @@ androidComponents {
         )
 
         if (variant.name == "emulatorDebug") {
-            variant.resValues.put(
-                variant.makeResValueKey("string", "app_name"),
-                ResValue("JL-Mod Plus Debug", "Debug application name")
-            )
             if (nativeBuildEnabled) {
                 val verifyNativePackaging = tasks.register<VerifyNativePackagingTask>(
                     "verifyEmulatorDebugNativePackaging"

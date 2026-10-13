@@ -178,6 +178,21 @@ public class Main {
     private List<Future<Boolean>> addToDexFutures =
             new ArrayList<Future<Boolean>>();
 
+    private final List<byte[]> dexOutputArrays = new ArrayList<byte[]>();
+    private final List<ClassFileRecord> classesToProcess = new ArrayList<ClassFileRecord>();
+
+    private static class ClassFileRecord {
+        final String name;
+        final long crc;
+        final byte[] bytes;
+
+        ClassFileRecord(String name, long crc, byte[] bytes) {
+            this.name = name;
+            this.crc = crc;
+            this.bytes = bytes;
+        }
+    }
+
     /** true if any files are successfully processed */
     private volatile boolean anyFilesProcessed;
 
@@ -245,6 +260,8 @@ public class Main {
         synchronized (skippedClassEntries) {
             skippedClassEntries.clear();
         }
+        dexOutputArrays.clear();
+        classesToProcess.clear();
 
         args = arguments;
         args.makeOptionsObjects();
@@ -268,30 +285,25 @@ public class Main {
             return 1;
         }
 
-        // this array is null if no classes were defined
-        byte[] outArray = null;
-
-        if (!outputDex.isEmpty() || (args.humanOutName != null)) {
-            outArray = writeDex(outputDex);
-
-            if (outArray == null) {
-                recordDiagnostic(new ConversionDiagnostic(
-                        null,
-                        ConversionDiagnostic.Phase.DEX_WRITE,
-                        ConversionDiagnostic.Kind.OUTPUT_FAILURE,
-                        ConversionDiagnostic.Action.ABORTED,
-                        "Unable to write DEX output"));
-                return 2;
-            }
+        if (dexOutputArrays.isEmpty() && !args.emptyOk) {
+            recordDiagnostic(new ConversionDiagnostic(
+                    null,
+                    ConversionDiagnostic.Phase.DEX_WRITE,
+                    ConversionDiagnostic.Kind.OUTPUT_FAILURE,
+                    ConversionDiagnostic.Action.ABORTED,
+                    "Unable to write DEX output"));
+            return 2;
         }
 
         if (args.jarOutput) {
             // Effectively free up the (often massive) DexFile memory.
             outputDex = null;
 
-            if (outArray != null) {
-                outputResources.put(DexFormat.DEX_IN_JAR_NAME, outArray);
+            for (int i = 0; i < dexOutputArrays.size(); i++) {
+                String dexName = (i == 0) ? DexFormat.DEX_IN_JAR_NAME : ("classes" + (i + 1) + ".dex");
+                outputResources.put(dexName, dexOutputArrays.get(i));
             }
+
             if (!createJar(args.outName)) {
                 recordDiagnostic(new ConversionDiagnostic(
                         null,
@@ -301,13 +313,33 @@ public class Main {
                         "Unable to create converted archive"));
                 return 3;
             }
-        } else if (outArray != null && args.outName != null) {
-            OutputStream out = openOutput(args.outName);
-            out.write(outArray);
-            closeOutput(out);
+        } else if (!dexOutputArrays.isEmpty() && args.outName != null) {
+            if (args.outputIsDirectory) {
+                File dir = new File(args.outName);
+                for (int i = 0; i < dexOutputArrays.size(); i++) {
+                    String dexName = (i == 0) ? DexFormat.DEX_IN_JAR_NAME : ("classes" + (i + 1) + ".dex");
+                    OutputStream out = openOutput(new File(dir, dexName).getPath());
+                    out.write(dexOutputArrays.get(i));
+                    closeOutput(out);
+                }
+            } else {
+                for (int i = 0; i < dexOutputArrays.size(); i++) {
+                    String outPath = (i == 0) ? args.outName : getMultiDexFileName(args.outName, i + 1);
+                    OutputStream out = openOutput(outPath);
+                    out.write(dexOutputArrays.get(i));
+                    closeOutput(out);
+                }
+            }
         }
 
         return 0;
+    }
+
+    private static String getMultiDexFileName(String outName, int dexIndex) {
+        if (TextUtils.endsWithIgnoreCase(outName, ".dex")) {
+            return outName.substring(0, outName.length() - 4) + dexIndex + ".dex";
+        }
+        return outName + dexIndex + ".dex";
     }
 
     private static void readPathsFromFile(String fileName, Collection<String> paths) throws IOException {
@@ -336,7 +368,8 @@ public class Main {
      * @return whether processing was successful
      */
     private boolean processAllFiles() {
-        createDexFile();
+        dexOutputArrays.clear();
+        classesToProcess.clear();
 
         if (args.jarOutput) {
             outputResources = new TreeMap<String, byte[]>();
@@ -345,15 +378,6 @@ public class Main {
         anyFilesProcessed = false;
         String[] fileNames = args.fileNames;
         Arrays.sort(fileNames);
-
-        // translate classes in parallel
-        classTranslatorPool = new ThreadPoolExecutor(args.numThreads,
-               args.numThreads, 0, TimeUnit.SECONDS,
-               new ArrayBlockingQueue<Runnable>(2 * args.numThreads, true),
-               new ThreadPoolExecutor.CallerRunsPolicy());
-        // collect translated and write to dex in order
-        classDefItemConsumer = Executors.newSingleThreadExecutor();
-
 
         try {
             for (int i = 0; i < fileNames.length; i++) {
@@ -366,51 +390,7 @@ public class Main {
              */
         }
 
-        try {
-            classTranslatorPool.shutdown();
-            classTranslatorPool.awaitTermination(600L, TimeUnit.SECONDS);
-            classDefItemConsumer.shutdown();
-            classDefItemConsumer.awaitTermination(600L, TimeUnit.SECONDS);
-
-            for (Future<Boolean> f : addToDexFutures) {
-                try {
-                    f.get();
-                } catch(ExecutionException ex) {
-                    // Catch any previously uncaught exceptions from
-                    // class translation and adding to dex.
-                    int count = errors.incrementAndGet();
-                    if (count < 10) {
-                        if (args.debug) {
-                            context.err.println("Uncaught translation error:");
-                            ex.getCause().printStackTrace(context.err);
-                        } else {
-                            context.err.println("Uncaught translation error: " + ex.getCause());
-                        }
-                    } else {
-                        throw new InterruptedException("Too many errors");
-                    }
-                }
-            }
-
-        } catch (InterruptedException ie) {
-            classTranslatorPool.shutdownNow();
-            classDefItemConsumer.shutdownNow();
-            throw new RuntimeException("Translation has been interrupted", ie);
-        } catch (Exception e) {
-            classTranslatorPool.shutdownNow();
-            classDefItemConsumer.shutdownNow();
-            e.printStackTrace(context.out);
-            throw new RuntimeException("Unexpected exception in translator thread.", e);
-        }
-
-        int errorNum = errors.get();
-        if (errorNum != 0) {
-            context.err.println(errorNum + " error" +
-                    ((errorNum == 1) ? "" : "s") + "; aborting");
-            return false;
-        }
-
-        if (!(anyFilesProcessed || args.emptyOk)) {
+        if (!(anyFilesProcessed || args.emptyOk || !classesToProcess.isEmpty())) {
             if (classesDiscovered.get() > 0 && classesSkipped.get() == classesDiscovered.get()) {
                 recordDiagnostic(new ConversionDiagnostic(
                         null,
@@ -420,6 +400,107 @@ public class Main {
                         "All discovered source classes were unreadable and skipped"));
             }
             context.err.println("no classfiles specified");
+            return false;
+        }
+
+        int maxPerDex = args.maxClassesPerDex > 0 ? args.maxClassesPerDex : Integer.MAX_VALUE;
+        int totalClasses = classesToProcess.size();
+        for (int start = 0; start < totalClasses; start += maxPerDex) {
+            int end = Math.min(start + maxPerDex, totalClasses);
+            List<ClassFileRecord> batch = classesToProcess.subList(start, end);
+
+            createDexFile();
+            addToDexFutures.clear();
+
+            classTranslatorPool = new ThreadPoolExecutor(args.numThreads,
+                   args.numThreads, 0, TimeUnit.SECONDS,
+                   new ArrayBlockingQueue<Runnable>(2 * args.numThreads, true),
+                   new ThreadPoolExecutor.CallerRunsPolicy());
+            classDefItemConsumer = Executors.newSingleThreadExecutor();
+
+            try {
+                for (ClassFileRecord record : batch) {
+                    processClass(record.name, record.crc, record.bytes);
+                }
+            } catch (StopProcessing ex) {
+                /*
+                 * Ignore it and just let the error reporting do
+                 * their things.
+                 */
+            }
+
+            try {
+                classTranslatorPool.shutdown();
+                classTranslatorPool.awaitTermination(600L, TimeUnit.SECONDS);
+                classDefItemConsumer.shutdown();
+                classDefItemConsumer.awaitTermination(600L, TimeUnit.SECONDS);
+
+                for (Future<Boolean> f : addToDexFutures) {
+                    try {
+                        f.get();
+                    } catch(ExecutionException ex) {
+                        int count = errors.incrementAndGet();
+                        if (count < 10) {
+                            if (args.debug) {
+                                context.err.println("Uncaught translation error:");
+                                ex.getCause().printStackTrace(context.err);
+                            } else {
+                                context.err.println("Uncaught translation error: " + ex.getCause());
+                            }
+                        } else {
+                            throw new InterruptedException("Too many errors");
+                        }
+                    }
+                }
+
+            } catch (InterruptedException ie) {
+                classTranslatorPool.shutdownNow();
+                classDefItemConsumer.shutdownNow();
+                throw new RuntimeException("Translation has been interrupted", ie);
+            } catch (Exception e) {
+                classTranslatorPool.shutdownNow();
+                classDefItemConsumer.shutdownNow();
+                e.printStackTrace(context.out);
+                throw new RuntimeException("Unexpected exception in translator thread.", e);
+            }
+
+            int errorNum = errors.get();
+            if (errorNum != 0) {
+                context.err.println(errorNum + " error" +
+                        ((errorNum == 1) ? "" : "s") + "; aborting");
+                return false;
+            }
+
+            if (outputDex != null && (!outputDex.isEmpty() || (args.humanOutName != null))) {
+                byte[] outArray = writeDex(outputDex);
+                if (outArray == null) {
+                    recordDiagnostic(new ConversionDiagnostic(
+                            null,
+                            ConversionDiagnostic.Phase.DEX_WRITE,
+                            ConversionDiagnostic.Kind.OUTPUT_FAILURE,
+                            ConversionDiagnostic.Action.ABORTED,
+                            "Unable to write DEX output"));
+                    return false;
+                }
+                dexOutputArrays.add(outArray);
+                outputDex = null;
+            }
+        }
+
+        if (classesDiscovered.get() > 0 && classesSkipped.get() == classesDiscovered.get()) {
+            recordDiagnostic(new ConversionDiagnostic(
+                    null,
+                    ConversionDiagnostic.Phase.SOURCE_VALIDATION,
+                    ConversionDiagnostic.Kind.NO_USABLE_CLASSES,
+                    ConversionDiagnostic.Action.ABORTED,
+                    "All discovered source classes were unreadable and skipped"));
+            return false;
+        }
+
+        int errorNum = errors.get();
+        if (errorNum != 0) {
+            context.err.println(errorNum + " error" +
+                    ((errorNum == 1) ? "" : "s") + "; aborting");
             return false;
         }
 
@@ -494,9 +575,7 @@ public class Main {
                     outputResources.put(fixedName, bytes);
                 }
             }
-            processClass(fixedName, crc, bytes);
-            // Assume that an exception may occur. Status will be updated
-            // asynchronously, if the class compiles without error.
+            classesToProcess.add(new ClassFileRecord(fixedName, crc, bytes));
             return false;
         } else {
             synchronized (outputResources) {
@@ -1072,6 +1151,9 @@ public class Main {
          *  to allow merges between dex files with many strings. */
         public boolean forceJumbo = false;
 
+        /** Maximum number of classes per DEX file before splitting into another DEX (sub-class / multi-dex). Defaults to 50. */
+        public int maxClassesPerDex = 50;
+
         /** {@code non-null} after {@link #parse}; file name arguments */
         public String[] fileNames;
 
@@ -1288,6 +1370,10 @@ public class Main {
                     numThreads = Integer.parseInt(parser.getLastValue());
                 } else if (parser.isArg("--force-jumbo")) {
                     forceJumbo = true;
+                } else if (parser.isArg("--max-classes-per-dex=")) {
+                    maxClassesPerDex = Integer.parseInt(parser.getLastValue());
+                } else if (parser.isArg("--no-max-classes-per-dex") || parser.isArg("--no-split-classes")) {
+                    maxClassesPerDex = 0;
                 } else if(parser.isArg(INPUT_LIST_OPTION + "=")) {
                     File inputListFile = new File(parser.getLastValue());
                     try {

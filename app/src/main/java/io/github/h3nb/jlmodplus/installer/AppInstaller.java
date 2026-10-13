@@ -538,6 +538,7 @@ public class AppInstaller {
             try {
                 conversionResult = Main.convert(new String[]{
                         "--no-optimize",
+                        "--max-classes-per-dex=50",
                         "--output=" + tmpDir + Config.MIDLET_DEX_ARCH,
                         srcJar.getAbsolutePath(),
                 });
