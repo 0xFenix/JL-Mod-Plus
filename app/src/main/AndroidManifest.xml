@@ -157,6 +157,16 @@
                 <data android:pathPattern=".*..*.KJX" />
                 <data android:pathPattern=".*..*..*.KJX" />
                 <data android:pathPattern=".*..*..*..*.KJX" />
+                <data android:pathPattern=".*.nes" />
+                <data android:pathPattern=".*..*.nes" />
+                <data android:pathPattern=".*..*..*.nes" />
+                <data android:pathPattern=".*.NES" />
+                <data android:pathPattern=".*.snes" />
+                <data android:pathPattern=".*..*.snes" />
+                <data android:pathPattern=".*.SNES" />
+                <data android:pathPattern=".*.smc" />
+                <data android:pathPattern=".*..*.smc" />
+                <data android:pathPattern=".*.SMC" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -192,6 +202,16 @@
                 <data android:pathPattern=".*..*.KJX" />
                 <data android:pathPattern=".*..*..*.KJX" />
                 <data android:pathPattern=".*..*..*..*.KJX" />
+                <data android:pathPattern=".*.nes" />
+                <data android:pathPattern=".*..*.nes" />
+                <data android:pathPattern=".*..*..*.nes" />
+                <data android:pathPattern=".*.NES" />
+                <data android:pathPattern=".*.snes" />
+                <data android:pathPattern=".*..*.snes" />
+                <data android:pathPattern=".*.SNES" />
+                <data android:pathPattern=".*.smc" />
+                <data android:pathPattern=".*..*.smc" />
+                <data android:pathPattern=".*.SMC" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

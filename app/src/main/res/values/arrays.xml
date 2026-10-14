@@ -51,6 +51,8 @@
         <item>@string/pref_vk_type_arrows_numbers</item>
         <item>@string/pref_vk_type_numbers</item>
         <item>@string/pref_vk_type_arrows</item>
+        <item>@string/pref_vk_type_nes</item>
+        <item>@string/pref_vk_type_snes</item>
         <item>@string/runtime_virtual_controls_template_dpad_standard</item>
         <item>@string/runtime_virtual_controls_template_analog_standard</item>
     </string-array>

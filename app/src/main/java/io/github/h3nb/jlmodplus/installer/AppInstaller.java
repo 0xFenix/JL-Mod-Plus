@@ -54,6 +54,7 @@ import io.reactivex.SingleEmitter;
 import io.github.h3nb.jlmodplus.config.Config;
 import io.github.h3nb.jlmodplus.config.FreshInstalledMidletInitializer;
 import io.github.h3nb.jlmodplus.config.ProfileModel;
+import io.github.h3nb.jlmodplus.config.ProfilesManager;
 import io.github.h3nb.jlmodplus.librarydb.LibraryAppRow;
 import io.github.h3nb.jlmodplus.librarydb.LibraryGenerationLease;
 import io.github.h3nb.jlmodplus.librarydb.LibraryGenerationToken;
@@ -119,6 +120,8 @@ public class AppInstaller {
     private int loadedStatus = NO_STATUS;
     private String matchedIdentity = "";
     private String loadedIdentity = "";
+    private boolean isRom = false;
+    private boolean isSnesRom = false;
     private volatile boolean published;
     enum Stage { READING, DOWNLOADING, WAITING, CONVERTING, SAVING }
     private volatile Stage stage = Stage.READING;
@@ -315,6 +318,11 @@ public class AppInstaller {
                 emitLoadedStatus(emitter, STATUS_UNMATCHED);
                 return;
             }
+        } else if (TextUtils.endsWithIgnoreCase(name, ".nes") || TextUtils.endsWithIgnoreCase(name, ".snes") || TextUtils.endsWithIgnoreCase(name, ".smc")) {
+            boolean isSnes = TextUtils.endsWithIgnoreCase(name, ".snes") || TextUtils.endsWithIgnoreCase(name, ".smc");
+            parseRom(isSnes);
+            newDesc = loadManifest(srcJar);
+            manifest = newDesc;
         } else {
             srcJar = useSourceDirectly ? srcFile : scratch.copy(srcFile, "reviewed.jar");
             newDesc = loadManifest(srcJar);
@@ -444,6 +452,88 @@ public class AppInstaller {
             }
             remaining -= skipped;
         }
+    }
+
+
+    private void parseRom(boolean isSnes) throws ConverterException {
+        try {
+            isRom = true;
+            isSnesRom = isSnes;
+
+            String baseName = srcFile.getName();
+            int dot = baseName.lastIndexOf('.');
+            if (dot > 0) baseName = baseName.substring(0, dot);
+            String title = baseName.replace('_', ' ').replace('-', ' ').trim();
+            if (title.isEmpty()) title = isSnes ? "SNES Game" : "NES Game";
+
+            String vendor = isSnes ? "Super Nintendo Entertainment System" : "Nintendo Entertainment System";
+            String midletClass = isSnes ? "com.retro.snes.SnesMidlet" : "com.retro.nes.NesMidlet";
+            String romEntryName = isSnes ? "rom.snes" : "rom.nes";
+
+            File jarFile = scratch.file(isSnes ? "rom_snes.jar" : "rom_nes.jar");
+            try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(new FileOutputStream(jarFile))) {
+                // 1. META-INF/MANIFEST.MF
+                String manifestContent = "Manifest-Version: 1.0\r\n"
+                        + "MIDlet-Name: " + title + "\r\n"
+                        + "MIDlet-Vendor: " + vendor + "\r\n"
+                        + "MIDlet-Version: 1.0\r\n"
+                        + "MIDlet-1: " + title + ", /icon.png, " + midletClass + "\r\n"
+                        + "MicroEdition-Configuration: CLDC-1.1\r\n"
+                        + "MicroEdition-Profile: MIDP-2.0\r\n"
+                        + "MIDlet-Icon: /icon.png\r\n";
+                jos.putNextEntry(new java.util.jar.JarEntry("META-INF/MANIFEST.MF"));
+                jos.write(manifestContent.getBytes(StandardCharsets.UTF_8));
+                jos.closeEntry();
+
+                // 2. rom.nes or rom.snes
+                jos.putNextEntry(new java.util.jar.JarEntry(romEntryName));
+                try (InputStream fis = new FileInputStream(srcFile)) {
+                    byte[] buf = new byte[8192];
+                    int r;
+                    while ((r = fis.read(buf)) != -1) {
+                        jos.write(buf, 0, r);
+                    }
+                }
+                jos.closeEntry();
+
+                // 3. icon.png
+                jos.putNextEntry(new java.util.jar.JarEntry("icon.png"));
+                jos.write(getRetroIconPng());
+                jos.closeEntry();
+
+                // 4. Dummy.class
+                jos.putNextEntry(new java.util.jar.JarEntry("Dummy.class"));
+                jos.write(new byte[]{
+                    (byte)0xCA, (byte)0xFE, (byte)0xBA, (byte)0xBE, 0x00, 0x00, 0x00, 0x31,
+                    0x00, 0x05, 0x07, 0x00, 0x02, 0x01, 0x00, 0x05, 0x44, 0x75, 0x6D, 0x6D, 0x79,
+                    0x07, 0x00, 0x04, 0x01, 0x00, 0x10, 0x6A, 0x61, 0x76, 0x61, 0x2F, 0x6C, 0x61,
+                    0x6E, 0x67, 0x2F, 0x4F, 0x62, 0x6A, 0x65, 0x63, 0x74, 0x00, 0x21, 0x00, 0x01,
+                    0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                });
+                jos.closeEntry();
+            }
+
+            srcJar = jarFile;
+            srcFile = jarFile;
+        } catch (Exception e) {
+            throw new ConverterException("Can't prepare ROM package", e);
+        }
+    }
+
+    private static byte[] getRetroIconPng() {
+        return new byte[]{
+            (byte)0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+            0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x20,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x73, 0x7A, 0x7A, (byte)0xF4, 0x00, 0x00, 0x00,
+            0x36, 0x49, 0x44, 0x41, 0x54, 0x78, (byte)0x9C, 0x63, (byte)0xFC, (byte)0xCF,
+            (byte)0xC0, 0x00, 0x06, 0x26, 0x03, 0x1B, 0x60, 0x0C, 0x03, 0x30,
+            0x18, 0x06, 0x60, 0x30, 0x0C, (byte)0xC0, 0x60, 0x18, (byte)0x80, (byte)0xC1,
+            0x30, 0x01, (byte)0x83, 0x61, 0x03, 0x06, (byte)0xC3, 0x06, 0x0C, (byte)0x86,
+            0x0D, 0x18, 0x0C, 0x1B, 0x30, 0x18, 0x36, 0x60, 0x30, 0x6C,
+            (byte)0xC0, 0x60, (byte)0xD8, 0x00, 0x00, 0x4F, 0x24, 0x1A, 0x31, (byte)0xE9,
+            0x18, (byte)0xBF, (byte)0x9C, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+            0x44, (byte)0xAE, 0x42, 0x60, (byte)0x82
+        };
     }
 
     private void downloadSource() throws IOException {
@@ -626,6 +716,17 @@ public class AppInstaller {
                     }
                     defaultProfileFallbackName = initialization.fallbackProfileName();
                     freshDefaultInitialized = true;
+                    if (isRom && freshConfigDir != null) {
+                        ProfileModel profile = ProfilesManager.loadConfig(freshConfigDir);
+                        if (profile != null) {
+                            profile.screenWidth = 256;
+                            profile.screenHeight = isSnesRom ? 224 : 240;
+                            profile.screenScaleType = 1;
+                            profile.vkType = isSnesRom ? javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_SNES
+                                                       : javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_NES;
+                            ProfilesManager.saveConfig(freshConfigDir, profile);
+                        }
+                    }
                 } else {
                     LibraryIconOverride.applyPersistedOverride(expectedWorkdir, appDirName, tmpDir);
                 }

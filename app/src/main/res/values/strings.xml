@@ -345,10 +345,12 @@
     <string name="pref_vk_type_arrows">Arrows</string>
     <string name="pref_vk_type_arrows_numbers">Arrows &amp; numbers</string>
     <string name="pref_vk_type_custom">Custom</string>
+    <string name="pref_vk_type_nes">NES Gamepad</string>
     <string name="pref_vk_type_numbers">Numbers</string>
     <string name="pref_vk_type_numbers_arrows">Numbers &amp; arrows</string>
     <string name="pref_vk_type_phone">Phone keypad</string>
     <string name="pref_vk_type_phone_arrows">Phone keypad (arrows)</string>
+    <string name="pref_vk_type_snes">SNES Gamepad</string>
     <string name="pref_wakelock_title">Keep screen on</string>
     <string name="PREF_WIDTH">Width</string>
     <string name="reinstall">This app is already installed. Reinstall it?</string>

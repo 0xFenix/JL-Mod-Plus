@@ -111,7 +111,7 @@ data class FilePickerState(
 
 /** Pure path, filtering, and ordering rules shared by production code and tests. */
 object FilePickerRules {
-    val DEFAULT_ALLOWED_EXTENSIONS: Set<String> = setOf(".jad", ".jar", ".kjx")
+    val DEFAULT_ALLOWED_EXTENSIONS: Set<String> = setOf(".jad", ".jar", ".kjx", ".nes", ".snes", ".smc")
 
     fun normalizeAllowedExtensions(values: Iterable<String>?): Set<String> {
         val normalized = (values ?: emptyList())

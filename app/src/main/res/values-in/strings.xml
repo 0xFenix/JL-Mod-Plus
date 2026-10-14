@@ -278,10 +278,12 @@
     <string name="pref_vk_type_arrows">Panah</string>
     <string name="pref_vk_type_arrows_numbers">Panah dan angka</string>
     <string name="pref_vk_type_custom">Kustom</string>
+    <string name="pref_vk_type_nes">Gamepad NES</string>
     <string name="pref_vk_type_numbers">Angka</string>
     <string name="pref_vk_type_numbers_arrows">Angka dan panah</string>
     <string name="pref_vk_type_phone">Keypad ponsel</string>
     <string name="pref_vk_type_phone_arrows">Keypad ponsel (panah)</string>
+    <string name="pref_vk_type_snes">Gamepad SNES</string>
     <string name="pref_wakelock_title">Layar tetap menyala</string>
     <string name="pref_skin_not_set">Tidak ada</string>
     <string name="pref_skin_title">Skin</string>
