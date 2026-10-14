@@ -13,6 +13,7 @@ public class NesCartridge {
     public int mapper;
     public boolean mirrorVertical; // true = vertical, false = horizontal
     public boolean fourScreen;
+    public boolean hasChrRam = false;
 
     // MMC1 state
     private int mmc1Shift = 0x10;
@@ -61,8 +62,10 @@ public class NesCartridge {
         if (chrBanks > 0) {
             cart.chrRom = new byte[chrBanks * 8192];
             readFully(in, cart.chrRom);
+            cart.hasChrRam = false;
         } else {
             cart.chrRom = new byte[8192]; // CHR RAM
+            cart.hasChrRam = true;
         }
 
         return cart;
@@ -213,6 +216,9 @@ public class NesCartridge {
     public int readChr(int addr) {
         if (chrRom == null || chrRom.length == 0) return 0;
         addr &= 0x1FFF;
+        if (hasChrRam) {
+            return chrRom[addr & 0x1FFF] & 0xFF;
+        }
         switch (mapper) {
             case 1: { // MMC1
                 int chrMode = (mmc1Control >> 4) & 1;
@@ -263,7 +269,7 @@ public class NesCartridge {
     }
 
     public void writeChr(int addr, int val) {
-        if (chrRom != null && chrRom.length == 8192 && mapper == 0) {
+        if (hasChrRam && chrRom != null) {
             chrRom[addr & 0x1FFF] = (byte) val; // CHR RAM write
         }
     }

@@ -105,4 +105,62 @@ public class RetroEmulationTest {
         assertTrue(ppu.frameComplete);
         assertEquals(256 * 224, ppu.screen.length);
     }
+
+    @Test
+    public void unromContraArchitectureInitializesAndWritesChrRam() throws Exception {
+        // Construct an UNROM ROM (Mapper 2): 16 bytes header + 128KB PRG ROM (8 banks) + 0 CHR ROM (uses CHR RAM)
+        int prgSize = 8 * 16384;
+        byte[] romBytes = new byte[16 + prgSize];
+        romBytes[0] = 'N';
+        romBytes[1] = 'E';
+        romBytes[2] = 'S';
+        romBytes[3] = 0x1A;
+        romBytes[4] = 8; // 8 x 16KB PRG = 128KB
+        romBytes[5] = 0; // 0 CHR banks -> CHR RAM
+        romBytes[6] = 0x21; // Mapper 2 (lower nibble 2), vertical mirroring (bit 0 = 1)
+        romBytes[7] = 0x00; // Mapper 2 (upper nibble 0)
+
+        // Set reset vector in the LAST fixed bank (Bank 7, $C000-$FFFF)
+        int lastBankOffset = 16 + (7 * 16384);
+        int resetVectorOffset = lastBankOffset + 16384 - 4;
+        romBytes[resetVectorOffset] = 0x00;
+        romBytes[resetVectorOffset + 1] = (byte) 0xC0; // points to $C000
+
+        // At $C000: NOP (0xEA), JMP $C000 (0x4C, 0x00, 0xC0)
+        romBytes[lastBankOffset] = (byte) 0xEA;
+        romBytes[lastBankOffset + 1] = (byte) 0x4C;
+        romBytes[lastBankOffset + 2] = (byte) 0x00;
+        romBytes[lastBankOffset + 3] = (byte) 0xC0;
+
+        NesCartridge cart = NesCartridge.load(new ByteArrayInputStream(romBytes));
+        assertEquals(2, cart.mapper);
+        assertTrue(cart.hasChrRam);
+        assertTrue(cart.mirrorVertical);
+        assertEquals(8192, cart.chrRom.length);
+
+        // Test writing to CHR-RAM via cart.writeChr
+        cart.writeChr(0x0010, 0xAA);
+        assertEquals(0xAA, cart.readChr(0x0010));
+
+        // Test PRG bank switching for Mapper 2
+        // Write bank 3 to $8000
+        cart.prgRom[3 * 16384] = (byte) 0x55; // marker byte in bank 3
+        cart.writePrg(0x8000, 3);
+        assertEquals(0x55, cart.readPrg(0x8000));
+
+        NesPpu ppu = new NesPpu(cart);
+        NesCpu cpu = new NesCpu(ppu, cart);
+        assertEquals(0xC000, cpu.pc);
+
+        // Step 1 frame
+        for (int sl = 0; sl < 262; sl++) {
+            ppu.stepScanline();
+            int cyclesTarget = 114;
+            int cyc = 0;
+            while (cyc < cyclesTarget) {
+                cyc += cpu.step();
+            }
+        }
+        assertTrue(ppu.frameComplete);
+    }
 }

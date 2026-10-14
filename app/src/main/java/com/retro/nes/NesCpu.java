@@ -42,6 +42,8 @@ public class NesCpu {
             return ram[addr & 0x07FF] & 0xFF;
         } else if (addr < 0x4000) {
             return ppu.readRegister(addr);
+        } else if (addr == 0x4015) {
+            return 0; // APU status (channels silent, no frame IRQ)
         } else if (addr == 0x4016) {
             if (joyStrobe) {
                 return (joy1State & 1) | 0x40;
@@ -49,6 +51,8 @@ public class NesCpu {
             int val = (joy1Shift & 1) | 0x40;
             joy1Shift = (joy1Shift >> 1) | 0x80;
             return val;
+        } else if (addr == 0x4017) {
+            return 0x40;
         } else if (addr >= 0x4020) {
             return cart.readPrg(addr);
         }
@@ -373,7 +377,7 @@ public class NesCpu {
 
     private void adc(int val) {
         int sum = a + val + (p & 1);
-        if (~(a ^ val) != 0 && ((a ^ sum) & 0x80) != 0) p |= 0x40; else p &= ~0x40; // Overflow
+        if (((~(a ^ val) & (a ^ sum) & 0x80)) != 0) p |= 0x40; else p &= ~0x40; // Overflow
         if (sum > 0xFF) p |= 0x01; else p &= ~0x01; // Carry
         a = sum & 0xFF;
         setZN(a);

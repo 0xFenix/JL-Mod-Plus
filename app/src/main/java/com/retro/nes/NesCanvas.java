@@ -81,6 +81,10 @@ public class NesCanvas extends Canvas implements Runnable {
         }
     }
 
+    private int[] scaleBuffer;
+    private int lastDrawW = 0;
+    private int lastDrawH = 0;
+
     @Override
     protected void paint(Graphics g) {
         int w = getWidth();
@@ -94,7 +98,6 @@ public class NesCanvas extends Canvas implements Runnable {
         if (w == 256 && h == 240) {
             g.drawRGB(ppu.screen, 0, 256, 0, 0, 256, 240, false);
         } else {
-            // Scale or center
             int scale = Math.max(1, Math.min(w / 256, h / 240));
             int drawW = 256 * scale;
             int drawH = 240 * scale;
@@ -104,17 +107,19 @@ public class NesCanvas extends Canvas implements Runnable {
             if (scale == 1) {
                 g.drawRGB(ppu.screen, 0, 256, drawX, drawY, 256, 240, false);
             } else {
-                // Scaled draw using RGB
-                int[] scaled = new int[drawW * drawH];
+                if (scaleBuffer == null || drawW != lastDrawW || drawH != lastDrawH) {
+                    scaleBuffer = new int[drawW * drawH];
+                    lastDrawW = drawW;
+                    lastDrawH = drawH;
+                }
                 for (int y = 0; y < drawH; y++) {
-                    int srcY = y / scale;
-                    int srcRow = srcY * 256;
+                    int srcRow = (y / scale) * 256;
                     int dstRow = y * drawW;
                     for (int x = 0; x < drawW; x++) {
-                        scaled[dstRow + x] = ppu.screen[srcRow + (x / scale)];
+                        scaleBuffer[dstRow + x] = ppu.screen[srcRow + (x / scale)];
                     }
                 }
-                g.drawRGB(scaled, 0, drawW, drawX, drawY, drawW, drawH, false);
+                g.drawRGB(scaleBuffer, 0, drawW, drawX, drawY, drawW, drawH, false);
             }
         }
     }

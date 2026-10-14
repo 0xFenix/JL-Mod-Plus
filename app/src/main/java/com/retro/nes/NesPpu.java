@@ -168,22 +168,33 @@ public class NesPpu {
         int bgTable = (ppuCtrl & 0x10) != 0 ? 0x1000 : 0;
 
         if (showBg) {
-            int coarseX = (v & 0x001F);
-            int coarseY = (v >> 5) & 0x001F;
-            int nt = (v >> 10) & 3;
-            int fineY = (v >> 12) & 7;
+            int baseNtY = (t >> 11) & 1;
+            int coarseYFromT = (t >> 5) & 0x1F;
+            int fineYFromT = (t >> 12) & 7;
+            int totalY = (baseNtY * 240) + (coarseYFromT * 8) + fineYFromT + sl;
+            totalY %= 480;
+            int ntY = totalY / 240;
+            int yInNt = totalY % 240;
+            int coarseY = yInNt / 8;
+            int fineY = yInNt % 8;
 
-            for (int tile = 0; tile < 33; tile++) {
-                int curCoarseX = (coarseX + tile) % 32;
-                int curNt = nt ^ (((coarseX + tile) >= 32) ? 1 : 0);
+            int baseNtX = (t >> 10) & 1;
+            int coarseXFromT = t & 0x1F;
+            int startX = (baseNtX * 256) + (coarseXFromT * 8) + fineX;
 
-                int ntAddr = 0x2000 + (curNt * 0x0400) + (coarseY * 32) + curCoarseX;
+            for (int tileCol = 0; tileCol < 33; tileCol++) {
+                int totalX = (startX + (tileCol * 8)) % 512;
+                int ntX = totalX / 256;
+                int coarseX = (totalX % 256) / 8;
+                int currentNt = (ntY * 2) + ntX;
+
+                int ntAddr = 0x2000 + (currentNt * 0x0400) + (coarseY * 32) + coarseX;
                 int tileId = readVram(ntAddr);
 
                 // Attribute table
-                int attrAddr = 0x23C0 + (curNt * 0x0400) + ((coarseY / 4) * 8) + (curCoarseX / 4);
+                int attrAddr = 0x23C0 + (currentNt * 0x0400) + ((coarseY / 4) * 8) + (coarseX / 4);
                 int attr = readVram(attrAddr);
-                int shift = ((coarseY & 2) != 0 ? 4 : 0) | ((curCoarseX & 2) != 0 ? 2 : 0);
+                int shift = ((coarseY & 2) != 0 ? 4 : 0) | ((coarseX & 2) != 0 ? 2 : 0);
                 int pal = (attr >> shift) & 3;
 
                 // Pattern table tile
@@ -192,7 +203,7 @@ public class NesPpu {
                 int hi = readVram(patternAddr + 8);
 
                 for (int bit = 7; bit >= 0; bit--) {
-                    int pixelX = (tile * 8) + (7 - bit) - fineX;
+                    int pixelX = (tileCol * 8) + (7 - bit) - fineX;
                     if (pixelX >= 0 && pixelX < WIDTH) {
                         int colorIndex = ((lo >> bit) & 1) | (((hi >> bit) & 1) << 1);
                         bgPixels[pixelX] = colorIndex;
@@ -249,8 +260,10 @@ public class NesPpu {
                             int colorIndex = ((lo >> col) & 1) | (((hi >> col) & 1) << 1);
                             if (colorIndex != 0) {
                                 // Sprite 0 hit check
-                                if (i == 0 && bgPixels[pixelX] != 0 && pixelX != 255) {
-                                    ppuStatus |= 0x40;
+                                if (i == 0 && (ppuStatus & 0x40) == 0 && pixelX < 255) {
+                                    if (bgPixels[pixelX] != 0 || sl >= sprY + sprHeight - 2) {
+                                        ppuStatus |= 0x40;
+                                    }
                                 }
                                 if (priority || bgPixels[pixelX] == 0) {
                                     int palEntry = readVram(0x3F00 + (pal * 4) + colorIndex) & 0x3F;
