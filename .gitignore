@@ -1,5 +1,7 @@
 # Built application files
-*.apk
+*.bak
+__pycache__/
+*.pyc
 *.ap_
 *.aab
 
