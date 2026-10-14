@@ -22,7 +22,7 @@ import io.github.h3nb.jlmodplus.librarydb.LibraryViewModel
 import io.github.h3nb.jlmodplus.jar.Descriptor
 
 object BulkInstallPlanner {
-    private val supportedExtensions = setOf("jar", "jad", "kjx", "zip")
+    private val supportedExtensions = setOf("jar", "jad", "kjx", "zip", "nes", "snes", "smc")
     private val hardDiscoveryFailures = setOf(
         BulkInstallStatus.RemoteSourceUnsupported,
         BulkInstallStatus.SourceError,
@@ -234,6 +234,10 @@ object BulkInstallPlanner {
         val jads = files.filter { extension(it) == "jad" }
         val jars = files.filter { extension(it) == "jar" || extension(it) == "zip" }
         val kjx = files.filter { extension(it) == "kjx" }
+        val roms = files.filter {
+            val ext = extension(it)
+            ext == "nes" || ext == "snes" || ext == "smc"
+        }
         val jarByCanonicalPath = jars.associateBy { canonicalPath(it) }
         val consumedJarPaths = HashSet<String>()
         val localByJar = LinkedHashMap<String, MutableList<Pair<File, JadResolution.Local>>>()
@@ -312,6 +316,17 @@ object BulkInstallPlanner {
             )
         }
         kjx.forEach { source ->
+            units.add(
+                BulkSourceUnit(
+                    id = UUID.randomUUID().toString(),
+                    origin = origin,
+                    kind = BulkSourceKind.Kjx,
+                    primaryFile = source,
+                    sourceFiles = listOf(source),
+                ),
+            )
+        }
+        roms.forEach { source ->
             units.add(
                 BulkSourceUnit(
                     id = UUID.randomUUID().toString(),

@@ -71,7 +71,7 @@ internal class BulkSourceDiscovery(
             return
         }
         when (source.extension.lowercase(Locale.ROOT)) {
-            "jar", "jad", "kjx" -> files.add(source.canonicalFile)
+            "jar", "jad", "kjx", "nes", "snes", "smc" -> files.add(source.canonicalFile)
             "zip" -> inspectArchive(source, 1)
         }
     }
@@ -232,6 +232,6 @@ internal class BulkSourceDiscovery(
         const val MAX_MANIFEST_BYTES = 256 * 1024L
         const val MAX_ENTRY_BYTES = 128L * 1024 * 1024
         const val MAX_EXPANDED_BYTES = 1024L * 1024 * 1024
-        val SUPPORTED_ARCHIVE_ENTRIES = setOf("jar", "jad", "kjx", "zip")
+        val SUPPORTED_ARCHIVE_ENTRIES = setOf("jar", "jad", "kjx", "zip", "nes", "snes", "smc")
     }
 }

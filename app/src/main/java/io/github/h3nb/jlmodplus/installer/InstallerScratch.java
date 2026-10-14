@@ -146,6 +146,9 @@ final class InstallerScratch {
         if (length >= 3 && prefix[0] == 'K' && prefix[1] == 'J' && prefix[2] == 'X') {
             return "source.kjx";
         }
+        if (length >= 4 && prefix[0] == 'N' && prefix[1] == 'E' && prefix[2] == 'S' && prefix[3] == 0x1A) {
+            return "source.nes";
+        }
         if (length >= 2 && prefix[0] == 0x50 && prefix[1] == 0x4B) {
             return "source.jar";
         }
@@ -153,6 +156,9 @@ final class InstallerScratch {
         if (path != null) {
             String lower = path.toLowerCase(Locale.ROOT);
             if (lower.endsWith(".kjx")) return "source.kjx";
+            if (lower.endsWith(".nes")) return "source.nes";
+            if (lower.endsWith(".snes")) return "source.snes";
+            if (lower.endsWith(".smc")) return "source.smc";
             if (lower.endsWith(".jar")) return "source.jar";
             if (lower.endsWith(".jad")) return "source.jad";
         }

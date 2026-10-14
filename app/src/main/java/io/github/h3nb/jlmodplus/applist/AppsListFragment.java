@@ -495,7 +495,7 @@ public class AppsListFragment extends Fragment {
             @Override
             public void onInstall() {
                 openFileLauncher.launch(createFilePickerIntent(true, false, null,
-                        ".jad", ".jar", ".kjx", ".zip"));
+                        ".jad", ".jar", ".kjx", ".zip", ".nes", ".snes", ".smc"));
             }
 
             @Override

@@ -46,6 +46,9 @@ public class FileUtils {
 	private static final String TEMP_JAR_NAME = "tmp.jar";
 	private static final String TEMP_JAD_NAME = "tmp.jad";
 	private static final String TEMP_KJX_NAME = "tmp.kjx";
+	private static final String TEMP_NES_NAME = "tmp.nes";
+	private static final String TEMP_SNES_NAME = "tmp.snes";
+	private static final String TEMP_SMC_NAME = "tmp.smc";
 	private static final int BUFFER_SIZE = 1024;
 	public static final String ILLEGAL_FILENAME_CHARS = "[/\\\\:*?\"<>|]";
 
@@ -163,6 +166,9 @@ public class FileUtils {
 		if (length >= 3 && prefix[0] == 'K' && prefix[1] == 'J' && prefix[2] == 'X') {
 			return TEMP_KJX_NAME;
 		}
+		if (length >= 4 && prefix[0] == 'N' && prefix[1] == 'E' && prefix[2] == 'S' && prefix[3] == 0x1A) {
+			return TEMP_NES_NAME;
+		}
 		if (length >= 2 && prefix[0] == 0x50 && prefix[1] == 0x4B) {
 			return TEMP_JAR_NAME;
 		}
@@ -171,6 +177,15 @@ public class FileUtils {
 			String lowerPath = path.toLowerCase(Locale.ROOT);
 			if (lowerPath.endsWith(".kjx")) {
 				return TEMP_KJX_NAME;
+			}
+			if (lowerPath.endsWith(".nes")) {
+				return TEMP_NES_NAME;
+			}
+			if (lowerPath.endsWith(".snes")) {
+				return TEMP_SNES_NAME;
+			}
+			if (lowerPath.endsWith(".smc")) {
+				return TEMP_SMC_NAME;
 			}
 			if (lowerPath.endsWith(".jar")) {
 				return TEMP_JAR_NAME;
