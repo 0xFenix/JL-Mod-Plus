@@ -125,7 +125,13 @@ public class AppInstaller {
     private volatile boolean published;
     enum Stage { READING, DOWNLOADING, WAITING, CONVERTING, SAVING }
     private volatile Stage stage = Stage.READING;
-    interface Progress { void update(Stage stage); }
+    interface Progress {
+        void update(Stage stage);
+
+        default void update(Stage stage, int completed, int total) {
+            update(stage);
+        }
+    }
     private Progress progress = ignored -> {};
 
     void setProgress(Progress progress) { this.progress = progress; }
@@ -631,7 +637,7 @@ public class AppInstaller {
                         "--max-classes-per-dex=50",
                         "--output=" + tmpDir + Config.MIDLET_DEX_ARCH,
                         srcJar.getAbsolutePath(),
-                });
+                }, (completed, total) -> progress.update(Stage.CONVERTING, completed, total));
             } catch (Throwable e) {
                 throw new ConverterException("Dexing error", e);
             }

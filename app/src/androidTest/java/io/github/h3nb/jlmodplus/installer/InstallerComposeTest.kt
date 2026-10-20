@@ -214,6 +214,39 @@ class InstallerComposeTest {
     }
 
     @Test
+    fun convertingWithoutTotalsStaysIndeterminate() {
+        val actions = RecordingInstallerActions()
+        setState(
+            InstallerUiState.Converting(
+                title = "Demo MIDlet",
+                message = "Name: Demo MIDlet\nVendor: Example\nVersion: 1.0",
+                status = "Converting JAR…",
+            ), actions,
+        )
+        composeRule.onNodeWithText("Converting JAR…").assertIsDisplayed()
+        composeRule.onAllNodesWithText("9% (534/5908)").assertCountEquals(0)
+    }
+
+    @Test
+    fun convertingProgressShowsPercentCountAndStatus() {
+        val actions = RecordingInstallerActions()
+        setState(
+            InstallerUiState.Converting(
+                title = "Demo MIDlet",
+                message = "Name: Demo MIDlet\nVendor: Example\nVersion: 1.0",
+                status = "Converting JAR…",
+                completed = 534,
+                total = 5908,
+            ), actions,
+        )
+        composeRule.onNodeWithText("9% (534/5908)").assertIsDisplayed()
+        composeRule.onNodeWithText("Converting JAR…").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Converting JAR…").assertIsDisplayed()
+        composeRule.onNodeWithText(targetString(android.R.string.cancel)).performClick()
+        assertEquals(1, actions.closeCount)
+    }
+
+    @Test
     fun confirmationInstallAndCancelAreExplicitEvents() {
         val actions = RecordingInstallerActions()
         setState(

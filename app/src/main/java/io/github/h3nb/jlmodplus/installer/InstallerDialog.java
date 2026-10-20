@@ -298,18 +298,56 @@ public class InstallerDialog extends DialogFragment {
 	private void observeInstallerStage() {
 		AppInstaller active = installer;
 		android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-		active.setProgress(stage -> handler.post(() -> {
-			if (!isAdded() || composeController == null || active != installer || !operationRunning) return;
-			int message = switch (stage) {
-				case READING -> R.string.loading_info;
-				case DOWNLOADING -> R.string.installer_stage_download;
-				case WAITING -> R.string.installer_stage_wait;
-				case CONVERTING -> R.string.converting_wait;
-				case SAVING -> R.string.installer_stage_save;
-			};
-			composeController.showLoading(currentTitle, getString(cancelRequested
-					? R.string.installer_cancel_pending : message));
-		}));
+		active.setProgress(new AppInstaller.Progress() {
+			@Override
+			public void update(AppInstaller.Stage stage) {
+				handler.post(() -> onInstallerStage(active, stage, null, null));
+			}
+
+			@Override
+			public void update(AppInstaller.Stage stage, int completed, int total) {
+				handler.post(() -> onInstallerStage(active, stage, completed, total));
+			}
+		});
+	}
+
+	private void onInstallerStage(AppInstaller active, AppInstaller.Stage stage,
+			@Nullable Integer completed, @Nullable Integer total) {
+		if (!isAdded() || composeController == null || active != installer || !operationRunning) return;
+		switch (stage) {
+			case CONVERTING -> {
+				String status = getString(cancelRequested
+						? R.string.installer_cancel_pending : R.string.converting_wait);
+				if (!composeController.isConverting()) {
+					String message = "";
+					Descriptor descriptor = active.getNewDescriptor();
+					if (descriptor != null && isAdded()) {
+						try {
+							message = descriptor.getInfo(requireActivity()).toString();
+						} catch (Exception ignored) {
+							message = "";
+						}
+					}
+					composeController.showConverting(currentTitle, message, status,
+							completed, total);
+				} else if (completed != null && total != null) {
+					composeController.updateConvertingProgress(completed, total);
+				}
+			}
+			case SAVING -> composeController.showLoading(currentTitle, getString(cancelRequested
+					? R.string.installer_cancel_pending : R.string.installer_stage_save));
+			case READING, DOWNLOADING, WAITING -> {
+				if (composeController.isConverting()) return;
+				int message = switch (stage) {
+					case READING -> R.string.loading_info;
+					case DOWNLOADING -> R.string.installer_stage_download;
+					case WAITING -> R.string.installer_stage_wait;
+					default -> R.string.loading_info;
+				};
+				composeController.showLoading(currentTitle, getString(cancelRequested
+						? R.string.installer_cancel_pending : message));
+			}
+		}
 	}
 
 	private void showLoading() {

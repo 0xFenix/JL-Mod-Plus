@@ -82,6 +82,18 @@ public class Main {
     public static final int CONCURRENCY_LEVEL = 4;
 
     /**
+     * Optional listener for processed-class progress through the class phase.
+     *
+     * <p>The denominator is the number of {@code .class} entries DX discovered in the input,
+     * not all archive entries. The numerator is handled classes: successfully converted plus
+     * deliberately skipped unreadable classes. The percentage is
+     * {@code floor(100 * completed / total)} for {@code total > 0}.
+     */
+    public interface ProgressListener {
+        void onProgress(int completed, int total);
+    }
+
+    /**
      * {@code non-null;} the lengthy message that tries to discourage
      * people from defining core classes in applications
      */
@@ -180,6 +192,11 @@ public class Main {
 
     private final List<byte[]> dexOutputArrays = new ArrayList<byte[]>();
     private final List<ClassFileRecord> classesToProcess = new ArrayList<ClassFileRecord>();
+    private volatile ProgressListener progressListener;
+    private volatile int progressTotal;
+    private final Object progressLock = new Object();
+    private int lastProgressCompleted = -1;
+    private int lastProgressPercent = -1;
 
     private static class ClassFileRecord {
         final String name;
@@ -222,11 +239,19 @@ public class Main {
      * Runs one command-line conversion and returns structured conversion diagnostics.
      */
     public static ConversionResult convert(String[] argArray) throws IOException {
+        return convert(argArray, null);
+    }
+
+    /**
+     * Runs one command-line conversion and reports processed-class progress.
+     * A {@code null} listener disables progress callbacks; conversion semantics are unchanged.
+     */
+    public static ConversionResult convert(String[] argArray, ProgressListener listener) throws IOException {
         DxContext context = new DxContext();
         Arguments arguments = new Arguments(context);
         arguments.parse(argArray);
         Main main = new Main(context);
-        int exitCode = main.runDx(arguments);
+        int exitCode = main.runDx(arguments, listener);
         return main.buildConversionResult(exitCode);
     }
 
@@ -236,19 +261,41 @@ public class Main {
      * @return 0 if success &gt; 0 otherwise.
      */
     public static int run(Arguments arguments) throws IOException {
-        return new Main(new DxContext()).runDx(arguments);
+        return run(arguments, null);
+    }
+
+    /**
+     * Run and return a result code, optionally reporting processed-class progress.
+     */
+    public static int run(Arguments arguments, ProgressListener listener) throws IOException {
+        return new Main(new DxContext()).runDx(arguments, listener);
     }
 
     /** Runs one programmatic conversion and returns its structured result. */
     public static ConversionResult runWithResult(Arguments arguments) throws IOException {
+        return runWithResult(arguments, null);
+    }
+
+    /** Runs one programmatic conversion, optionally reporting processed-class progress. */
+    public static ConversionResult runWithResult(Arguments arguments, ProgressListener listener) throws IOException {
         Main main = new Main(new DxContext());
-        int exitCode = main.runDx(arguments);
+        int exitCode = main.runDx(arguments, listener);
         return main.buildConversionResult(exitCode);
     }
 
     public int runDx(Arguments arguments) throws IOException {
+        return runDx(arguments, null);
+    }
+
+    public int runDx(Arguments arguments, ProgressListener listener) throws IOException {
 
         // Reset per-run state to start fresh.
+        progressListener = listener;
+        progressTotal = 0;
+        synchronized (progressLock) {
+            lastProgressCompleted = -1;
+            lastProgressPercent = -1;
+        }
         errors.set(0);
         classesDiscovered.set(0);
         classesConverted.set(0);
@@ -390,6 +437,12 @@ public class Main {
              */
         }
 
+        int totalClasses = classesToProcess.size();
+        progressTotal = totalClasses;
+        if (totalClasses > 0) {
+            publishClassProgress(0);
+        }
+
         if (!(anyFilesProcessed || args.emptyOk || !classesToProcess.isEmpty())) {
             if (classesDiscovered.get() > 0 && classesSkipped.get() == classesDiscovered.get()) {
                 recordDiagnostic(new ConversionDiagnostic(
@@ -404,7 +457,6 @@ public class Main {
         }
 
         int maxPerDex = args.maxClassesPerDex > 0 ? args.maxClassesPerDex : Integer.MAX_VALUE;
-        int totalClasses = classesToProcess.size();
         for (int start = 0; start < totalClasses; start += maxPerDex) {
             int end = Math.min(start + maxPerDex, totalClasses);
             List<ClassFileRecord> batch = classesToProcess.subList(start, end);
@@ -541,6 +593,28 @@ public class Main {
         anyFilesProcessed |= res;
     }
 
+    private void publishClassProgress(int completed) {
+        ProgressListener listener = progressListener;
+        int total = progressTotal;
+        if (listener == null || total <= 0 || completed < 0 || completed > total) {
+            return;
+        }
+        int percent = (int) ((completed * 100L) / total);
+        synchronized (progressLock) {
+            if (completed == lastProgressCompleted) {
+                return;
+            }
+            boolean isInitial = (completed == 0 && lastProgressCompleted < 0);
+            boolean isFinal = (completed == total);
+            if (!isInitial && !isFinal && percent == lastProgressPercent) {
+                return;
+            }
+            lastProgressCompleted = completed;
+            lastProgressPercent = percent;
+        }
+        listener.onProgress(completed, total);
+    }
+
 
     /**
      * Processes one file, which may be either a class or a resource.
@@ -610,6 +684,7 @@ public class Main {
             switch (ex.getKind()) {
                 case UNREADABLE_SOURCE:
                     classesSkipped.incrementAndGet();
+                    publishClassProgress(classesConverted.get() + classesSkipped.get());
                     recordSkippedClassEntry(name);
                     recordDiagnostic(new ConversionDiagnostic(
                             name,
@@ -1705,6 +1780,7 @@ public class Main {
                         throw ex;
                     }
                     classesConverted.incrementAndGet();
+                    publishClassProgress(classesConverted.get() + classesSkipped.get());
                     updateStatus(true);
                 }
                 return true;

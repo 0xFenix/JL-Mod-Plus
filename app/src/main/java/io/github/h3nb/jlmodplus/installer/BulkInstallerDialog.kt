@@ -806,6 +806,18 @@ private fun RunningContent(
             )
             if (!single) ResultCounters(state.results)
             state.stageLabel?.let { Text(stringResource(it)) }
+            val currentCompleted = state.currentCompleted
+            val currentTotal = state.currentTotal
+            if (currentCompleted != null && currentTotal != null && currentTotal > 0 &&
+                currentCompleted in 0..currentTotal) {
+                val percent = (currentCompleted * 100L / currentTotal).toInt()
+                LinearProgressIndicator(
+                    progress = { currentCompleted.toFloat() / currentTotal.toFloat() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("$percent% ($currentCompleted/$currentTotal)")
+                Text(stringResource(R.string.converting_wait))
+            }
             if (state.cancelRequested) {
                 Text(
                     stringResource(R.string.bulk_install_cancel_requested),

@@ -45,6 +45,8 @@ class BulkInstallViewModel : ViewModel() {
             val results: List<BulkInstallResult>,
             val cancelRequested: Boolean,
             val stageLabel: Int? = null,
+            val currentCompleted: Int? = null,
+            val currentTotal: Int? = null,
         ) : State
         data class Finished(
             val plan: BulkInstallPlan,
@@ -590,16 +592,44 @@ class BulkInstallViewModel : ViewModel() {
             }
             installer = activeInstaller
             if (item.unit.reinstallAppId == null) activeInstaller.setUseSourceDirectly()
-            activeInstaller.setProgress { stage ->
-                val running = mutableState.value as? State.Running
-                if (running != null) mutableState.value = running.copy(stageLabel = when (stage) {
-                    AppInstaller.Stage.READING -> R.string.loading_info
-                    AppInstaller.Stage.DOWNLOADING -> R.string.installer_stage_download
-                    AppInstaller.Stage.WAITING -> R.string.installer_stage_wait
-                    AppInstaller.Stage.CONVERTING -> R.string.converting_wait
-                    AppInstaller.Stage.SAVING -> R.string.installer_stage_save
-                })
-            }
+            activeInstaller.setProgress(object : AppInstaller.Progress {
+                override fun update(stage: AppInstaller.Stage) {
+                    val running = mutableState.value as? State.Running ?: return
+                    if (running.currentName != item.name) return
+                    mutableState.value = running.copy(
+                        stageLabel = when (stage) {
+                            AppInstaller.Stage.READING -> R.string.loading_info
+                            AppInstaller.Stage.DOWNLOADING -> R.string.installer_stage_download
+                            AppInstaller.Stage.WAITING -> R.string.installer_stage_wait
+                            AppInstaller.Stage.CONVERTING -> R.string.converting_wait
+                            AppInstaller.Stage.SAVING -> R.string.installer_stage_save
+                        },
+                        currentCompleted = if (stage == AppInstaller.Stage.CONVERTING) {
+                            running.currentCompleted
+                        } else {
+                            null
+                        },
+                        currentTotal = if (stage == AppInstaller.Stage.CONVERTING) {
+                            running.currentTotal
+                        } else {
+                            null
+                        },
+                    )
+                }
+
+                override fun update(stage: AppInstaller.Stage, completed: Int, total: Int) {
+                    if (stage != AppInstaller.Stage.CONVERTING) return
+                    if (total <= 0 || completed < 0 || completed > total) return
+                    val running = mutableState.value as? State.Running ?: return
+                    if (running.currentName != item.name) return
+                    if (running.currentCompleted == completed && running.currentTotal == total) return
+                    mutableState.value = running.copy(
+                        stageLabel = R.string.converting_wait,
+                        currentCompleted = completed,
+                        currentTotal = total,
+                    )
+                }
+            })
             val currentCode = Single.create<Int>(activeInstaller::loadInfo).blockingGet()
             if (activeInstaller.expectedGeneration != plan.generation || activeInstaller.expectedWorkdir?.canonicalFile != plan.workdir) {
                 throw FatalBatchException(IllegalStateException("Library generation changed during batch revalidation"))

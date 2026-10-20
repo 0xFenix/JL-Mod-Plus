@@ -84,10 +84,12 @@ sealed interface InstallerUiState {
         val iconPath: String?,
     ) : InstallerUiState
 
-    data class Converting(
+    data class Converting @JvmOverloads constructor(
         override val title: String,
         val message: String,
         val status: String,
+        val completed: Int? = null,
+        val total: Int? = null,
     ) : InstallerUiState
 
     data class Success(
@@ -161,6 +163,31 @@ class InstallerComposeController internal constructor(
 
     fun showConverting(title: String, message: String, status: String) {
         state = InstallerUiState.Converting(title = title, message = message, status = status)
+    }
+
+    fun showConverting(title: String, message: String, status: String, completed: Int?, total: Int?) {
+        state = InstallerUiState.Converting(
+            title = title,
+            message = message,
+            status = status,
+            completed = completed,
+            total = total,
+        )
+    }
+
+    fun updateConvertingProgress(completed: Int, total: Int) {
+        val current = state as? InstallerUiState.Converting ?: return
+        if (total <= 0 || completed < 0 || completed > total) return
+        if (current.completed == completed && current.total == total) return
+        state = current.copy(completed = completed, total = total)
+    }
+
+    fun isConverting(): Boolean = state is InstallerUiState.Converting
+
+    fun ensureConverting(title: String, message: String, status: String) {
+        if (state !is InstallerUiState.Converting) {
+            showConverting(title, message, status)
+        }
     }
 
     @JvmOverloads
@@ -307,7 +334,7 @@ fun InstallerScreen(
                                     },
                                     scrollable = !compactHeight,
                                 )
-                                InstallerProgress(state.status)
+                                InstallerConvertingProgress(state)
                                 TextButton(onClick = actions::onClose) {
                                     Text(stringResource(android.R.string.cancel))
                                 }
@@ -466,6 +493,25 @@ private fun InstallerProgress(status: String) {
             .semantics { contentDescription = status },
     )
     InstallerProgressMessage(status)
+}
+
+@Composable
+private fun InstallerConvertingProgress(state: InstallerUiState.Converting) {
+    val completed = state.completed
+    val total = state.total
+    if (completed != null && total != null && total > 0 && completed in 0..total) {
+        val percent = (completed * 100L / total).toInt()
+        LinearProgressIndicator(
+            progress = { completed.toFloat() / total.toFloat() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = state.status },
+        )
+        InstallerProgressMessage("$percent% ($completed/$total)")
+        InstallerProgressMessage(state.status)
+    } else {
+        InstallerProgress(state.status)
+    }
 }
 
 @Composable
