@@ -259,6 +259,7 @@ public class KeyMapper {
 		map.append(KeyEvent.KEYCODE_BUTTON_R1, KEY_SOFT_RIGHT);
 		map.append(KeyEvent.KEYCODE_BUTTON_6, KEY_SOFT_RIGHT);
 		map.append(KeyEvent.KEYCODE_ENTER, KEY_FIRE);
+		map.append(KeyEvent.KEYCODE_DEL, KEY_CLEAR);
 		return map;
 	}
 }

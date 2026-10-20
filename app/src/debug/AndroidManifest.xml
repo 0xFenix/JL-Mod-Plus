@@ -35,6 +35,22 @@
             android:noHistory="true"
             android:process=":midlet" />
         <activity
+            android:name="io.github.h3nb.jlmodplus.runtime.slots.debug.RuntimeSlot0ProbeActivity"
+            android:excludeFromRecents="false"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":midlet0"
+            android:taskAffinity="${applicationId}.runtime.slot0"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name="io.github.h3nb.jlmodplus.runtime.slots.debug.RuntimeSlot1ProbeActivity"
+            android:excludeFromRecents="false"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":midlet1"
+            android:taskAffinity="${applicationId}.runtime.slot1"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
             android:name="javax.microedition.shell.CrashRuntimeLifecycleControlActivity"
             android:excludeFromRecents="true"
             android:exported="false"

@@ -68,6 +68,12 @@ public class KeyMapperMappingRulesTest {
 	}
 
 	@Test
+	public void deleteKeyDefaultsToMidpClear() {
+		assertEquals(Canvas.KEY_CLEAR,
+				KeyMapper.getDefaultKeyMap().get(KeyEvent.KEYCODE_DEL));
+	}
+
+	@Test
 	public void commonGamepadDefaultsUseTheUniversalGuestMap() {
 		SparseIntArray defaults = KeyMapper.getDefaultKeyMap();
 		assertEquals(Canvas.KEY_FIRE, defaults.get(KeyEvent.KEYCODE_BUTTON_A));
