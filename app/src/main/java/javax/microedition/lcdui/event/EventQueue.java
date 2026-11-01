@@ -260,11 +260,19 @@ public class EventQueue implements Runnable {
 	}
 
 	/**
+	 * Returns the worker thread running the event loop, so owners can route
+	 * callbacks posted from that thread back to this queue. May be null when
+	 * the loop is stopped.
+	 */
+	public Thread getWorkerThread() {
+		return thread;
+	}
+
+	/**
 	 * Stop the event loop.
 	 * This method is blocked until the loop is completely stopped.
 	 */
-	public void stopProcessing() {
-		enabled = false;
+	public void stopProcessing() {		enabled = false;
 
 		synchronized (waiter) {
 			waiter.notifyAll();

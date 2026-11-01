@@ -23,6 +23,8 @@ import android.util.Log;
 
 import androidx.appcompat.app.AlertDialog;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.microedition.lcdui.event.Event;
@@ -32,6 +34,7 @@ import javax.microedition.lcdui.event.SimpleEvent;
 import javax.microedition.midlet.MIDlet;
 import javax.microedition.shell.MemoryDiscoveryBridge;
 import javax.microedition.shell.MicroActivity;
+import javax.microedition.shell.MidletTabRouter;
 import javax.microedition.shell.MidletThread;
 import javax.microedition.util.ContextHolder;
 import io.github.h3nb.jlmodplus.ui.LegacyThemeColors;
@@ -59,16 +62,22 @@ public class Display {
 					0xFF000080
 			};
 
-	private static Display instance;
-	/** MIDP foreground-display request/grant for the one runtime in this isolated process. */
-	private static long runtimeForegroundGeneration;
-	private static boolean runtimeForegroundRequested;
-	private static boolean runtimeForegroundGranted;
-	static EventQueue queue = new EventQueue();
+	/** Per-tab Display hosts. Tab ids come from the AMS registry; id 0 is the
+	 * implicit single-tab fallback used when no tab is registered (unit tests). */
+	private static final Map<Integer, Display> INSTANCES = new HashMap<>();
+	/** Per-tab MIDP foreground request/grant state. */
+	private static final Map<Integer, Foreground> FOREGROUNDS = new HashMap<>();
+	/** Per-tab LCDUI event queues with their worker threads. */
+	private static final Map<Integer, EventQueue> QUEUES = new HashMap<>();
+	private static final Map<Thread, Integer> QUEUE_WORKERS = new HashMap<>();
 
-	static {
-		queue.startProcessing();
+	private static final class Foreground {
+		boolean requested;
+		boolean granted;
+		long generation;
 	}
+
+	private final int tabId;
 
 	private volatile Displayable current;
 	/** UI-confirmed presentation for non-Canvas Displayables. */
@@ -127,7 +136,7 @@ public class Display {
 
 		private void updateReady() {
 			ready = cancelled || (mounted && showGeneration != 0L);
-			if (ready) queue.signalEventReady();
+			if (ready) queueFor(tabId).signalEventReady();
 		}
 
 		synchronized void mounted() {
@@ -188,7 +197,7 @@ public class Display {
 		ScreenChange change = new ScreenChange(canvas, generation, host);
 		screenChange = change;
 		canvas.beginScreenChange(change);
-		queue.postQueuedEvent(change);
+		queueFor(tabId).postQueuedEvent(change);
 		// A mounted SurfaceView is not guaranteed to produce a surfaceCreated callback.
 		// Preserve normal startup ordering but bound the queue's head-of-line wait.
 		ViewHandler.postDelayed(change.readinessDeadline, SCREEN_CHANGE_MAX_WAIT_MS);
@@ -227,24 +236,99 @@ public class Display {
 	}
 
 	public static synchronized Display getDisplay(MIDlet midlet) {
-		if (instance == null && midlet != null) {
-			instance = new Display(runtimeForegroundGranted, runtimeForegroundGeneration);
+		int tabId = selectedTabOrDefault();
+		if (midlet != null) {
+			int owned = MidletTabRouter.tabForGuestKey(midlet);
+			if (owned != MidletTabRouter.NO_TAB) {
+				tabId = owned;
+			} else {
+				int threadTab = MidletTabRouter.tabForThread(Thread.currentThread());
+				if (threadTab != MidletTabRouter.NO_TAB) {
+					tabId = threadTab;
+				}
+			}
 		}
-		return instance;
+		Display display = INSTANCES.get(tabId);
+		if (display == null && midlet != null) {
+			Foreground foreground = foregroundFor(tabId);
+			display = new Display(tabId, foreground.granted, foreground.generation);
+			INSTANCES.put(tabId, display);
+		}
+		return display;
 	}
 
-	private Display(boolean foregroundGranted, long generation) {
+	private Display(int tabId, boolean foregroundGranted, long generation) {
+		this.tabId = tabId;
 		displayForeground = foregroundGranted;
 		appliedForegroundGeneration = generation;
 		MicroActivity activity = ContextHolder.getActivity();
 		hostVisible = activity != null && activity.isVisible();
 	}
 
+	/** Returns the live Display of a tab without creating one, or null. */
+	public static synchronized Display forTab(int tabId) {
+		return INSTANCES.get(tabId);
+	}
+
+	/** Resolves the selected tab, defaulting to the implicit single-tab id. */
+	private static int selectedTabOrDefault() {
+		int tabId = MidletTabRouter.selectedTabId();
+		return tabId == MidletTabRouter.NO_TAB ? 0 : tabId;
+	}
+
+	/** Resolves the calling thread's tab: owner, queue worker, then selected. */
+	private static int tabForCurrentThreadOrSelected() {
+		int tabId = MidletTabRouter.tabForThread(Thread.currentThread());
+		if (tabId != MidletTabRouter.NO_TAB) {
+			return tabId;
+		}
+		synchronized (Display.class) {
+			Integer queued = QUEUE_WORKERS.get(Thread.currentThread());
+			if (queued != null) {
+				return queued;
+			}
+		}
+		return selectedTabOrDefault();
+	}
+
+	private static Foreground foregroundFor(int tabId) {
+		Foreground foreground = FOREGROUNDS.get(tabId);
+		if (foreground == null) {
+			foreground = new Foreground();
+			FOREGROUNDS.put(tabId, foreground);
+		}
+		return foreground;
+	}
+
+	private static synchronized EventQueue queueFor(int tabId) {
+		EventQueue queue = QUEUES.get(tabId);
+		if (queue == null) {
+			queue = new EventQueue();
+			queue.startProcessing();
+			QUEUES.put(tabId, queue);
+			Thread worker = queue.getWorkerThread();
+			if (worker != null) {
+				QUEUE_WORKERS.put(worker, tabId);
+			}
+		}
+		return queue;
+	}
+
 	public static synchronized void initDisplay() {
-		instance = null;
-		runtimeForegroundGeneration = 0L;
-		runtimeForegroundRequested = false;
-		runtimeForegroundGranted = false;
+		initDisplay(selectedTabOrDefault());
+	}
+
+	public static synchronized void initDisplay(int tabId) {
+		INSTANCES.remove(tabId);
+		FOREGROUNDS.remove(tabId);
+		EventQueue queue = QUEUES.remove(tabId);
+		if (queue != null) {
+			Thread worker = queue.getWorkerThread();
+			if (worker != null) {
+				QUEUE_WORKERS.remove(worker);
+			}
+			queue.stopProcessing();
+		}
 	}
 
 	/**
@@ -252,13 +336,18 @@ public class Display {
 	 * grants this exact generation, independently of guest startApp() completion.
 	 */
 	public static long requestForeground() {
+		return requestForeground(selectedTabOrDefault());
+	}
+
+	public static long requestForeground(int tabId) {
 		Display current;
 		long generation;
 		synchronized (Display.class) {
-			runtimeForegroundRequested = true;
-			runtimeForegroundGranted = false;
-			generation = ++runtimeForegroundGeneration;
-			current = instance;
+			Foreground foreground = foregroundFor(tabId);
+			foreground.requested = true;
+			foreground.granted = false;
+			generation = ++foreground.generation;
+			current = INSTANCES.get(tabId);
 		}
 		if (current != null) {
 			current.updateForegroundGranted(false, generation);
@@ -271,13 +360,18 @@ public class Display {
 	 * older foreground grant attempt.
 	 */
 	public static void revokeForeground() {
+		revokeForeground(selectedTabOrDefault());
+	}
+
+	public static void revokeForeground(int tabId) {
 		Display current;
 		long generation;
 		synchronized (Display.class) {
-			runtimeForegroundRequested = false;
-			runtimeForegroundGranted = false;
-			generation = ++runtimeForegroundGeneration;
-			current = instance;
+			Foreground foreground = foregroundFor(tabId);
+			foreground.requested = false;
+			foreground.granted = false;
+			generation = ++foreground.generation;
+			current = INSTANCES.get(tabId);
 		}
 		if (current != null) {
 			current.updateForegroundGranted(false, generation);
@@ -286,8 +380,13 @@ public class Display {
 
 	/** Returns only foreground ownership committed by the LCDUI barrier, not a pending request. */
 	public static synchronized long currentGrantedForegroundGeneration() {
-		return runtimeForegroundRequested && runtimeForegroundGranted
-				? runtimeForegroundGeneration : 0L;
+		return currentGrantedForegroundGeneration(selectedTabOrDefault());
+	}
+
+	public static synchronized long currentGrantedForegroundGeneration(int tabId) {
+		Foreground foreground = foregroundFor(tabId);
+		return foreground.requested && foreground.granted
+				? foreground.generation : 0L;
 	}
 
 	/**
@@ -295,23 +394,38 @@ public class Display {
 	 * This fences rapid Home/return even when startApp() has not returned.
 	 */
 	public static synchronized long currentForegroundRequestGeneration() {
-		return runtimeForegroundRequested ? runtimeForegroundGeneration : 0L;
+		return currentForegroundRequestGeneration(selectedTabOrDefault());
+	}
+
+	public static synchronized long currentForegroundRequestGeneration(int tabId) {
+		Foreground foreground = foregroundFor(tabId);
+		return foreground.requested ? foreground.generation : 0L;
 	}
 
 	public static synchronized boolean isForegroundRequestCurrent(long generation) {
+		return isForegroundRequestCurrent(generation, selectedTabOrDefault());
+	}
+
+	public static synchronized boolean isForegroundRequestCurrent(long generation, int tabId) {
+		Foreground foreground = foregroundFor(tabId);
 		return generation != 0L
-				&& runtimeForegroundRequested
-				&& generation == runtimeForegroundGeneration;
+				&& foreground.requested
+				&& generation == foreground.generation;
 	}
 
 	public static boolean grantForeground(long generation) {
+		return grantForeground(generation, selectedTabOrDefault());
+	}
+
+	public static boolean grantForeground(long generation, int tabId) {
 		Display current;
 		synchronized (Display.class) {
-			if (!runtimeForegroundRequested || generation != runtimeForegroundGeneration) {
+			Foreground foreground = foregroundFor(tabId);
+			if (!foreground.requested || generation != foreground.generation) {
 				return false;
 			}
-			runtimeForegroundGranted = true;
-			current = instance;
+			foreground.granted = true;
+			current = INSTANCES.get(tabId);
 		}
 		if (current != null) {
 			current.updateForegroundGranted(true, generation);
@@ -355,7 +469,7 @@ public class Display {
 			ViewHandler.postEvent(() -> showAlert(alert, generation));
 		} else if (target != null) {
 			target.clearDisplayableView();
-			activity.setCurrent(target, requestGeneration);
+			activity.setCurrent(target, requestGeneration, tabId);
 		}
 	}
 
@@ -396,12 +510,12 @@ public class Display {
 	}
 
 	public static void postEvent(Event event) {
-		queue.postEvent(event);
+		queueFor(tabForCurrentThreadOrSelected()).postEvent(event);
 	}
 
 	/** Enqueues a presentation callback without executing it under host ownership locks. */
 	public static void postSerializedEvent(Event event) {
-		queue.postQueuedEvent(event);
+		queueFor(tabForCurrentThreadOrSelected()).postQueuedEvent(event);
 	}
 
 	/**
@@ -409,11 +523,11 @@ public class Display {
 	 * commit host presentation ownership or signal AMS, but never executes guest lifecycle code.
 	 */
 	public static void postAfterPendingCallbacks(Runnable runnable) {
-		queue.postBarrier(runnable);
+		queueFor(tabForCurrentThreadOrSelected()).postBarrier(runnable);
 	}
 
 	static EventQueue getEventQueue() {
-		return queue;
+		return queueFor(tabForCurrentThreadOrSelected());
 	}
 
 	public void setCurrent(Displayable displayable) {
@@ -466,7 +580,9 @@ public class Display {
 			}
 		}
 		MicroActivity activity = ContextHolder.getActivity();
-		if (activity == null) {
+		// Only the selected tab mounts screens on the shared host. A background tab keeps
+		// its guest current state; it is presented when the user switches to it.
+		if (activity == null || tabId != MidletTabRouter.selectedTabId()) {
 			return;
 		}
 		if (alert != null) {
@@ -474,7 +590,7 @@ public class Display {
 			final long generation = requestGeneration;
 			ViewHandler.postEvent(() -> showAlert(requestedAlert, generation));
 		} else {
-			activity.setCurrent(displayable, requestGeneration);
+			activity.setCurrent(displayable, requestGeneration, tabId);
 		}
 	}
 
@@ -510,12 +626,16 @@ public class Display {
 		if (previous instanceof Alert previousAlert) {
 			previousAlert.close();
 		}
-		if (ContextHolder.getActivity() != null) {
+		if (ContextHolder.getActivity() != null
+				&& tabId == MidletTabRouter.selectedTabId()) {
 			ViewHandler.postEvent(() -> showAlert(alert, requestGeneration));
 		}
 	}
 
 	private void showAlert(Alert expectedAlert, long requestGeneration) {
+		if (tabId != MidletTabRouter.selectedTabId()) {
+			return;
+		}
 		synchronized (stateLock) {
 			if (current != expectedAlert || currentRequestGeneration.get() != requestGeneration) {
 				return;
@@ -545,6 +665,29 @@ public class Display {
 		}
 	}
 
+	/** Re-presents the guest current screen on the shared host (used on tab switch). */
+	public void refreshHostPresentation() {
+		Displayable target;
+		long generation;
+		synchronized (stateLock) {
+			// Invalidate the last certified presentation so the host remounts below.
+			presented = null;
+			cancelScreenChangeLocked();
+			generation = currentRequestGeneration.incrementAndGet();
+			target = current;
+		}
+		MicroActivity activity = ContextHolder.getActivity();
+		if (activity == null || tabId != MidletTabRouter.selectedTabId()) {
+			return;
+		}
+		if (target instanceof Alert requestedAlert) {
+			final long pending = generation;
+			ViewHandler.postEvent(() -> showAlert(requestedAlert, pending));
+		} else {
+			activity.setCurrent(target, generation, tabId);
+		}
+	}
+
 	/**
 	 * Restores the pre-Alert startup state. This is intentionally separate from setCurrent(null):
 	 * MIDP defines the latter as a background request and it must not clear the guest current
@@ -562,8 +705,8 @@ public class Display {
 			presented = null;
 			activity = ContextHolder.getActivity();
 		}
-		if (activity != null) {
-			activity.setCurrent(null, requestGeneration);
+		if (activity != null && tabId == MidletTabRouter.selectedTabId()) {
+			activity.setCurrent(null, requestGeneration, tabId);
 		}
 	}
 
@@ -608,7 +751,7 @@ public class Display {
 	}
 
 	public void callSerially(Runnable r) {
-		postEvent(RunnableEvent.getInstance(r).asGuestCallback());
+		queueFor(tabId).postEvent(RunnableEvent.getInstance(r).asGuestCallback());
 	}
 
 	public boolean flashBacklight(int duration) {

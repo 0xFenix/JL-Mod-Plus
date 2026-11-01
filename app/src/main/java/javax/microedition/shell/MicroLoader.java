@@ -122,14 +122,34 @@ public class MicroLoader {
 	private boolean ownsVirtualStorage;
 	private long memoryRuntimeToken;
 	private boolean timingTransformCompatible;
+	/** Tab owning this loader; the AMS registry assigns it before init(). */
+	private final int tabId;
+	/**
+	 * Shared timing/audio/camera/memory session for same-process tabs. The first tab creates
+	 * it; later tabs attach with a reference count and only the last teardown closes it.
+	 */
+	private static final class SharedRuntimeState {
+		TimingSession session;
+		RuntimeAudioCoordinator audio;
+		long memoryToken;
+		int refs;
+	}
+	private static SharedRuntimeState sharedRuntime;
+	private boolean sharesRuntimeState;
 	/** Set only after the MIDlet thread has successfully received the timing session. */
 	private boolean timingSessionTransferred;
 
 	MicroLoader(String appPath, long expectedAppId, boolean builtInThemeLinked, String guestLocale) {
+		this(appPath, expectedAppId, builtInThemeLinked, guestLocale, selectedTabOrZero());
+	}
+
+	MicroLoader(String appPath, long expectedAppId, boolean builtInThemeLinked, String guestLocale,
+			int tabId) {
 		this.appDir = new File(appPath);
 		this.expectedAppId = expectedAppId;
 		this.builtInThemeLinked = builtInThemeLinked;
 		this.guestLocale = guestLocale;
+		this.tabId = tabId;
 		File converted = appDir.getParentFile();
 		if (converted == null)
 			throw new NullPointerException("Can't access to parent of " + appPath);
@@ -153,6 +173,23 @@ public class MicroLoader {
 		return expectedAppId;
 	}
 
+	int getTabId() {
+		return tabId;
+	}
+
+	boolean isBuiltInThemeLinked() {
+		return builtInThemeLinked;
+	}
+
+	String getGuestLocale() {
+		return guestLocale;
+	}
+
+	private static int selectedTabOrZero() {
+		int selected = MidletTabRouter.selectedTabId();
+		return selected == MidletTabRouter.NO_TAB ? 0 : selected;
+	}
+
 	public boolean init() {
 		File config = new File(workDir + Config.MIDLET_CONFIGS_DIR + appDirName);
 		this.params = ProfilesManager.loadPreparedMidletConfig(config, builtInThemeLinked);
@@ -160,13 +197,10 @@ public class MicroLoader {
 			return false;
 		}
 		timingTransformCompatible = hasCompatibleTimingTransform();
-		TimingSession activeSession = GuestTimingBridge.activeSession();
-		if (activeSession != null && !activeSession.isClosed()) {
-			Log.e(TAG, "A MIDlet timing session is already active");
-			return false;
-		}
+		// Timing/audio/memory sessions are shared between same-process tabs (ref-counted
+		// in startTimingSession/closeTimingSession), so a second tab must not fail here.
 		applyLinkedBuiltInTheme();
-		Display.initDisplay();
+		Display.initDisplay(tabId);
 		Graphics3D.initGraphics3D();
 		File cacheDir = ContextHolder.getCacheDir();
 		// Some phones return null here
@@ -185,25 +219,113 @@ public class MicroLoader {
 		if (timingSession != null && !timingSession.isClosed()) {
 			return;
 		}
+		synchronized (MicroLoader.class) {
+			if (sharedRuntime != null && sharedRuntime.session != null
+					&& !sharedRuntime.session.isClosed()) {
+				sharedRuntime.refs++;
+				timingSession = sharedRuntime.session;
+				audioSession = sharedRuntime.audio;
+				memoryRuntimeToken = sharedRuntime.memoryToken;
+				sharesRuntimeState = true;
+				return;
+			}
+		}
 		TimingSession session = new TimingSession(
 				EmulationSpeed.NORMAL_PERCENT,
 				NEXT_TIMING_GENERATION.getAndIncrement(),
 				timingTransformCompatible
 						? TimingMode.sanitize(params.timingMode)
 						: TimingMode.FULL_GUEST_TIME);
+		RuntimeAudioCoordinator audio = null;
+		long memoryToken = 0L;
+		boolean cameraBegun = false;
 		try {
 			GuestTimingBridge.install(session);
+			audio = RuntimeAudioCoordinator.beginRuntime();
+			io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime.beginRuntime(
+					cameraDefaultDimensions, params.cameraDefaultFacing);
+			cameraBegun = true;
+			memoryToken = MemoryRuntimeSession.start();
 		} catch (RuntimeException e) {
-			session.close();
+			releaseCreated(session, audio, cameraBegun, memoryToken);
 			throw e;
 		}
 		timingSession = session;
-		audioSession = RuntimeAudioCoordinator.beginRuntime();
-		io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime.beginRuntime(cameraDefaultDimensions, params.cameraDefaultFacing);
-		memoryRuntimeToken = MemoryRuntimeSession.start();
+		audioSession = audio;
+		memoryRuntimeToken = memoryToken;
+		sharesRuntimeState = true;
+		synchronized (MicroLoader.class) {
+			if (sharedRuntime != null && sharedRuntime.session != null
+					&& !sharedRuntime.session.isClosed()) {
+				// A sibling tab won the creation race; adopt its share and drop ours.
+				sharedRuntime.refs++;
+				timingSession = sharedRuntime.session;
+				audioSession = sharedRuntime.audio;
+				memoryRuntimeToken = sharedRuntime.memoryToken;
+				releaseCreated(session, audio, cameraBegun, memoryToken);
+				return;
+			}
+			SharedRuntimeState created = new SharedRuntimeState();
+			created.session = session;
+			created.audio = audio;
+			created.memoryToken = memoryToken;
+			created.refs = 1;
+			sharedRuntime = created;
+		}
+	}
+
+	/**
+	 * Drops a locally created session. Shared singletons (audio coordinator, memory token,
+	 * camera) are only torn down when no published share owns them; otherwise the
+	 * sibling tab that published the share remains authoritative.
+	 */
+	private static void releaseCreated(TimingSession session, RuntimeAudioCoordinator audio,
+			boolean cameraBegun, long memoryToken) {
+		SharedRuntimeState published;
+		synchronized (MicroLoader.class) {
+			published = sharedRuntime;
+		}
+		boolean sharedSurvives = published != null && published.session != null
+				&& !published.session.isClosed();
+		if (cameraBegun && !sharedSurvives) {
+			try {
+				io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime.closeRuntime();
+			} catch (RuntimeException ignored) {
+			}
+		}
+		if (audio != null && (!sharedSurvives || audio != published.audio)) {
+			try {
+				audio.close();
+			} catch (RuntimeException ignored) {
+			}
+		}
+		GuestTimingBridge.clear(session);
+		try {
+			session.close();
+		} catch (RuntimeException ignored) {
+		}
+		if (!sharedSurvives || memoryToken != published.memoryToken) {
+			MemoryDiscoveryBridge.close(memoryToken);
+			MemoryRuntimeSession.close(memoryToken);
+		}
 	}
 
 	void closeTimingSession() {
+		synchronized (MicroLoader.class) {
+			if (sharesRuntimeState) {
+				sharesRuntimeState = false;
+				if (sharedRuntime != null) {
+					if (--sharedRuntime.refs > 0) {
+						timingSession = null;
+						audioSession = null;
+						memoryRuntimeToken = 0L;
+						return;
+					}
+					sharedRuntime = null;
+				}
+			}
+		}
+		// Either this loader never shared, or it released the last share.
 		RuntimeAudioCoordinator audio = audioSession;
 		audioSession = null;
 		if (audio != null) {
@@ -625,7 +747,9 @@ public class MicroLoader {
 		try {
 			// This lock lives with the actual MIDlet session, not its Activity. A second authority
 			// check closes the prepare/delete/install race before any MIDlet code can write data.
-			storageLease = RuntimeStorageLease.acquire(
+			// Tabs of the same suite share one storage lease (ref-counted); a null return
+			// still means another process owns the path.
+			storageLease = RuntimeStorageLease.acquireShared(
 					ContextHolder.getAppContext().getFilesDir(), appDir);
 			if (storageLease == null) {
 				ContextHolder.getActivity().showErrorDialog(
@@ -665,7 +789,7 @@ public class MicroLoader {
 					ContextHolder.getAppContext(), appDir.getPath(), appName, clazz,
 					expectedAppId, runtimeGeneration);
 			CrashReporter.setMidletMainClass(clazz);
-			MidletThread midletThread = new MidletThread(this, clazz, journal);
+			MidletThread midletThread = new MidletThread(this, clazz, journal, tabId);
 			try {
 				midletThread.start();
 			} catch (RuntimeException | Error failure) {

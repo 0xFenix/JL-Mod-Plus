@@ -129,6 +129,7 @@ public class MicroActivity extends AppCompatActivity {
 	/** UI-thread owner of the Displayable actually mounted in displayableContainer. */
 	private Displayable presentedDisplayable;
 	private long displayRequestGeneration;
+	private int displayRequestTabId = MidletTabRouter.NO_TAB;
 	/** Process cleanup owned by this exact terminal Activity instance; UI-thread only. */
 	@Nullable
 	private Runnable pendingTerminalProcessCleanup;
@@ -138,6 +139,8 @@ public class MicroActivity extends AppCompatActivity {
 	private boolean orientationLocked;
 	private MicroLoader microLoader;
 	private boolean pendingMidletLaunch;
+	/** Main class of the suite running in this host; reused when opening extra tabs. */
+	private String launchedMainClass;
 	private String appName;
 	private String[] pendingMidletClasses;
 	private InputMethodManager inputMethodManager;
@@ -589,6 +592,7 @@ public class MicroActivity extends AppCompatActivity {
 						String[] classes = pendingMidletClasses;
 						pendingMidletClasses = null;
 						if (classes != null && index >= 0 && index < classes.length && microLoader != null) {
+							launchedMainClass = classes[index];
 							microLoader.loadMidlet(classes[index], appName);
 						}
 					}
@@ -686,28 +690,105 @@ public class MicroActivity extends AppCompatActivity {
 				new MidletTabActions() {
 					@Override
 					public void onAddTab() {
-						// P2 will launch a real MIDlet instance per tab; for now the
-						// registry tracks the tab entry and the foreground stays put.
 						AmsRegistry.Tab tab = amsRegistry.addTab(
 								String.valueOf(amsRegistry.size() + 1));
 						if (tab == null) {
 							toast(R.string.error);
+							tabBarController.refresh();
+							return;
 						}
 						tabBarController.refresh();
+						launchTabMidlet(tab.id);
 					}
 
 					@Override
 					public void onSelectTab(int tabId) {
-						amsRegistry.selectTab(tabId);
-						tabBarController.refresh();
+						switchToTab(tabId);
 					}
 
 					@Override
 					public void onCloseTab(int tabId) {
-						amsRegistry.closeTab(tabId);
-						tabBarController.refresh();
+						closeTab(tabId);
 					}
 				});
+	}
+
+	/** Launches another instance of the current suite on a new tab. */
+	private void launchTabMidlet(int tabId) {
+		if (microLoader == null || launchedMainClass == null) {
+			toast(R.string.error);
+			return;
+		}
+		if (!MidletTabRouter.isTabRegistered(tabId)) {
+			switchToTab(tabId);
+		}
+		MicroLoader tabLoader = new MicroLoader(
+				appPath, microLoader.getExpectedAppId(),
+				microLoader.isBuiltInThemeLinked(), microLoader.getGuestLocale(), tabId);
+		if (!tabLoader.init()) {
+			toast(R.string.error);
+			switchToTab(MidletTabRouter.selectedTabId());
+			return;
+		}
+		tabLoader.applyConfiguration();
+		tabLoader.loadMidlet(launchedMainClass, appName);
+		switchToTab(tabId);
+	}
+
+	/** Presents a tab: pause the outgoing guest, foreground the incoming one. */
+	private void switchToTab(int tabId) {
+		int previous = MidletTabRouter.selectedTabId();
+		amsRegistry.selectTab(tabId);
+		MidletTabRouter.setSelectedTab(tabId);
+		if (previous != tabId) {
+			MidletThread outgoing = MidletThread.forTab(previous);
+			if (outgoing != null) {
+				outgoing.sendBackground();
+			}
+		}
+		synchronized (displayRequestLock) {
+			// Per-tab presentation generations are independent; a stale host
+			// generation must not reject the incoming tab's first request.
+			displayRequestGeneration = 0L;
+			displayRequestTabId = tabId;
+		}
+		MidletThread thread = MidletThread.forTab(tabId);
+		if (thread != null) {
+			thread.requestTabForeground();
+		}
+		Display display = Display.forTab(tabId);
+		if (display != null) {
+			display.refreshHostPresentation();
+		}
+		tabBarController.refresh();
+		updateRuntimeMenuState(current);
+	}
+
+	/** Terminates one tab; the last tab keeps the legacy single-runtime departure. */
+	private void closeTab(int tabId) {
+		boolean lastTab = amsRegistry.size() <= 1;
+		MidletThread.destroyTabApp(tabId);
+		if (lastTab) {
+			// destroyTabApp already started the terminal departure when no tabs remain.
+			return;
+		}
+		amsRegistry.closeTab(tabId);
+		switchToTab(amsRegistry.selectedId());
+	}
+
+	/**
+	 * Called from the MIDlet thread when a tab's runtime terminates itself
+	 * (quit, fatal error). Never kills the process while sibling tabs live.
+	 */
+	void onMidletTabTerminated(int tabId, boolean returnToLibrary) {
+		runOnUiThread(() -> {
+			amsRegistry.closeTab(tabId);
+			if (amsRegistry.size() == 0) {
+				leaveRuntimeHost(returnToLibrary, null);
+				return;
+			}
+			switchToTab(amsRegistry.selectedId());
+		});
 	}
 
 	@Override
@@ -1218,10 +1299,12 @@ public class MicroActivity extends AppCompatActivity {
 		if (size == 0) {
 			showErrorDialog(getString(R.string.runtime_no_midlets));
 		} else if (size == 1) {
+			launchedMainClass = midletsClassArray[0];
 			microLoader.loadMidlet(midletsClassArray[0], appName);
 		} else {
 			String requestedClass = getIntent().getStringExtra(KEY_MIDLET_CLASS);
 			if (requestedClass != null && midlets.containsKey(requestedClass)) {
+				launchedMainClass = requestedClass;
 				microLoader.loadMidlet(requestedClass, appName);
 			} else {
 				showMidletDialog(midletsNameArray, midletsClassArray);
@@ -1442,7 +1525,7 @@ public class MicroActivity extends AppCompatActivity {
 		return null;
 	}
 
-	public void setCurrent(Displayable displayable, long requestGeneration) {
+	public void setCurrent(Displayable displayable, long requestGeneration, int tabId) {
 		synchronized (displayRequestLock) {
 			if (ContextHolder.getActivity() != this
 					|| requestGeneration <= displayRequestGeneration) {
@@ -1450,8 +1533,9 @@ public class MicroActivity extends AppCompatActivity {
 			}
 			current = displayable;
 			displayRequestGeneration = requestGeneration;
+			displayRequestTabId = tabId;
 			// Post while holding the request lock so accepted generations enter the UI queue in order.
-			ViewHandler.postEvent(new SetCurrentEvent(displayable, requestGeneration));
+			ViewHandler.postEvent(new SetCurrentEvent(displayable, requestGeneration, tabId));
 		}
 	}
 
@@ -2159,15 +2243,23 @@ public class MicroActivity extends AppCompatActivity {
 	private class SetCurrentEvent extends SimpleEvent {
 		private final Displayable next;
 		private final long requestGeneration;
+		private final int tabId;
 
-		private SetCurrentEvent(Displayable next, long requestGeneration) {
+		private SetCurrentEvent(Displayable next, long requestGeneration, int tabId) {
 			this.next = next;
 			this.requestGeneration = requestGeneration;
+			this.tabId = tabId;
 		}
 
 		@Override
 		public void process() {
 			if (!ownsDisplayRequest(requestGeneration)) {
+				return;
+			}
+			if (tabId != displayRequestTabId
+					|| tabId != MidletTabRouter.selectedTabId()) {
+				// A background tab never mounts its screens; a stale queue entry from
+				// before a tab switch must not replace the newly selected tab.
 				return;
 			}
 			boolean mounted = false;

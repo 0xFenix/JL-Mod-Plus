@@ -26,6 +26,7 @@ import android.util.Log;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.microedition.lcdui.Canvas;
@@ -56,8 +57,9 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	private static final int GUEST_DESTROYED = 6;
 	private static final int RESUME_REQUEST = 7;
 
-	private static volatile MidletThread instance;
 	private static volatile Object liveGuestExecutionToken;
+	private static final ConcurrentHashMap<Integer, MidletThread> TAB_INSTANCES =
+			new ConcurrentHashMap<>();
 	private static final InheritableThreadLocal<Object> GUEST_EXECUTION =
 			new InheritableThreadLocal<>();
 	private static final ThreadLocal<EscapingGuestFailure> ESCAPING_GUEST_FAILURE =
@@ -66,6 +68,8 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	private final MicroLoader microLoader;
 	private final String mainClass;
 	private final MidletSessionJournal journal;
+	/** AMS tab owning this runtime. @see MidletTabRouter */
+	private final int tabId;
 	private final MidletLifecycleState lifecycle = new MidletLifecycleState();
 	private final AtomicBoolean fatalFailureClaimed = new AtomicBoolean();
 	private final AtomicBoolean exitWatchdogArmed = new AtomicBoolean();
@@ -87,10 +91,67 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	private volatile boolean terminalFinalized;
 
 	MidletThread(MicroLoader microLoader, String mainClass, MidletSessionJournal journal) {
+		this(microLoader, mainClass, journal, MidletTabRouter.selectedTabId());
+	}
+
+	MidletThread(MicroLoader microLoader, String mainClass, MidletSessionJournal journal,
+			int tabId) {
 		super("MidletMain");
 		this.microLoader = microLoader;
 		this.mainClass = mainClass;
 		this.journal = journal;
+		this.tabId = tabId == MidletTabRouter.NO_TAB ? 0 : tabId;
+	}
+
+	/**
+	 * Resolves the runtime owning the calling thread, falling back to the selected tab.
+	 * Host threads land on the selected tab; guest threads resolve through the router.
+	 */
+	static MidletThread current() {
+		int owned = MidletTabRouter.tabForThread(Thread.currentThread());
+		if (owned != MidletTabRouter.NO_TAB) {
+			MidletThread runtime = TAB_INSTANCES.get(owned);
+			if (runtime != null && !runtime.lifecycle.isDestroyed()) {
+				return runtime;
+			}
+		}
+		int selected = MidletTabRouter.selectedTabId();
+		if (selected != MidletTabRouter.NO_TAB) {
+			MidletThread runtime = TAB_INSTANCES.get(selected);
+			if (runtime != null && !runtime.lifecycle.isDestroyed()) {
+				return runtime;
+			}
+		}
+		if (TAB_INSTANCES.size() == 1) {
+			MidletThread only = TAB_INSTANCES.values().iterator().next();
+			if (!only.lifecycle.isDestroyed()) {
+				return only;
+			}
+		}
+		return null;
+	}
+
+	/** Number of live tab runtimes in this process. */
+	static int liveTabCount() {
+		return TAB_INSTANCES.size();
+	}
+
+	/** Removes this runtime from the tab map and releases process-wide heap markers. */
+	private void removeTabInstance() {
+		TAB_INSTANCES.remove(tabId, this);
+		MidletTabRouter.unregister(tabId);
+		if (TAB_INSTANCES.isEmpty()) {
+			liveGuestExecutionToken = null;
+		}
+	}
+
+	/** Guest-execution token for the calling thread's tab, for nested multi-tab guests. */
+	private static Object tokenForCallingThread() {
+		MidletThread owner = current();
+		if (owner != null) {
+			return owner.guestExecutionToken;
+		}
+		return liveGuestExecutionToken;
 	}
 
 	/**
@@ -98,7 +159,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	 * covering callbacks executed on emulator-owned threads without changing their classloader.
 	 */
 	public static boolean enterGuestExecution() {
-		Object currentToken = liveGuestExecutionToken;
+		Object currentToken = tokenForCallingThread();
 		if (currentToken == null
 				|| isCurrentGuestExecutionToken(currentToken, GUEST_EXECUTION.get())) {
 			return false;
@@ -130,14 +191,14 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	public static void notifyDestroyed() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null && current.lifecycle.notifyDestroyed()) {
 			current.send(GUEST_DESTROYED);
 		}
 	}
 
 	public static void notifyPaused() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null
 				&& current.lifecycle.notifyPaused() != MidletLifecycleState.PauseNotification.NO_EFFECT) {
 			current.send(GUEST_PAUSED);
@@ -145,20 +206,20 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	public static void resumeRequest() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null && current.lifecycle.resumeRequest()) {
 			current.send(RESUME_REQUEST);
 		}
 	}
 
 	static boolean hasLiveRuntime() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		return current != null && !current.lifecycle.isDestroyed();
 	}
 
 	/** A terminated guest heap is not reusable while its process cleanup is still pending. */
 	static boolean hasRuntimeHeap() {
-		return liveGuestExecutionToken != null;
+		return liveGuestExecutionToken != null || !TAB_INSTANCES.isEmpty();
 	}
 
 	/** User-requested replacement never calls guest teardown or navigates back to Library. */
@@ -192,32 +253,31 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	private static void finalizeForcedUserStop() {
-		MidletThread current = instance;
-		if (current != null) {
-			current.requestIntentionalTermination(MidletSessionJournal.Outcome.USER_STOP, false);
-			if (!current.finalizeIntentionalTermination(MidletSessionJournal.Outcome.USER_STOP)) {
+		for (MidletThread runtime : TAB_INSTANCES.values()) {
+			runtime.requestIntentionalTermination(MidletSessionJournal.Outcome.USER_STOP, false);
+			if (!runtime.finalizeIntentionalTermination(MidletSessionJournal.Outcome.USER_STOP)) {
 				// A real failure which already won stays fatal, but its bindings must still close.
-				current.finalizeFatalRuntime();
+				runtime.finalizeFatalRuntime();
 			}
 		}
 	}
 
 	/** Returns the in-process AMS foreground selection for the current live runtime. */
 	static boolean isRuntimeSelected() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		return current != null && !current.lifecycle.isDestroyed() && current.runtimeSelected;
 	}
 
 	/** Handles MIDP Display.setCurrent(null) as an emulator/AMS background request. */
 	public static void requestBackground() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current == null || current.lifecycle.isDestroyed()) {
 			return;
 		}
 		boolean returnToLibrary = current.isLibraryReturnAllowedInternal();
 		// Linearize loss of LCDUI foreground before returning to guest code. This invalidates
 		// every older activation generation, including one currently executing startApp().
-		Display.revokeForeground();
+		Display.revokeForeground(current.tabId);
 		current.setRuntimeSelected(false);
 		MicroActivity activity = ContextHolder.getActivity();
 		if (activity != null) {
@@ -227,9 +287,32 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 
 	/** Marks an explicitly selected live runtime as the emulator foreground destination. */
 	static void selectRuntimeForForeground() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null && !current.lifecycle.isDestroyed()) {
 			current.setRuntimeSelected(true);
+		}
+	}
+
+	/** Returns one tab's runtime without creating it, or null. */
+	@Nullable
+	static MidletThread forTab(int tabId) {
+		return TAB_INSTANCES.get(tabId);
+	}
+
+	/** Foregrounds one tab's guest: new LCDUI generation plus AMS activation. */
+	void requestTabForeground() {
+		if (lifecycle.isDestroyed()) {
+			return;
+		}
+		setRuntimeSelected(true);
+		long generation = Display.requestForeground(tabId);
+		send(AMS_FOREGROUND, generation);
+	}
+
+	/** Backgrounds one tab's guest without touching host navigation. */
+	void sendBackground() {
+		if (!lifecycle.isDestroyed()) {
+			send(AMS_BACKGROUND);
 		}
 	}
 
@@ -241,7 +324,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 
 	/** Returns whether the current runtime policy still permits a Library host destination. */
 	static boolean isLibraryReturnAllowed() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		return current == null || current.isLibraryReturnAllowedInternal();
 	}
 
@@ -253,34 +336,43 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 
 	@Nullable
 	static MicroLoader findLiveRuntime(String appPath, long appId, @Nullable String requestedMainClass) {
-		MidletThread current = instance;
-		if (current == null || current.lifecycle.isDestroyed()
-				|| !current.microLoader.matchesRuntime(appPath, appId)) {
-			return null;
+		MidletThread selected = current();
+		if (selected != null && !selected.lifecycle.isDestroyed()
+				&& selected.microLoader.matchesRuntime(appPath, appId)
+				&& matchesRequestedMain(selected, requestedMainClass)) {
+			return selected.microLoader;
 		}
-		if (requestedMainClass != null && !requestedMainClass.isEmpty()
-				&& !requestedMainClass.equals(current.mainClass)) {
-			return null;
+		for (MidletThread runtime : TAB_INSTANCES.values()) {
+			if (runtime != selected && !runtime.lifecycle.isDestroyed()
+					&& runtime.microLoader.matchesRuntime(appPath, appId)
+					&& matchesRequestedMain(runtime, requestedMainClass)) {
+				return runtime.microLoader;
+			}
 		}
-		return current.microLoader;
+		return null;
+	}
+
+	private static boolean matchesRequestedMain(MidletThread runtime, @Nullable String requestedMainClass) {
+		return requestedMainClass == null || requestedMainClass.isEmpty()
+				|| requestedMainClass.equals(runtime.mainClass);
 	}
 
 	static void amsForeground(long foregroundGeneration) {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null) {
 			current.send(AMS_FOREGROUND, foregroundGeneration);
 		}
 	}
 
 	static void amsBackground() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null) {
 			current.send(AMS_BACKGROUND);
 		}
 	}
 
 	static void requestPause() {
-		MidletThread current = instance;
+		MidletThread current = current();
 		if (current != null) {
 			current.send(PAUSE);
 		}
@@ -288,12 +380,13 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 
 	/** Library-owned update request; leave foreground selection to the installer. */
 	public static boolean stopForInstallation(String installedPath, long appId) {
-		MidletThread current = instance;
-		if (current == null || current.lifecycle.isDestroyed()
-				|| !current.microLoader.matchesRuntime(installedPath, appId)) {
-			return false;
+		for (MidletThread runtime : TAB_INSTANCES.values()) {
+			if (!runtime.lifecycle.isDestroyed()
+					&& runtime.microLoader.matchesRuntime(installedPath, appId)) {
+				return destroyTabApp(runtime.tabId, false);
+			}
 		}
-		return destroyApp(false);
+		return false;
 	}
 
 	static boolean destroyApp() {
@@ -301,7 +394,21 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	static boolean destroyApp(boolean returnToLibrary) {
-		MidletThread current = instance;
+		MidletThread current = current();
+		if (current == null) {
+			return false;
+		}
+		return destroyTabApp(current.tabId, returnToLibrary);
+	}
+
+	/** Destroys one tab's runtime; sibling tabs keep running. */
+	static boolean destroyTabApp(int tabId) {
+		return destroyTabApp(tabId, true);
+	}
+
+	/** Destroys one tab's runtime; sibling tabs keep running. */
+	static boolean destroyTabApp(int tabId, boolean returnToLibrary) {
+		MidletThread current = TAB_INSTANCES.get(tabId);
 		if (current == null) {
 			return false;
 		}
@@ -313,8 +420,10 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		}
 
 		MicroActivity activity = ContextHolder.getActivity();
-		if (activity != null) {
-			Displayable displayable = activity.getCurrent();
+		// The END key goes to the tab being destroyed, never to a sibling tab's Canvas.
+		if (activity != null && tabId == MidletTabRouter.selectedTabId()) {
+			Display display = Display.forTab(tabId);
+			Displayable displayable = display != null ? display.getCurrent() : activity.getCurrent();
 			if (displayable instanceof Canvas canvas) {
 				canvas.postKeyPressed(Canvas.KEY_END);
 				canvas.postKeyReleased(Canvas.KEY_END);
@@ -357,8 +466,9 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		upstreamUncaughtHandler = Thread.getDefaultUncaughtExceptionHandler();
 		Thread.setDefaultUncaughtExceptionHandler(sessionUncaughtHandler);
 		handler = new Handler(getLooper(), this);
-		instance = this;
+		TAB_INSTANCES.put(tabId, this);
 		liveGuestExecutionToken = guestExecutionToken;
+		MidletTabRouter.register(tabId, this, microLoader::ownsGuestThread, microLoader);
 		send(INIT);
 		MicroActivity activity = ContextHolder.getActivity();
 		if (activity != null && activity.isVisible()) {
@@ -425,6 +535,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		transitionJournal(MidletSessionJournal.Stage.INITIALIZING);
 		try {
 			midlet = microLoader.loadMIDlet(mainClass);
+			MidletTabRouter.bindGuestKey(tabId, midlet);
 			lifecycle.onConstructed();
 			if (!lifecycle.isDestroyed()) {
 				transitionJournal(MidletSessionJournal.Stage.PAUSED);
@@ -584,18 +695,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		if (!finalizeIntentionalTermination(fallbackOutcome)) {
 			return;
 		}
-		Runnable processCleanup = () -> {
-			CrashReporter.awaitTerminalCaptures();
-			Process.killProcess(Process.myPid());
-		};
-		MicroActivity activity = ContextHolder.getActivity();
-		if (activity == null) {
-			// A live MIDlet may already have yielded its Activity to Library. With no host left to
-			// tear down, keep process lifetime outside the guest callback by returning to main Looper.
-			new Handler(Looper.getMainLooper()).post(processCleanup);
-			return;
-		}
-		activity.leaveRuntimeHost(returnToLibrary, processCleanup);
+		finishTabTermination(returnToLibrary);
 	}
 
 	private boolean claimLifecycleFailure(
@@ -751,9 +851,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 			fatalFailureClaimed.set(true);
 			primaryFailureThread = thread;
 			primaryFailureBoundary = boundary;
-			if (instance == this) {
-				instance = null;
-			}
+			removeTabInstance();
 		}
 		return true;
 	}
@@ -802,9 +900,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 			}
 			outcome = requestedTerminationOutcome == null ? fallbackOutcome : requestedTerminationOutcome;
 			terminalFinalized = true;
-			if (instance == this) {
-				instance = null;
-			}
+			removeTabInstance();
 		}
 		// Keep the session-aware uncaught handler until the isolated process exits. It contains
 		// proven guest teardown failures while delegating host/process failures upstream.
@@ -818,14 +914,29 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 			returnToLibrary = returnToLibraryOnTermination;
 		}
 		finalizeFatalRuntime();
+		finishTabTermination(returnToLibrary);
+	}
+
+	/**
+	 * Ends this tab's HandlerThread and detaches its host surface. The last surviving tab
+	 * keeps the legacy whole-process shutdown; sibling tabs keep running otherwise.
+	 */
+	private void finishTabTermination(boolean returnToLibrary) {
+		quitSafely();
+		MicroActivity activity = ContextHolder.getActivity();
+		if (!TAB_INSTANCES.isEmpty()) {
+			if (activity != null) {
+				activity.onMidletTabTerminated(tabId, returnToLibrary);
+			}
+			return;
+		}
 		Runnable processCleanup = () -> {
-			// Another terminal capture may still be writing on a different thread.
 			CrashReporter.awaitTerminalCaptures();
 			Process.killProcess(Process.myPid());
 		};
-		MicroActivity activity = ContextHolder.getActivity();
 		if (activity == null) {
-			// Keep process death outside the failing guest callback/uncaught-handler stack.
+			// A live MIDlet may already have yielded its Activity to Library. With no host left to
+			// tear down, keep process lifetime outside the guest callback by returning to main Looper.
 			new Handler(Looper.getMainLooper()).post(processCleanup);
 			return;
 		}
@@ -838,9 +949,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 				return;
 			}
 			terminalFinalized = true;
-			if (instance == this) {
-				instance = null;
-			}
+			removeTabInstance();
 		}
 		finalizeSessionState(MidletSessionJournal.Outcome.UNEXPECTED_FAILURE);
 	}
@@ -851,7 +960,10 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		try {
 			android.content.Context context = ContextHolder.getAppContext();
 			MidletSessionStore.clear(context, journal.getSessionId());
-			MidletKeepAliveService.stop(context);
+			// The keep-alive service is process-wide; only the last tab stops it.
+			if (TAB_INSTANCES.isEmpty()) {
+				MidletKeepAliveService.stop(context);
+			}
 		} catch (Throwable ignored) {
 			// Runtime cleanup must never replace the original lifecycle/crash outcome.
 		}

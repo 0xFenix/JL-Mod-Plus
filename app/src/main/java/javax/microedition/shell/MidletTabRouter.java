@@ -91,6 +91,16 @@ public final class MidletTabRouter {
 		return RECORDS.size();
 	}
 
+	/** Returns true when a live runtime is registered for the tab. */
+	public static synchronized boolean isTabRegistered(int tabId) {
+		return RECORDS.containsKey(tabId);
+	}
+
+	/** Returns a snapshot of the registered tab ids, for host rebuild after recreation. */
+	public static synchronized java.util.Set<Integer> tabIds() {
+		return new java.util.HashSet<>(RECORDS.keySet());
+	}
+
 	/** Binds an opaque guest key (for example a MIDlet instance) to a tab. */
 	public static synchronized void bindGuestKey(int tabId, Object key) {
 		if (key != null) {
