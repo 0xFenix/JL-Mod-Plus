@@ -149,6 +149,8 @@ public class MicroActivity extends AppCompatActivity {
 	private PresetAuthorityClient presetAuthorityClient;
 	private RuntimeHostView binding;
 	private RuntimeMenuComposeController runtimeMenuController;
+	private MidletTabBarController tabBarController;
+	private AmsRegistry amsRegistry;
 	private final ActivityResultLauncher<String> cameraPermissionLauncher =
 			registerForActivityResult(new ActivityResultContracts.RequestPermission(),
 					granted -> CameraRuntime.onPermissionResult(this, granted));
@@ -668,8 +670,44 @@ public class MicroActivity extends AppCompatActivity {
 				}, this::dispatchControllerKeyEventFromDialog,
 				this::dispatchControllerGenericMotionEventFromDialog,
 				this::beginControllerHostTargetChange);
+		initializeMidletTabBar();
 		setRuntimeToolbarHeight(getRuntimeToolbarHeight(getRuntimeChrome(current)));
 		updateRuntimeMenuState(current);
+	}
+
+	private void initializeMidletTabBar() {
+		if (amsRegistry == null) {
+			amsRegistry = new AmsRegistry();
+		}
+		if (amsRegistry.size() == 0) {
+			amsRegistry.addTab("1");
+		}
+		tabBarController = new MidletTabBarController(binding.tabBar, amsRegistry,
+				new MidletTabActions() {
+					@Override
+					public void onAddTab() {
+						// P2 will launch a real MIDlet instance per tab; for now the
+						// registry tracks the tab entry and the foreground stays put.
+						AmsRegistry.Tab tab = amsRegistry.addTab(
+								String.valueOf(amsRegistry.size() + 1));
+						if (tab == null) {
+							toast(R.string.error);
+						}
+						tabBarController.refresh();
+					}
+
+					@Override
+					public void onSelectTab(int tabId) {
+						amsRegistry.selectTab(tabId);
+						tabBarController.refresh();
+					}
+
+					@Override
+					public void onCloseTab(int tabId) {
+						amsRegistry.closeTab(tabId);
+						tabBarController.refresh();
+					}
+				});
 	}
 
 	@Override
@@ -714,6 +752,13 @@ public class MicroActivity extends AppCompatActivity {
 				emulationSpeedAvailable,
 				emulationSpeedPercent,
 				memoryEditorController != null && memoryEditorController.isBubbleEnabled());
+		if (binding != null && binding.tabBar != null) {
+			binding.tabBar.setVisibility(
+					chrome.toolbarVisible ? View.VISIBLE : View.GONE);
+		}
+		if (tabBarController != null) {
+			tabBarController.refresh();
+		}
 	}
 
 	private MemoryEditorBubbleController memoryEditorController() {

@@ -44,6 +44,8 @@ public final class RuntimeHostView {
 	public final FrameLayout root;
 	public final LinearLayout virtualDisplay;
 	public final ComposeView toolbar;
+	/** Always-visible multi-MIDlet tab strip below the runtime toolbar. */
+	public final ComposeView tabBar;
 	public final FrameLayout displayableContainer;
 	public final OverlayView overlay;
 	/** Editor-only Activity-owned chrome. It never participates in virtual-key input/persistence. */
@@ -75,6 +77,12 @@ public final class RuntimeHostView {
 		toolbar.setId(R.id.toolbar);
 		toolbar.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
 		virtualDisplay.addView(toolbar, new LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+		tabBar = new ComposeView(context);
+		tabBar.setId(R.id.midlet_tab_bar);
+		tabBar.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+		virtualDisplay.addView(tabBar, new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		displayableContainer = new FrameLayout(context);

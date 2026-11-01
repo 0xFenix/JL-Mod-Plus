@@ -15,6 +15,7 @@
     <item name="midletFrame" type="id" />
     <item name="virtual_display" type="id" />
     <item name="toolbar" type="id" />
+    <item name="midlet_tab_bar" type="id" />
     <item name="displayable_container" type="id" />
     <item name="overlay" type="id" />
 </resources>
