@@ -45,7 +45,7 @@ public class AmsRegistryTest {
 			assertNotNull(registry.addTab(String.valueOf(i + 1)));
 		}
 		assertNull(registry.addTab("overflow"));
-		assertEquals(6, AmsRegistry.MAX_TABS);
+		assertEquals(10, AmsRegistry.MAX_TABS);
 	}
 
 	@Test

@@ -24,12 +24,12 @@ import java.util.List;
  * <p>One entry per running MIDlet tab in the same JVM/process. The registry is
  * UI-thread agnostic: every method is synchronized so host callbacks and the
  * Compose tab bar can share one instance. It owns no Android types so plain
- * JVM unit tests can cover the tab policy (default max 6 tabs, at least one
+ * JVM unit tests can cover the tab policy (default max 10 tabs, at least one
  * tab always present).
  */
 public final class AmsRegistry {
 	/** Default cap for concurrent MIDlet tabs in one runtime. */
-	public static final int MAX_TABS = 6;
+	public static final int MAX_TABS = 10;
 
 	/** Immutable snapshot of a single MIDlet tab. */
 	public static final class Tab {
