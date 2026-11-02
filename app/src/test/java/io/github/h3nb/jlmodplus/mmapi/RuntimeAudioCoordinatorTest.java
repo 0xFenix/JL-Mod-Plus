@@ -166,6 +166,43 @@ public class RuntimeAudioCoordinatorTest {
         assertEquals(0, player.resumes);
     }
 
+    @Test
+    public void backgroundTabIsMutedButKeepsIntentAndResumesOnSelect() throws Exception {
+        Driver driver = new Driver();
+        RuntimeAudioCoordinator audio = new RuntimeAudioCoordinator(driver, true);
+        Player[] holder = new Player[1];
+        Player[] holderOne = new Player[1];
+        Thread guest = new Thread(() -> holder[0] = new Player(audio));
+        Thread guestOne = new Thread(() -> holderOne[0] = new Player(audio));
+        javax.microedition.shell.MidletTabRouter.register(1, guestOne, t -> t == guestOne, new Object());
+        javax.microedition.shell.MidletTabRouter.register(2, guest, t -> t == guest, new Object());
+        try {
+            guest.start();
+            guestOne.start();
+            guest.join();
+            guestOne.join();
+            Player foreground = holderOne[0];
+            Player background = holder[0];
+            foreground.start();
+            background.start();
+            audio.selectTab(1);
+            driver.drain();
+            assertTrue(background.suspended);
+            assertFalse(foreground.suspended);
+            assertFalse(audio.isPlaybackAllowed(background, background.token));
+            assertThrows(MediaException.class, background::start);
+            audio.selectTab(2);
+            driver.drain();
+            assertFalse(background.suspended);
+            assertEquals(1, background.resumes);
+            assertTrue(foreground.suspended);
+        } finally {
+            javax.microedition.shell.MidletTabRouter.unregister(1);
+            javax.microedition.shell.MidletTabRouter.unregister(2);
+            audio.close();
+        }
+    }
+
     private static final class Driver implements RuntimeAudioCoordinator.FocusDriver {
         final ArrayDeque<Runnable> actions = new ArrayDeque<>();
         boolean granted = true;

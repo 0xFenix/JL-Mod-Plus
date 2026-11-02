@@ -105,6 +105,7 @@ import io.github.h3nb.jlmodplus.input.ControllerHostSink;
 import io.github.h3nb.jlmodplus.input.ControllerInputRouter;
 import io.github.h3nb.jlmodplus.input.HostCommand;
 import io.github.h3nb.jlmodplus.memory.MemoryEditorBubbleController;
+import io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator;
 import io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime;
 import io.github.h3nb.jlmodplus.runtime.RuntimeReplacementActivity;
 import io.github.h3nb.jlmodplus.settings.RuntimeChromeClient;
@@ -778,6 +779,8 @@ public class MicroActivity extends AppCompatActivity {
 		if (thread != null) {
 			thread.requestTabForeground();
 		}
+		// Only the selected tab is audible; background tabs keep running muted.
+		RuntimeAudioCoordinator.onTabSelected(tabId);
 		Display display = Display.forTab(tabId);
 		if (display != null) {
 			display.refreshHostPresentation();

@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.microedition.media.MediaException;
+import javax.microedition.shell.MidletTabRouter;
 import javax.microedition.util.ContextHolder;
 
 /** One audio-focus owner for a runtime, independent of its current Activity. */
@@ -75,11 +76,14 @@ public final class RuntimeAudioCoordinator implements AutoCloseable {
     private volatile boolean closed;
     private long nextToken;
     private long focusEpoch;
+    /** Selected MIDlet tab; NO_TAB disables per-tab audibility filtering (single tab). */
+    private int selectedTab = MidletTabRouter.NO_TAB;
 
     private static final class Entry {
         long token, requestEpoch;
         boolean requested;
         final boolean requiresFocus;
+        int tabId = MidletTabRouter.NO_TAB;
         Entry(boolean requiresFocus) { this.requiresFocus = requiresFocus; }
     }
 
@@ -127,7 +131,11 @@ public final class RuntimeAudioCoordinator implements AutoCloseable {
 
     public synchronized void register(Participant participant) {
         if (closed) throw new IllegalStateException("Audio runtime is closed");
-        if (!participants.containsKey(participant)) participants.put(participant, new Entry(participant.requiresAudioFocus()));
+        if (!participants.containsKey(participant)) {
+            Entry entry = new Entry(participant.requiresAudioFocus());
+            entry.tabId = MidletTabRouter.tabForThread(Thread.currentThread());
+            participants.put(participant, entry);
+        }
     }
 
     public long sessionId() { return sessionId; }
@@ -172,7 +180,7 @@ public final class RuntimeAudioCoordinator implements AutoCloseable {
     public synchronized long requestPlayback(Participant participant) throws MediaException {
         Entry entry = participants.get(participant);
         if (closed || entry == null) throw new MediaException("Audio runtime is closed");
-        if (!foreground) throw new MediaException("Runtime audio requires a foreground host");
+        if (!foreground || !isEntryAudible(entry)) throw new MediaException("Runtime audio requires a foreground host");
         if (entry.requiresFocus && !focusHeld && !acquireFocus()) {
             throw new MediaException("Audio focus request was denied");
         }
@@ -184,7 +192,40 @@ public final class RuntimeAudioCoordinator implements AutoCloseable {
 
     public synchronized boolean isPlaybackAllowed(Participant participant, long token) {
         Entry entry = participants.get(participant);
-        return foreground && entry != null && (!entry.requiresFocus || focusHeld) && isPlaybackRequested(participant, token);
+        return foreground && entry != null && isEntryAudible(entry)
+                && (!entry.requiresFocus || focusHeld) && isPlaybackRequested(participant, token);
+    }
+
+    /** Only the selected tab is audible; unscoped participants are always audible. */
+    private boolean isEntryAudible(Entry entry) {
+        return selectedTab == MidletTabRouter.NO_TAB
+                || entry.tabId == MidletTabRouter.NO_TAB
+                || entry.tabId == selectedTab;
+    }
+
+    /** Host tab switch: suspend outgoing guests, resume the incoming tab's intent. */
+    public static void onTabSelected(int tabId) {
+        RuntimeAudioCoordinator session;
+        synchronized (RuntimeAudioCoordinator.class) {
+            session = active;
+        }
+        if (session != null) session.selectTab(tabId);
+    }
+
+    synchronized void selectTab(int tabId) {
+        if (closed || selectedTab == tabId) return;
+        selectedTab = tabId;
+        publishPolicy();
+        for (Map.Entry<Participant, Entry> item : participants.entrySet()) {
+            if (!item.getValue().requested) continue;
+            Participant participant = item.getKey();
+            long token = item.getValue().token;
+            boolean audible = isEntryAudible(item.getValue());
+            driver.execute(() -> {
+                if (audible) participant.onHostResume(token);
+                else participant.onHostSuspend(token);
+            });
+        }
     }
 
     public synchronized boolean isPlaybackRequested(Participant participant, long token) {
