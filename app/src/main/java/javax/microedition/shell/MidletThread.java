@@ -96,7 +96,7 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 
 	MidletThread(MicroLoader microLoader, String mainClass, MidletSessionJournal journal,
 			int tabId) {
-		super("MidletMain");
+		super("MidletMain-" + (tabId == MidletTabRouter.NO_TAB ? 0 : tabId));
 		this.microLoader = microLoader;
 		this.mainClass = mainClass;
 		this.journal = journal;
@@ -191,10 +191,24 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	}
 
 	public static void notifyDestroyed() {
-		MidletThread current = current();
-		if (current != null && current.lifecycle.notifyDestroyed()) {
-			current.send(GUEST_DESTROYED);
+		MidletThread owner = ownerForSignal();
+		if (owner != null && owner.lifecycle.notifyDestroyed()) {
+			owner.send(GUEST_DESTROYED);
 		}
+	}
+
+	/**
+	 * Resolves the calling thread's own tab for lifecycle signals, ignoring the
+	 * destroyed-state filter in {@link #current()}. A dying tab's thread still owns
+	 * its signals; falling back to the selected tab would poison a sibling.
+	 * Returns null (drop the signal) when the caller owns no tab.
+	 */
+	private static MidletThread ownerForSignal() {
+		int owned = MidletTabRouter.tabForThread(Thread.currentThread());
+		if (owned == MidletTabRouter.NO_TAB) {
+			return null;
+		}
+		return TAB_INSTANCES.get(owned);
 	}
 
 	public static void notifyPaused() {
@@ -279,10 +293,26 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		// every older activation generation, including one currently executing startApp().
 		Display.revokeForeground(current.tabId);
 		current.setRuntimeSelected(false);
+		if (hasLiveSiblingTab(current)) {
+			// Sibling tabs keep the host alive: pause only this tab's guest, the same
+			// way a host hide backgrounds the selected runtime. The tab resumes when
+			// the user switches back to it.
+			current.sendBackground();
+			return;
+		}
 		MicroActivity activity = ContextHolder.getActivity();
 		if (activity != null) {
 			activity.leaveRuntimeHost(returnToLibrary, null);
 		}
+	}
+
+	private static boolean hasLiveSiblingTab(MidletThread current) {
+		for (MidletThread runtime : TAB_INSTANCES.values()) {
+			if (runtime != current && !runtime.lifecycle.isDestroyed()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Marks an explicitly selected live runtime as the emulator foreground destination. */
