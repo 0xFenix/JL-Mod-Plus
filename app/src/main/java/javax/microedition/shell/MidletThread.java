@@ -962,6 +962,8 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 	private void finalizeSessionState(MidletSessionJournal.Outcome outcome) {
 		completeJournal(outcome);
 		microLoader.closeTimingSession();
+		microLoader.releaseTabStorage(TAB_INSTANCES.isEmpty());
+		Display.initDisplay(tabId);
 		try {
 			android.content.Context context = ContextHolder.getAppContext();
 			MidletSessionStore.clear(context, journal.getSessionId());

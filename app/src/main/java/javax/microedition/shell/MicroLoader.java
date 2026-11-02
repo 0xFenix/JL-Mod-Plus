@@ -136,6 +136,12 @@ public class MicroLoader {
 	}
 	private static SharedRuntimeState sharedRuntime;
 	private boolean sharesRuntimeState;
+	/**
+	 * Process-wide VFS install marker. Same-suite tabs share one VFS install owned by the
+	 * first loader; a later tab must neither reinstall nor clear it under siblings.
+	 * P6 (multi-JAR) must key this per suite.
+	 */
+	private static String virtualStorageOwner;
 	/** Set only after the MIDlet thread has successfully received the timing session. */
 	private boolean timingSessionTransferred;
 
@@ -345,6 +351,38 @@ public class MicroLoader {
 	private void closeStorageLease() {
 		if (ownsVirtualStorage) {
 			ownsVirtualStorage = false;
+			synchronized (MicroLoader.class) {
+				if (workDir.equals(virtualStorageOwner)) {
+					virtualStorageOwner = null;
+				}
+			}
+			MidletPermissionManager.clear();
+			VirtualFileSystem.clear();
+		}
+		RuntimeStorageLease lease = storageLease;
+		storageLease = null;
+		if (lease != null) {
+			try {
+				lease.close();
+			} catch (IOException error) {
+				Log.w(TAG, "Unable to release runtime storage lease", error);
+			}
+		}
+	}
+
+	/**
+	 * Releases this tab's resources after its guest terminates. The storage-lease share is
+	 * always released; the shared VFS install is cleared only when the last tab goes, so a
+	 * closing tab never pulls storage out from under surviving siblings.
+	 */
+	void releaseTabStorage(boolean lastTab) {
+		if (ownsVirtualStorage && lastTab) {
+			ownsVirtualStorage = false;
+			synchronized (MicroLoader.class) {
+				if (workDir.equals(virtualStorageOwner)) {
+					virtualStorageOwner = null;
+				}
+			}
 			MidletPermissionManager.clear();
 			VirtualFileSystem.clear();
 		}
@@ -765,13 +803,23 @@ public class MicroLoader {
 						ContextHolder.getActivity().getString(R.string.runtime_installation_changed));
 				return;
 			}
-			ownsVirtualStorage = true;
-			storageMode = MidletPermissionManager.install(ContextHolder.getAppContext(), appDir.getPath(),
-					expectedAppId, jarSha256);
-			VirtualFileSystem.install(new File(workDir), appDirName,
-					Environment.getExternalStorageDirectory(), storageMode,
-					storageMode == StorageMode.ANDROID ? androidStorageRoots() : new File[0]);
-			setStorageProperties();
+			synchronized (MicroLoader.class) {
+				if (workDir.equals(virtualStorageOwner)) {
+					// A sibling tab owns the shared VFS install; reuse it.
+					ownsVirtualStorage = false;
+				} else {
+					ownsVirtualStorage = true;
+					virtualStorageOwner = workDir;
+				}
+			}
+			if (ownsVirtualStorage) {
+				storageMode = MidletPermissionManager.install(ContextHolder.getAppContext(), appDir.getPath(),
+						expectedAppId, jarSha256);
+				VirtualFileSystem.install(new File(workDir), appDirName,
+						Environment.getExternalStorageDirectory(), storageMode,
+						storageMode == StorageMode.ANDROID ? androidStorageRoots() : new File[0]);
+				setStorageProperties();
+			}
 			startTimingSession();
 			MidletSessionJournal journal = MidletSessionJournal.create(
 					ContextHolder.getAppContext(),
