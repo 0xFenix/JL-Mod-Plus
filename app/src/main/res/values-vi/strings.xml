@@ -639,6 +639,7 @@
     <string name="runtime_virtual_controls_edit_guide_message">Kéo điều khiển để di chuyển. Với các nút, di chuyển hai ngón tay theo chiều ngang hoặc dọc để đổi chiều rộng hoặc chiều cao, hoặc theo đường chéo để đổi cả hai. Chụm hoặc mở hai ngón tay để đổi kích thước phím điều hướng hoặc cần analog theo đúng tỷ lệ. Chạm Xong khi hoàn tất.</string>
     <string name="runtime_virtual_controls_edit_guide_title">Hướng dẫn chỉnh sửa bố cục</string>
     <string name="runtime_virtual_controls_show_controls">Chọn điều khiển hiển thị</string>
+    <string name="runtime_virtual_controls_hide">Ẩn bàn phím ảo</string>
     <string name="runtime_virtual_controls_switch_layout">Chọn bố cục điều khiển</string>
     <string name="runtime_virtual_controls_template_analog_standard">Cần analog tiêu chuẩn</string>
     <string name="runtime_virtual_controls_template_dpad_standard">Phím điều hướng tiêu chuẩn</string>

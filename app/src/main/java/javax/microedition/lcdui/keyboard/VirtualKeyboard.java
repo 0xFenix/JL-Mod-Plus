@@ -231,6 +231,8 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	private View overlayView;
 	private boolean obscuresVirtualScreen;
 	private boolean visible = true;
+	/** Runtime-only user choice from the menu; hides the touch keypad without changing the saved layout. */
+	private boolean hiddenByUser;
 	public static final int EDITOR_GRID_COARSE = 16;
 	public static final int EDITOR_GRID_NORMAL = 24;
 	public static final int EDITOR_GRID_FINE = 32;
@@ -688,7 +690,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	public List<RectF> getVisibleLayoutControlBounds() {
 		ArrayList<RectF> bounds = new ArrayList<>();
 		for (VirtualKey key : keypad) {
-			if (key.visible) bounds.add(new RectF(key.rect));
+			if (key.visible && !hiddenByUser) bounds.add(new RectF(key.rect));
 		}
 		return bounds;
 	}
@@ -1689,6 +1691,35 @@ public class VirtualKeyboard implements Overlay, Runnable {
 		return controllerKeypadVisible;
 	}
 
+	public boolean isHiddenByUser() {
+		return hiddenByUser;
+	}
+
+	/** Hiding releases touches already held on the keypad so no key stays pressed while hidden. */
+	public void setHiddenByUser(boolean hidden) {
+		if (hiddenByUser == hidden) return;
+		hiddenByUser = hidden;
+		if (hidden) releaseAssociatedKeys();
+		if (overlayView != null) overlayView.postInvalidate();
+	}
+
+	private void releaseAssociatedKeys() {
+		for (int pointer = 0; pointer < associatedKeys.length; pointer++) {
+			VirtualKey key = associatedKeys[pointer];
+			if (key != null) {
+				String source = sourceForPointer(pointer);
+				associatedKeys[pointer] = null;
+				associatedSources[pointer] = null;
+				if (key instanceof MenuKey menuKey) {
+					menuKey.selected = false;
+					handler.removeCallbacks(menuKey);
+				} else {
+					key.onUp(source);
+				}
+			}
+		}
+	}
+
 	/** Handles generic host navigation; normal Canvas/keypad routing is blocked while open. */
 	public boolean handleHostCommand(HostCommand command, boolean pressed) {
 		if (!controllerKeypadVisible) return false;
@@ -2149,7 +2180,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 
 	@Override
 	public void paint(CanvasWrapper g) {
-		if (visible && (layoutEditMode != LAYOUT_EOF ||
+		if (visible && !hiddenByUser && (layoutEditMode != LAYOUT_EOF ||
 				settings.vkAlpha > 0 || settings.vkForceOpacity)) {
 			boolean keypadLegendContext = hasVisibleNumericKeypadContext();
 			for (int i = 0; i < keypad.length; i++) {
@@ -2200,6 +2231,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	@Override
 	public boolean pointerPressed(int pointer, float x, float y) {
 		if (controllerKeypadVisible) return true;
+		if (hiddenByUser && layoutEditMode == LAYOUT_EOF) return false;
 		boolean consumed = false;
 		switch (layoutEditMode) {
 		case LAYOUT_EOF -> {
@@ -2265,6 +2297,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	@Override
 	public boolean pointerDragged(int pointer, float x, float y) {
 		if (controllerKeypadVisible) return true;
+		if (hiddenByUser && layoutEditMode == LAYOUT_EOF) return false;
 		boolean consumed = false;
 		switch (layoutEditMode) {
 		case LAYOUT_EOF -> {
@@ -2388,6 +2421,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	@Override
 	public boolean pointerReleased(int pointer, float x, float y) {
 		if (controllerKeypadVisible) return true;
+		if (hiddenByUser && layoutEditMode == LAYOUT_EOF) return false;
 		boolean consumed = false;
 		if (layoutEditMode == LAYOUT_EOF) {
 			if (pointer < 0 || pointer >= associatedKeys.length) {
@@ -2468,20 +2502,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 		closeControllerKeypad();
 		editedIndex = -1;
 		highlightGroup(-1);
-		for (int pointer = 0; pointer < associatedKeys.length; pointer++) {
-			VirtualKey key = associatedKeys[pointer];
-			if (key != null) {
-				String source = sourceForPointer(pointer);
-				associatedKeys[pointer] = null;
-				associatedSources[pointer] = null;
-				if (key instanceof MenuKey menuKey) {
-					menuKey.selected = false;
-					handler.removeCallbacks(menuKey);
-				} else {
-					key.onUp(source);
-				}
-			}
-		}
+		releaseAssociatedKeys();
 		for (VirtualKey key : keypad) {
 			key.selected = false;
 		}

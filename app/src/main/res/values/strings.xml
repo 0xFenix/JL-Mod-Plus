@@ -1045,6 +1045,7 @@
     <string name="runtime_virtual_controls_edit_guide_dont_show_again">Do not show again</string>
     <string name="runtime_virtual_controls_switch_layout">Choose control layout</string>
     <string name="runtime_virtual_controls_show_controls">Choose visible controls</string>
+    <string name="runtime_virtual_controls_hide">Hide virtual keyboard</string>
     <string name="runtime_virtual_controls_template_dpad_standard">Standard D-pad</string>
     <string name="runtime_virtual_controls_template_analog_standard">Standard analog stick</string>
     <string name="config_gamepad_directions_numeric_v2">Numeric keypad</string>

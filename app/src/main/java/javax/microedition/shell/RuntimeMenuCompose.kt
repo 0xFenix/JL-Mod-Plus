@@ -113,6 +113,7 @@ internal data class RuntimeMenuUiState(
     val imeAvailable: Boolean = false,
     val virtualKeyboardAvailable: Boolean = false,
     val virtualKeyboardEditing: Boolean = false,
+    val virtualKeyboardHidden: Boolean = false,
     val orientationLocked: Boolean = false,
     val emulationSpeedAvailable: Boolean = false,
     val emulationSpeedPercent: Int = EmulationSpeed.NORMAL_PERCENT,
@@ -155,6 +156,7 @@ interface RuntimeMenuActions {
     fun onFinishVirtualKeyboardLayout()
     fun onSwitchVirtualKeyboardLayout()
     fun onShowControls()
+    fun onToggleVirtualKeyboardHidden() {}
 }
 
 /**
@@ -337,6 +339,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
         imeAvailable: Boolean,
         virtualKeyboardAvailable: Boolean,
         virtualKeyboardEditing: Boolean,
+        virtualKeyboardHidden: Boolean,
         orientationLocked: Boolean,
         emulationSpeedAvailable: Boolean,
         emulationSpeedPercent: Int,
@@ -351,6 +354,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             imeAvailable = imeAvailable,
             virtualKeyboardAvailable = virtualKeyboardAvailable,
             virtualKeyboardEditing = virtualKeyboardEditing,
+            virtualKeyboardHidden = virtualKeyboardHidden,
             orientationLocked = orientationLocked,
             emulationSpeedAvailable = emulationSpeedAvailable,
             emulationSpeedPercent = emulationSpeedPercent,
@@ -1140,6 +1144,10 @@ internal fun runtimeMenuEntries(
         )
         action(R.string.runtime_virtual_controls_switch_layout, R.drawable.ic_control_layout, callback = actions::onSwitchVirtualKeyboardLayout)
         action(R.string.runtime_virtual_controls_show_controls, R.drawable.ic_visibility, callback = actions::onShowControls)
+        action(
+            R.string.runtime_virtual_controls_hide, R.drawable.ic_visibility_off,
+            state.virtualKeyboardHidden, callback = actions::onToggleVirtualKeyboardHidden,
+        )
         return@buildList
     }
     action(R.string.exit, R.drawable.ic_exit, callback = actions::onExit)

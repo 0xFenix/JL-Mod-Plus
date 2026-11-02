@@ -600,6 +600,15 @@ public class MicroActivity extends AppCompatActivity {
 							showControlsDialog();
 						}
 					}
+
+					@Override
+					public void onToggleVirtualKeyboardHidden() {
+						VirtualKeyboard vk = ContextHolder.getVk();
+						if (vk != null) {
+							vk.setHiddenByUser(!vk.isHiddenByUser());
+							updateRuntimeMenuState(current);
+						}
+					}
 				},
 				new RuntimeHostDialogActions() {
 					@Override
@@ -1018,6 +1027,7 @@ public class MicroActivity extends AppCompatActivity {
 				inputMethodManager != null,
 				vk != null,
 				vk != null && vk.getLayoutEditMode() != VirtualKeyboard.LAYOUT_EOF,
+				vk != null && vk.isHiddenByUser(),
 				orientationLocked,
 				emulationSpeedAvailable,
 				emulationSpeedPercent,
