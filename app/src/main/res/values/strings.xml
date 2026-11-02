@@ -370,6 +370,7 @@
     <string name="SWAP_SIZES">Swap sizes</string>
     <string name="take_screenshot">Take screenshot</string>
     <string name="midlet_tab_add" translatable="false">+</string>
+    <string name="midlet_tab_remove" translatable="false">−</string>
     <string name="midlet_tab_add_description">Open new tab</string>
     <string name="midlet_tab_close_description">Close tab %1$d</string>
     <string name="fps_limit_maximum">Maximum</string>

@@ -2119,7 +2119,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 			resizeKeyGroup(group);
 		}
 		snapKeys();
-		overlayView.postInvalidate();
+		if (overlayView != null) overlayView.postInvalidate();
 		int delay = settings.vkHideDelay;
 		if (delay > 0 && obscuresVirtualScreen && layoutEditMode == LAYOUT_EOF) {
 			for (VirtualKey key : associatedKeys) {

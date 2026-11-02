@@ -357,6 +357,10 @@ public class MicroActivity extends AppCompatActivity {
 			expectedAppId = prepared.appId();
 			intent.putExtra(KEY_LIBRARY_APP_ID, expectedAppId);
 			String guestLocale = MidletLocaleResolver.resolve(this);
+			// The first tab must own the router selection before the loader snapshots
+			// its tab id; otherwise the guest mounts under tab 0 while the host
+			// presents tab 1 and SetCurrentEvent drops every presentation request.
+			ensurePrimaryTabSelection();
 			microLoader = new MicroLoader(
 					appPath, expectedAppId, prepared.builtInThemeLinked(), guestLocale);
 			if (!microLoader.init()) {
@@ -680,16 +684,12 @@ public class MicroActivity extends AppCompatActivity {
 	}
 
 	private void initializeMidletTabBar() {
-		if (amsRegistry == null) {
-			amsRegistry = new AmsRegistry();
-		}
-		if (amsRegistry.size() == 0) {
-			amsRegistry.addTab("1");
-		}
+		ensurePrimaryTabSelection();
 		tabBarController = new MidletTabBarController(binding.tabBar, amsRegistry,
 				new MidletTabActions() {
 					@Override
 					public void onAddTab() {
+						int previous = amsRegistry.selectedId();
 						AmsRegistry.Tab tab = amsRegistry.addTab(
 								String.valueOf(amsRegistry.size() + 1));
 						if (tab == null) {
@@ -697,6 +697,9 @@ public class MicroActivity extends AppCompatActivity {
 							tabBarController.refresh();
 							return;
 						}
+						// Frame one keeps the old selection: ScrollableTabRow crashes when
+						// a new tab count and a new selected index land in one composition.
+						amsRegistry.selectTab(previous);
 						tabBarController.refresh();
 						launchTabMidlet(tab.id);
 					}
@@ -713,26 +716,45 @@ public class MicroActivity extends AppCompatActivity {
 				});
 	}
 
+	/** Ensures the primary tab exists and owns the router selection. */
+	private int ensurePrimaryTabSelection() {
+		if (amsRegistry == null) {
+			amsRegistry = new AmsRegistry();
+		}
+		if (amsRegistry.size() == 0) {
+			amsRegistry.addTab("1");
+		}
+		int selected = MidletTabRouter.selectedTabId();
+		if (selected == MidletTabRouter.NO_TAB || !amsRegistry.selectTab(selected)) {
+			selected = amsRegistry.selectedId();
+			amsRegistry.selectTab(selected);
+		}
+		MidletTabRouter.setSelectedTab(selected);
+		return selected;
+	}
+
 	/** Launches another instance of the current suite on a new tab. */
 	private void launchTabMidlet(int tabId) {
 		if (microLoader == null || launchedMainClass == null) {
 			toast(R.string.error);
+			amsRegistry.closeTab(tabId);
+			tabBarController.refresh();
 			return;
-		}
-		if (!MidletTabRouter.isTabRegistered(tabId)) {
-			switchToTab(tabId);
 		}
 		MicroLoader tabLoader = new MicroLoader(
 				appPath, microLoader.getExpectedAppId(),
 				microLoader.isBuiltInThemeLinked(), microLoader.getGuestLocale(), tabId);
 		if (!tabLoader.init()) {
 			toast(R.string.error);
+			amsRegistry.closeTab(tabId);
+			tabBarController.refresh();
 			switchToTab(MidletTabRouter.selectedTabId());
 			return;
 		}
 		tabLoader.applyConfiguration();
 		tabLoader.loadMidlet(launchedMainClass, appName);
-		switchToTab(tabId);
+		// Frame two moves the selection after the new tab has been measured.
+		binding.tabBar.post(() -> switchToTab(tabId));
 	}
 
 	/** Presents a tab: pause the outgoing guest, foreground the incoming one. */

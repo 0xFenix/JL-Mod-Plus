@@ -14,11 +14,9 @@
 
 package javax.microedition.shell
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
@@ -36,7 +34,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -69,12 +66,17 @@ class MidletTabBarController(
         )
         composeView.setContent {
             JLModPlusTheme {
+                val selectedIndex = tabs.indexOfFirst { it.id == selectedId }
+                    .takeIf { it >= 0 } ?: 0
                 MidletTabBar(
                     tabs = tabs,
                     selectedId = selectedId,
                     canAdd = tabs.size < AmsRegistry.MAX_TABS,
+                    canClose = tabs.size > 1,
+                    closeDescription = composeView.context.getString(
+                        R.string.midlet_tab_close_description, selectedIndex + 1),
                     onSelectTab = actions::onSelectTab,
-                    onCloseTab = actions::onCloseTab,
+                    onCloseSelectedTab = { actions.onCloseTab(selectedId) },
                     onAddTab = actions::onAddTab,
                 )
             }
@@ -94,8 +96,10 @@ private fun MidletTabBar(
     tabs: List<AmsRegistry.Tab>,
     selectedId: Int,
     canAdd: Boolean,
+    canClose: Boolean,
+    closeDescription: String,
     onSelectTab: (Int) -> Unit,
-    onCloseTab: (Int) -> Unit,
+    onCloseSelectedTab: () -> Unit,
     onAddTab: () -> Unit,
 ) {
     val selectedIndex = tabs.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 } ?: 0
@@ -111,37 +115,23 @@ private fun MidletTabBar(
                     modifier = Modifier.testTag("midlet_tab_bar"),
                 ) {
                     tabs.forEachIndexed { index, tab ->
-                        val closeDescription =
-                            stringResource(R.string.midlet_tab_close_description, index + 1)
                         Tab(
                             selected = tab.id == selectedId,
                             onClick = { onSelectTab(tab.id) },
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = (index + 1).toString(),
-                                        modifier = Modifier.testTag("midlet_tab_${tab.id}"),
-                                    )
-                                    if (tabs.size > 1) {
-                                        Text(
-                                            text = "×",
-                                            modifier = Modifier
-                                                .padding(start = 4.dp)
-                                                .semantics {
-                                                    contentDescription = closeDescription
-                                                }
-                                                .clickable(
-                                                    role = Role.Button,
-                                                    onClick = { onCloseTab(tab.id) },
-                                                )
-                                                .testTag("midlet_tab_close_${tab.id}"),
-                                        )
-                                    }
-                                }
-                            },
+                            modifier = Modifier.testTag("midlet_tab_${tab.id}"),
+                            text = { Text(text = (index + 1).toString()) },
                         )
                     }
                 }
+            }
+            TextButton(
+                onClick = onCloseSelectedTab,
+                enabled = canClose,
+                modifier = Modifier
+                    .semantics { contentDescription = closeDescription }
+                    .testTag("midlet_tab_close"),
+            ) {
+                Text(text = stringResource(R.string.midlet_tab_remove))
             }
             TextButton(
                 onClick = onAddTab,
