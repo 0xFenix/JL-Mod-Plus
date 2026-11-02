@@ -531,6 +531,11 @@ public class MicroActivity extends AppCompatActivity {
 					}
 
 					@Override
+					public void onToggleRuntimeMenu() {
+						toggleRuntimeMenuFromInput();
+					}
+
+					@Override
 					public void onEmulationSpeed() {
 						updateRuntimeMenuState(current);
 					}
@@ -631,7 +636,7 @@ public class MicroActivity extends AppCompatActivity {
 							Config.openSettings(MicroActivity.this, appName, appPath, expectedAppId);
 						}
 						if (ContextHolder.getActivity() != MicroActivity.this
-								|| !MidletThread.destroyApp(!openSettings)) {
+								|| !MidletThread.destroyAllTabApps(!openSettings)) {
 							finishUnstartedRuntime(!openSettings);
 						}
 					}

@@ -148,6 +148,7 @@ interface RuntimeMenuActions {
     fun onSetEmulationSpeed(value: Int)
     fun onResetEmulationSpeed()
     fun onSwitchCamera() {}
+    fun onToggleRuntimeMenu() {}
     fun onMemoryEditor()
     fun onEditVirtualKeyboardLayout()
 
@@ -807,7 +808,7 @@ internal fun measureRuntimeSpeedWidth(resources: Resources, percent: Int): Float
     return max(RUNTIME_TOOLBAR_ACTION_WIDTH_DP, textWidthDp + 16f)
 }
 
-internal enum class RuntimeToolbarShortcut { Speed, Ime, Screenshot, Camera }
+internal enum class RuntimeToolbarShortcut { Speed, Ime, Screenshot, Menu, Camera }
 internal data class RuntimeToolbarOcclusion(val leftPx: Int, val rightPx: Int)
 internal data class RuntimeToolbarSpan(val left: Float, val right: Float) {
     val width: Float get() = (right - left).coerceAtLeast(0f)
@@ -879,6 +880,7 @@ internal fun runtimeToolbarLayout(state: RuntimeMenuUiState, widthDp: Float): Ru
             if (state.emulationSpeedAvailable) add(RuntimeToolbarShortcut.Speed)
             if (state.imeAvailable) add(RuntimeToolbarShortcut.Ime)
             add(RuntimeToolbarShortcut.Screenshot)
+            add(RuntimeToolbarShortcut.Menu)
         }
         if (state.cameraSwitchAvailable) add(RuntimeToolbarShortcut.Camera)
     }
@@ -947,6 +949,11 @@ private fun RuntimeToolbar(
                                     )
                                 }
                             }
+                            RuntimeToolbarShortcut.Menu -> RuntimeToolbarAction(
+                                icon = R.drawable.ic_menu,
+                                label = R.string.cmd_menu,
+                                onClick = actions::onToggleRuntimeMenu,
+                            )
                             RuntimeToolbarShortcut.Ime -> RuntimeToolbarAction(
                                 icon = R.drawable.ic_action_keyboard,
                                 label = R.string.action_keyboard_ime,

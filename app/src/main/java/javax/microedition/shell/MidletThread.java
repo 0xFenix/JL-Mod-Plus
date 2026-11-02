@@ -26,6 +26,7 @@ import android.util.Log;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -432,6 +433,15 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 			return false;
 		}
 		return destroyTabApp(current.tabId, returnToLibrary);
+	}
+
+	/** Destroys every live tab's runtime; each termination then closes its own tab. */
+	static boolean destroyAllTabApps(boolean returnToLibrary) {
+		boolean destroyed = false;
+		for (Integer tabId : new ArrayList<>(TAB_INSTANCES.keySet())) {
+			destroyed |= destroyTabApp(tabId, returnToLibrary);
+		}
+		return destroyed;
 	}
 
 	/** Destroys one tab's runtime; sibling tabs keep running. */
