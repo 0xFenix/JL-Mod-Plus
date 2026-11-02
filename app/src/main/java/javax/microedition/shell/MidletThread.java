@@ -306,6 +306,9 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		}
 		setRuntimeSelected(true);
 		long generation = Display.requestForeground(tabId);
+		// A tab switch never passes through the host-resume grant path, so commit this
+		// tab's generation here; otherwise the guest drops its own activation forever.
+		Display.grantForeground(generation, tabId);
 		send(AMS_FOREGROUND, generation);
 	}
 
@@ -472,7 +475,9 @@ public class MidletThread extends HandlerThread implements Handler.Callback {
 		send(INIT);
 		MicroActivity activity = ContextHolder.getActivity();
 		if (activity != null && activity.isVisible()) {
-			long foregroundGeneration = Display.currentGrantedForegroundGeneration();
+			// Only this tab's committed generation may activate it; never borrow the
+			// selected tab's generation while another tab is in front.
+			long foregroundGeneration = Display.currentGrantedForegroundGeneration(tabId);
 			if (foregroundGeneration != 0L) {
 				send(AMS_FOREGROUND, foregroundGeneration);
 			}
