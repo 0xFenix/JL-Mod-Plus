@@ -318,7 +318,7 @@ android {
         targetSdk = targetSdkVersion
         versionCode = appVersionCode
         versionName = appVersionName
-        resValue("string", "app_name", "J2me Loader APTX4869")
+        resValue("string", "app_name", "JL-Mod Plus")
         // Per-commit provenance is generated lazily through the public variant Sources API below.
         // Keep it out of configuration-time resValue/BuildConfig inputs so Configuration Cache can
         // survive a JLMOD_BUILD_COMMIT change without invalidating Kotlin/Java compilation.
