@@ -472,7 +472,7 @@ androidComponents {
         variant.outputs.forEach { output ->
             val filter = output.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
             val suffix = if (filter != null) "-${filter.identifier}" else ""
-            output.outputFileName.set("J2me-Loader-APTX4869${suffix}.apk")
+            output.outputFileName.set("JD-Mod-Plus${suffix}.apk")
         }
         variant.buildConfigFields?.put(
             "FULL_EMULATOR",
