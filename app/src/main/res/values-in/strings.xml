@@ -312,6 +312,10 @@
     <string name="midlet_tab_close_confirm_title">Tutup tab %1$d?</string>
     <string name="midlet_tab_close_confirm_message">Game di tab ini akan berhenti. Tab lain tetap berjalan.</string>
     <string name="midlet_tab_close_confirm_action">Tutup tab</string>
+    <string name="runtime_background_battery_title">Biarkan game tetap berjalan di latar belakang?</string>
+    <string name="runtime_background_battery_message">Izinkan JL-Mod Plus mengabaikan optimisasi baterai. Dengan begitu Android lebih kecil kemungkinannya menjeda koneksi jaringan saat layar mati atau saat membuka aplikasi lain.</string>
+    <string name="runtime_background_battery_allow">Izinkan</string>
+    <string name="runtime_background_battery_later">Nanti</string>
     <string name="fps_limit_maximum">Maksimum</string>
     <string name="warn_install_from_net">Berkas akan diunduh dari internet.</string>
     <string name="warning">Peringatan</string>

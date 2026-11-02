@@ -112,6 +112,7 @@ import io.github.h3nb.jlmodplus.input.HostCommand;
 import io.github.h3nb.jlmodplus.memory.MemoryEditorBubbleController;
 import io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator;
 import io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime;
+import io.github.h3nb.jlmodplus.runtime.MidletKeepAliveService;
 import io.github.h3nb.jlmodplus.runtime.RuntimeReplacementActivity;
 import io.github.h3nb.jlmodplus.settings.RuntimeChromeClient;
 import io.github.h3nb.jlmodplus.settings.RuntimeChromeState;
@@ -163,6 +164,15 @@ public class MicroActivity extends AppCompatActivity {
 	private final ActivityResultLauncher<String> cameraPermissionLauncher =
 			registerForActivityResult(new ActivityResultContracts.RequestPermission(),
 					granted -> CameraRuntime.onPermissionResult(this, granted));
+	private final ActivityResultLauncher<String> notificationPermissionLauncher =
+			registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+				// The keep-alive notification is posted only when the service is promoted to
+				// foreground, so restart it once the permission exists.
+				if (granted && MidletThread.hasLiveRuntime()) {
+					MidletKeepAliveService.start(getApplicationContext());
+				}
+				showBatteryExemptionPrompt();
+			});
 	public interface AudioPermissionResult { void onResult(boolean granted); }
 	private AudioPermissionResult pendingRecordingAudioPermission;
 	private boolean recordingAudioGrantedWhilePaused;
@@ -1191,6 +1201,40 @@ public class MicroActivity extends AppCompatActivity {
 		if (memoryEditorController != null) {
 			memoryEditorController.onHostResumed();
 		}
+		maybeAskBackgroundSetup();
+	}
+
+	private static boolean backgroundSetupAsked;
+
+	/**
+	 * Once per process, while a game runs: request notification permission (the keep-alive
+	 * notification is hidden without it), then offer battery optimization exemption.
+	 */
+	private void maybeAskBackgroundSetup() {
+		if (backgroundSetupAsked || !BuildConfig.FULL_EMULATOR || !MidletThread.hasLiveRuntime()) {
+			return;
+		}
+		backgroundSetupAsked = true;
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
+				&& checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+				!= android.content.pm.PackageManager.PERMISSION_GRANTED) {
+			notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS);
+			return;
+		}
+		showBatteryExemptionPrompt();
+	}
+
+	private void showBatteryExemptionPrompt() {
+		if (isFinishing() || isDestroyed() || MidletKeepAliveService.isBatteryOptimizationIgnored(this)) {
+			return;
+		}
+		new AlertDialog.Builder(this)
+				.setTitle(R.string.runtime_background_battery_title)
+				.setMessage(R.string.runtime_background_battery_message)
+				.setPositiveButton(R.string.runtime_background_battery_allow, (dialog, which) ->
+						startActivity(MidletKeepAliveService.batteryOptimizationIntent(this)))
+				.setNegativeButton(R.string.runtime_background_battery_later, null)
+				.show();
 	}
 
 	@Override

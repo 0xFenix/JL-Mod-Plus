@@ -10,8 +10,12 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
@@ -38,6 +42,24 @@ public final class MidletKeepAliveService extends Service {
     private static final String ACTION_STOP_FOR_INSTALL = "runtime.STOP_FOR_INSTALL";
     private static final String EXTRA_INSTALL_PATH = "runtime.INSTALL_PATH";
     private static final String EXTRA_INSTALL_APP_ID = "runtime.INSTALL_APP_ID";
+    private PowerManager.WakeLock wakeLock;
+    private WifiManager.WifiLock wifiLock;
+
+    /** Whether the system exempts this app from battery optimization (Doze/standby throttling). */
+    public static boolean isBatteryOptimizationIgnored(Context context) {
+        PowerManager power = context.getSystemService(PowerManager.class);
+        return power == null || power.isIgnoringBatteryOptimizations(context.getPackageName());
+    }
+
+    /** Intent that asks the user to exempt this app; falls back to the general settings list. */
+    public static Intent batteryOptimizationIntent(Context context) {
+        Intent request = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                .setData(Uri.parse("package:" + context.getPackageName()));
+        if (request.resolveActivity(context.getPackageManager()) != null) {
+            return request;
+        }
+        return new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+    }
 
     /** Finalize the guest in its process before the main process closes the emulator. */
     public static void exitEmulator(Context context) {
@@ -126,6 +148,7 @@ public final class MidletKeepAliveService extends Service {
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
+            acquireRunLocks();
         } catch (RuntimeException e) {
             Log.w(TAG, "Unable to promote MIDlet service to foreground", e);
             stopSelfResult(startId);
@@ -142,8 +165,46 @@ public final class MidletKeepAliveService extends Service {
 
     @Override
     public void onDestroy() {
+        releaseRunLocks();
         stopForeground(true);
         super.onDestroy();
+    }
+
+    /**
+     * Keeps the CPU and Wi-Fi awake while the guest runs with the screen off, so socket threads
+     * keep being scheduled. Held until the service stops; the guest's own pauseApp still applies.
+     */
+    @SuppressLint("WakelockTimeout")
+    private void acquireRunLocks() {
+        if (wakeLock == null) {
+            PowerManager power = getSystemService(PowerManager.class);
+            if (power != null) {
+                wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG);
+                wakeLock.setReferenceCounted(false);
+            }
+        }
+        if (wakeLock != null && !wakeLock.isHeld()) {
+            wakeLock.acquire();
+        }
+        if (wifiLock == null) {
+            WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wifi != null) {
+                wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, TAG);
+                wifiLock.setReferenceCounted(false);
+            }
+        }
+        if (wifiLock != null && !wifiLock.isHeld()) {
+            wifiLock.acquire();
+        }
+    }
+
+    private void releaseRunLocks() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
+        if (wifiLock != null && wifiLock.isHeld()) {
+            wifiLock.release();
+        }
     }
 
     @Nullable

@@ -376,6 +376,10 @@
     <string name="midlet_tab_close_confirm_title">Close tab %1$d?</string>
     <string name="midlet_tab_close_confirm_message">The game in this tab will stop. Other tabs keep running.</string>
     <string name="midlet_tab_close_confirm_action">Close tab</string>
+    <string name="runtime_background_battery_title">Keep games running in background?</string>
+    <string name="runtime_background_battery_message">Allow JL-Mod Plus to ignore battery optimization. Android is then less likely to pause network connections while the screen is off or another app is open.</string>
+    <string name="runtime_background_battery_allow">Allow</string>
+    <string name="runtime_background_battery_later">Later</string>
     <string name="fps_limit_maximum">Maximum</string>
     <string name="virtual_key_0" translatable="false">0</string>
     <string name="virtual_key_1" translatable="false">1</string>

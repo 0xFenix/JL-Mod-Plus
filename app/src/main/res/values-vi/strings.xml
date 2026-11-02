@@ -137,6 +137,10 @@
     <string name="midlet_tab_close_confirm_title">Đóng thẻ %1$d?</string>
     <string name="midlet_tab_close_confirm_message">Trò chơi trong thẻ này sẽ dừng. Các thẻ khác vẫn chạy.</string>
     <string name="midlet_tab_close_confirm_action">Đóng thẻ</string>
+    <string name="runtime_background_battery_title">Giữ game chạy nền?</string>
+    <string name="runtime_background_battery_message">Cho phép JL-Mod Plus bỏ qua tối ưu pin. Khi đó Android ít có khả năng tạm dừng kết nối mạng lúc tắt màn hình hoặc đang mở app khác.</string>
+    <string name="runtime_background_battery_allow">Cho phép</string>
+    <string name="runtime_background_battery_later">Để sau</string>
     <string name="warn_install_from_net">Tệp tin sẽ được tải xuống từ Internet</string>
     <string name="warning">Cảnh báo</string>
     <string name="about_build_label">Bản dựng</string>
