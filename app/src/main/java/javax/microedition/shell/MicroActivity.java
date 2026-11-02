@@ -695,7 +695,17 @@ public class MicroActivity extends AppCompatActivity {
 				new MidletTabActions() {
 					@Override
 					public void onAddTab() {
+						duplicateSelectedTab();
+					}
+
+					@Override
+					public void onOpenSuitePicker() {
 						showAddTabSuitePicker();
+					}
+
+					@Override
+					public void onPickSuite(MidletTabSuite suite) {
+						addTabAndLaunch(suite.getTitle(), suite.getAppPath(), suite.getExpectedAppId());
 					}
 
 					@Override
@@ -710,20 +720,32 @@ public class MicroActivity extends AppCompatActivity {
 				});
 	}
 
-	/** Library suite chosen in the add-tab picker. */
-	private static final class SuitePick {
-		final String title;
-		final String appPath;
-		final long expectedAppId;
-
-		SuitePick(String title, String appPath, long expectedAppId) {
-			this.title = title;
-			this.appPath = appPath;
-			this.expectedAppId = expectedAppId;
+	/** Opens another tab running the game already shown in the selected tab. */
+	private void duplicateSelectedTab() {
+		int selected = amsRegistry.selectedId();
+		for (AmsRegistry.Tab current : amsRegistry.snapshot()) {
+			if (current.id == selected) {
+				addTabAndLaunch(current.title, current.appPath, current.expectedAppId);
+				return;
+			}
 		}
 	}
 
-	/** Opens the installed-games picker for a new tab. */
+	private void addTabAndLaunch(String title, String path, long expectedAppId) {
+		int previous = amsRegistry.selectedId();
+		AmsRegistry.Tab tab = amsRegistry.addTab(
+				String.valueOf(amsRegistry.size() + 1), path, expectedAppId, null, title);
+		if (tab == null) {
+			toast(R.string.error);
+			tabBarController.refresh();
+			return;
+		}
+		amsRegistry.selectTab(previous);
+		tabBarController.refresh();
+		launchTabMidlet(tab.id);
+	}
+
+	/** Loads the installed-games list for the new-tab picker. */
 	private void showAddTabSuitePicker() {
 		if (amsRegistry == null || appPath == null) {
 			toast(R.string.error);
@@ -736,14 +758,14 @@ public class MicroActivity extends AppCompatActivity {
 			return;
 		}
 		new Thread(() -> {
-			List<SuitePick> picks = new ArrayList<>();
+			List<MidletTabSuite> picks = new ArrayList<>();
 			LibraryDatabase db =
 					LibraryDatabase.Companion.open(getApplicationContext(), root);
 			try {
 				for (LibraryAppRow row : db.libraryDao().getAppsNow()) {
 					String path = new File(new File(root, "converted"),
 							row.getStorageKey()).getPath();
-					picks.add(new SuitePick(row.getTitle(), path, row.getId()));
+					picks.add(new MidletTabSuite(row.getTitle(), path, row.getId()));
 				}
 			} finally {
 				db.close();
@@ -752,7 +774,7 @@ public class MicroActivity extends AppCompatActivity {
 		}).start();
 	}
 
-	private void showAddTabSuiteDialog(List<SuitePick> picks) {
+	private void showAddTabSuiteDialog(List<MidletTabSuite> picks) {
 		if (isFinishing() || isDestroyed() || amsRegistry == null) {
 			return;
 		}
@@ -760,31 +782,7 @@ public class MicroActivity extends AppCompatActivity {
 			toast(R.string.error);
 			return;
 		}
-		String[] titles = new String[picks.size()];
-		for (int i = 0; i < picks.size(); i++) {
-			titles[i] = picks.get(i).title;
-		}
-		new AlertDialog.Builder(this)
-				.setTitle(R.string.midlet_tab_pick_suite)
-				.setItems(titles, (dialog, which) -> {
-					SuitePick pick = picks.get(which);
-					int previous = amsRegistry.selectedId();
-					AmsRegistry.Tab tab = amsRegistry.addTab(
-							String.valueOf(amsRegistry.size() + 1), pick.appPath,
-							pick.expectedAppId, null, pick.title);
-					if (tab == null) {
-						toast(R.string.error);
-						tabBarController.refresh();
-						return;
-					}
-					// Frame one keeps the old selection: ScrollableTabRow crashes
-					// when a new tab count and a new selected index land in one
-					// composition.
-					amsRegistry.selectTab(previous);
-					tabBarController.refresh();
-					launchTabMidlet(tab.id);
-				})
-				.show();
+		tabBarController.showSuitePicker(picks);
 	}
 
 	/** Ensures the primary tab exists and owns the router selection. */	private int ensurePrimaryTabSelection() {

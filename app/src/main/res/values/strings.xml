@@ -369,11 +369,13 @@
     <string name="START_CMD">Start</string>
     <string name="SWAP_SIZES">Swap sizes</string>
     <string name="take_screenshot">Take screenshot</string>
-    <string name="midlet_tab_add" translatable="false">+</string>
-    <string name="midlet_tab_remove" translatable="false">−</string>
-    <string name="midlet_tab_add_description">Open new tab</string>
+    <string name="midlet_tab_add_description">Open this game in a new tab</string>
     <string name="midlet_tab_close_description">Close tab %1$d</string>
-    <string name="midlet_tab_pick_suite">Choose app for the new tab</string>
+    <string name="midlet_tab_pick_description">Choose a game for a new tab</string>
+    <string name="midlet_tab_pick_suite">Choose a game for the new tab</string>
+    <string name="midlet_tab_close_confirm_title">Close tab %1$d?</string>
+    <string name="midlet_tab_close_confirm_message">The game in this tab will stop. Other tabs keep running.</string>
+    <string name="midlet_tab_close_confirm_action">Close tab</string>
     <string name="fps_limit_maximum">Maximum</string>
     <string name="virtual_key_0" translatable="false">0</string>
     <string name="virtual_key_1" translatable="false">1</string>

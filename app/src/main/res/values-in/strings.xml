@@ -305,6 +305,13 @@
     <string name="START_CMD">Mulai</string>
     <string name="SWAP_SIZES">Tukar ukuran</string>
     <string name="take_screenshot">Buat tangkapan layar</string>
+    <string name="midlet_tab_add_description">Buka game ini di tab baru</string>
+    <string name="midlet_tab_close_description">Tutup tab %1$d</string>
+    <string name="midlet_tab_pick_description">Pilih game untuk tab baru</string>
+    <string name="midlet_tab_pick_suite">Pilih game untuk tab baru</string>
+    <string name="midlet_tab_close_confirm_title">Tutup tab %1$d?</string>
+    <string name="midlet_tab_close_confirm_message">Game di tab ini akan berhenti. Tab lain tetap berjalan.</string>
+    <string name="midlet_tab_close_confirm_action">Tutup tab</string>
     <string name="fps_limit_maximum">Maksimum</string>
     <string name="warn_install_from_net">Berkas akan diunduh dari internet.</string>
     <string name="warning">Peringatan</string>

@@ -130,6 +130,13 @@
     <string name="START_CMD">Bắt đầu</string>
     <string name="SWAP_SIZES">Hoán đổi chiều rộng và chiều cao</string>
     <string name="take_screenshot">Chụp ảnh màn hình</string>
+    <string name="midlet_tab_add_description">Mở trò chơi này trong thẻ mới</string>
+    <string name="midlet_tab_close_description">Đóng thẻ %1$d</string>
+    <string name="midlet_tab_pick_description">Chọn trò chơi cho thẻ mới</string>
+    <string name="midlet_tab_pick_suite">Chọn trò chơi cho thẻ mới</string>
+    <string name="midlet_tab_close_confirm_title">Đóng thẻ %1$d?</string>
+    <string name="midlet_tab_close_confirm_message">Trò chơi trong thẻ này sẽ dừng. Các thẻ khác vẫn chạy.</string>
+    <string name="midlet_tab_close_confirm_action">Đóng thẻ</string>
     <string name="warn_install_from_net">Tệp tin sẽ được tải xuống từ Internet</string>
     <string name="warning">Cảnh báo</string>
     <string name="about_build_label">Bản dựng</string>
