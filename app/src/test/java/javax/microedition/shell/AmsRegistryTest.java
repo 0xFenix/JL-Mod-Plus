@@ -83,13 +83,30 @@ public class AmsRegistryTest {
 	}
 
 	@Test
-	public void snapshotIsImmutableCopy() {
-		AmsRegistry registry = new AmsRegistry();
+	public void snapshotIsImmutableCopy() {		AmsRegistry registry = new AmsRegistry();
 		registry.addTab("1");
 		List<AmsRegistry.Tab> snapshot = registry.snapshot();
 		assertEquals(1, snapshot.size());
 		registry.addTab("2");
 		assertEquals(1, snapshot.size());
 		assertEquals(2, registry.snapshot().size());
+	}
+
+	@Test
+	public void tabCarriesSuiteIdentityAndSurvivesReselection() {
+		AmsRegistry registry = new AmsRegistry();
+		AmsRegistry.Tab tab = registry.addTab("1", "/data/app/suiteA", 42L, "com.a.Main");
+		assertEquals("/data/app/suiteA", tab.appPath);
+		assertEquals(42L, tab.expectedAppId);
+		assertEquals("com.a.Main", tab.mainClass);
+
+		assertTrue(registry.setTabSuite(tab.id, "/data/app/suiteB", 77L, "com.b.Main"));
+		AmsRegistry.Tab updated = registry.snapshot().get(0);
+		assertEquals("/data/app/suiteB", updated.appPath);
+		assertEquals(77L, updated.expectedAppId);
+		assertEquals("com.b.Main", updated.mainClass);
+		assertEquals(tab.id, registry.selectedId());
+
+		assertFalse(registry.setTabSuite(999, "/x", 1L, "C"));
 	}
 }

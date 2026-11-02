@@ -137,11 +137,49 @@ public class MicroLoader {
 	private static SharedRuntimeState sharedRuntime;
 	private boolean sharesRuntimeState;
 	/**
-	 * Process-wide VFS install marker. Same-suite tabs share one VFS install owned by the
-	 * first loader; a later tab must neither reinstall nor clear it under siblings.
-	 * P6 (multi-JAR) must key this per suite.
+	 * Suite identity per tab for multi-JAR: tabId to the installed suite it runs.
+	 * VirtualFileSystem and MidletPermissionManager resolve the calling thread's
+	 * suite through this map instead of a single process-wide install.
 	 */
-	private static String virtualStorageOwner;
+	private static final class SuiteKeys {
+		final String appPath;
+		final String storageKey;
+
+		SuiteKeys(String appPath, String storageKey) {
+			this.appPath = appPath;
+			this.storageKey = storageKey;
+		}
+	}
+
+	private static final java.util.HashMap<Integer, SuiteKeys> TAB_SUITES =
+			new java.util.HashMap<>();
+
+	/** Installed suite path running on a tab, or null when the tab has none. */
+	public static String suitePathForTab(int tabId) {
+		synchronized (MicroLoader.class) {
+			SuiteKeys keys = TAB_SUITES.get(tabId);
+			return keys == null ? null : keys.appPath;
+		}
+	}
+
+	/** VFS storage key (installed dir name) of the suite running on a tab, or null. */
+	public static String storageKeyForTab(int tabId) {
+		synchronized (MicroLoader.class) {
+			SuiteKeys keys = TAB_SUITES.get(tabId);
+			return keys == null ? null : keys.storageKey;
+		}
+	}
+
+	private static boolean suiteHasLiveTabs(String storageKey) {
+		synchronized (MicroLoader.class) {
+			for (SuiteKeys keys : TAB_SUITES.values()) {
+				if (keys.storageKey.equals(storageKey)) {
+					return true;
+				}
+			}
+			return false;
+		}
+	}
 	/** Set only after the MIDlet thread has successfully received the timing session. */
 	private boolean timingSessionTransferred;
 
@@ -351,13 +389,7 @@ public class MicroLoader {
 	private void closeStorageLease() {
 		if (ownsVirtualStorage) {
 			ownsVirtualStorage = false;
-			synchronized (MicroLoader.class) {
-				if (workDir.equals(virtualStorageOwner)) {
-					virtualStorageOwner = null;
-				}
-			}
-			MidletPermissionManager.clear();
-			VirtualFileSystem.clear();
+			clearOwnSuiteSession();
 		}
 		RuntimeStorageLease lease = storageLease;
 		storageLease = null;
@@ -371,20 +403,32 @@ public class MicroLoader {
 	}
 
 	/**
+	 * Clears this loader's suite session (VFS mounts + permission decisions) only when no
+	 * remaining tab runs the same suite, and unregisters this tab's suite identity.
+	 */
+	private void clearOwnSuiteSession() {
+		synchronized (MicroLoader.class) {
+			TAB_SUITES.remove(tabId);
+		}
+		if (!suiteHasLiveTabs(appDirName)) {
+			MidletPermissionManager.clearSuite(appDir.getPath());
+			VirtualFileSystem.clearSuite(appDirName);
+		}
+	}
+
+	/**
 	 * Releases this tab's resources after its guest terminates. The storage-lease share is
-	 * always released; the shared VFS install is cleared only when the last tab goes, so a
-	 * closing tab never pulls storage out from under surviving siblings.
+	 * always released; the suite session (VFS mounts + permission decisions) is cleared
+	 * only when no remaining tab runs the same suite, so a closing tab never pulls
+	 * storage out from under surviving siblings.
 	 */
 	void releaseTabStorage(boolean lastTab) {
-		if (ownsVirtualStorage && lastTab) {
+		AppClassLoader.removeForTab(tabId);
+		MIDlet.removePropsForTab(tabId);
+		javax.microedition.rms.RecordStore.removeManagerForTab(tabId);
+		if (ownsVirtualStorage) {
 			ownsVirtualStorage = false;
-			synchronized (MicroLoader.class) {
-				if (workDir.equals(virtualStorageOwner)) {
-					virtualStorageOwner = null;
-				}
-			}
-			MidletPermissionManager.clear();
-			VirtualFileSystem.clear();
+			clearOwnSuiteSession();
 		}
 		RuntimeStorageLease lease = storageLease;
 		storageLease = null;
@@ -495,7 +539,7 @@ public class MicroLoader {
 				jarSize,
 				jarSha256
 		);
-		MIDlet.initProps(attr);
+		MIDlet.initPropsForTab(tabId, attr);
 		for (int i = 1; ; i++) {
 			String v = attr.get(Descriptor.MIDLET_N + i);
 			if (v == null) {
@@ -558,6 +602,7 @@ public class MicroLoader {
 			}
 			ClassLoader loader = new AppClassLoader(dexSource.getAbsolutePath(),
 					dexOptDir.getAbsolutePath(), ContextHolder.getActivity().getClassLoader(), appDir);
+			AppClassLoader.bindTab(tabId);
 			if (timingTransformCompatible) {
 				// The bridge must exist before loading the main class: its static initializer may be the
 				// first converted class to publish a lifecycle tail.
@@ -585,6 +630,7 @@ public class MicroLoader {
 			return midlet;
 		} else {
 			AppClassLoader.setDataDir(appDir);
+			AppClassLoader.bindTab(tabId);
 			//noinspection unchecked
 			Class<MIDlet> clazz = (Class<MIDlet>) Class.forName(mainClass);
 			midletClassLoader = clazz.getClassLoader();
@@ -804,13 +850,10 @@ public class MicroLoader {
 				return;
 			}
 			synchronized (MicroLoader.class) {
-				if (workDir.equals(virtualStorageOwner)) {
-					// A sibling tab owns the shared VFS install; reuse it.
-					ownsVirtualStorage = false;
-				} else {
-					ownsVirtualStorage = true;
-					virtualStorageOwner = workDir;
-				}
+				TAB_SUITES.put(tabId, new SuiteKeys(appDir.getPath(), appDirName));
+				// A suite installs its VFS/permission session once; later tabs of the same
+				// suite reuse it, while a different suite installs its own beside it.
+				ownsVirtualStorage = !VirtualFileSystem.hasSession(appDirName);
 			}
 			if (ownsVirtualStorage) {
 				storageMode = MidletPermissionManager.install(ContextHolder.getAppContext(), appDir.getPath(),

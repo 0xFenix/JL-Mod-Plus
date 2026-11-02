@@ -92,6 +92,35 @@ abstract class LibraryDao {
     )
     abstract fun observeApps(): Flow<List<LibraryAppRow>>
 
+    /**
+     * Blocking snapshot of [observeApps] for host callers (e.g. the runtime tab
+     * picker) that cannot collect a Flow. Must run off the main thread.
+     */
+    @Query(
+        """
+        SELECT
+            id,
+            storage_key,
+            source_title,
+            source_vendor,
+            source_version,
+            COALESCE(custom_title, source_title) AS title,
+            COALESCE(custom_vendor, source_vendor) AS vendor,
+            COALESCE(custom_version, source_version) AS version,
+            COALESCE(custom_description, source_description, '') AS description,
+            COALESCE(source_description, '') AS source_description,
+            favorite,
+            added_at,
+            last_played_at,
+            play_count,
+            total_play_time_ms,
+            icon_revision
+        FROM apps
+        ORDER BY title COLLATE NOCASE ASC, id ASC
+        """,
+    )
+    abstract fun getAppsNow(): List<LibraryAppRow>
+
     @Query(
         """
         SELECT

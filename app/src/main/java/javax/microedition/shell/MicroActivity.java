@@ -75,6 +75,11 @@ import androidx.preference.PreferenceManager;
 
 import java.io.File;
 import java.io.IOException;
+import android.app.AlertDialog;
+
+import io.github.h3nb.jlmodplus.librarydb.LibraryAppRow;
+import io.github.h3nb.jlmodplus.librarydb.LibraryDatabase;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -597,7 +602,7 @@ public class MicroActivity extends AppCompatActivity {
 						String[] classes = pendingMidletClasses;
 						pendingMidletClasses = null;
 						if (classes != null && index >= 0 && index < classes.length && microLoader != null) {
-							launchedMainClass = classes[index];
+							noteLaunchedSuite(classes[index]);
 							microLoader.loadMidlet(classes[index], appName);
 						}
 					}
@@ -690,19 +695,7 @@ public class MicroActivity extends AppCompatActivity {
 				new MidletTabActions() {
 					@Override
 					public void onAddTab() {
-						int previous = amsRegistry.selectedId();
-						AmsRegistry.Tab tab = amsRegistry.addTab(
-								String.valueOf(amsRegistry.size() + 1));
-						if (tab == null) {
-							toast(R.string.error);
-							tabBarController.refresh();
-							return;
-						}
-						// Frame one keeps the old selection: ScrollableTabRow crashes when
-						// a new tab count and a new selected index land in one composition.
-						amsRegistry.selectTab(previous);
-						tabBarController.refresh();
-						launchTabMidlet(tab.id);
+						showAddTabSuitePicker();
 					}
 
 					@Override
@@ -717,13 +710,89 @@ public class MicroActivity extends AppCompatActivity {
 				});
 	}
 
-	/** Ensures the primary tab exists and owns the router selection. */
-	private int ensurePrimaryTabSelection() {
+	/** Library suite chosen in the add-tab picker. */
+	private static final class SuitePick {
+		final String title;
+		final String appPath;
+		final long expectedAppId;
+
+		SuitePick(String title, String appPath, long expectedAppId) {
+			this.title = title;
+			this.appPath = appPath;
+			this.expectedAppId = expectedAppId;
+		}
+	}
+
+	/** Opens the installed-games picker for a new tab. */
+	private void showAddTabSuitePicker() {
+		if (amsRegistry == null || appPath == null) {
+			toast(R.string.error);
+			return;
+		}
+		File converted = new File(appPath).getParentFile();
+		File root = converted != null ? converted.getParentFile() : null;
+		if (root == null) {
+			toast(R.string.error);
+			return;
+		}
+		new Thread(() -> {
+			List<SuitePick> picks = new ArrayList<>();
+			LibraryDatabase db =
+					LibraryDatabase.Companion.open(getApplicationContext(), root);
+			try {
+				for (LibraryAppRow row : db.libraryDao().getAppsNow()) {
+					String path = new File(new File(root, "converted"),
+							row.getStorageKey()).getPath();
+					picks.add(new SuitePick(row.getTitle(), path, row.getId()));
+				}
+			} finally {
+				db.close();
+			}
+			runOnUiThread(() -> showAddTabSuiteDialog(picks));
+		}).start();
+	}
+
+	private void showAddTabSuiteDialog(List<SuitePick> picks) {
+		if (isFinishing() || isDestroyed() || amsRegistry == null) {
+			return;
+		}
+		if (picks.isEmpty()) {
+			toast(R.string.error);
+			return;
+		}
+		String[] titles = new String[picks.size()];
+		for (int i = 0; i < picks.size(); i++) {
+			titles[i] = picks.get(i).title;
+		}
+		new AlertDialog.Builder(this)
+				.setTitle(R.string.midlet_tab_pick_suite)
+				.setItems(titles, (dialog, which) -> {
+					SuitePick pick = picks.get(which);
+					int previous = amsRegistry.selectedId();
+					AmsRegistry.Tab tab = amsRegistry.addTab(
+							String.valueOf(amsRegistry.size() + 1), pick.appPath,
+							pick.expectedAppId, null, pick.title);
+					if (tab == null) {
+						toast(R.string.error);
+						tabBarController.refresh();
+						return;
+					}
+					// Frame one keeps the old selection: ScrollableTabRow crashes
+					// when a new tab count and a new selected index land in one
+					// composition.
+					amsRegistry.selectTab(previous);
+					tabBarController.refresh();
+					launchTabMidlet(tab.id);
+				})
+				.show();
+	}
+
+	/** Ensures the primary tab exists and owns the router selection. */	private int ensurePrimaryTabSelection() {
 		if (amsRegistry == null) {
 			amsRegistry = new AmsRegistry();
 		}
 		if (amsRegistry.size() == 0) {
-			amsRegistry.addTab("1");
+			amsRegistry.addTab("1", appPath, expectedAppId, null);
 		}
 		int selected = MidletTabRouter.selectedTabId();
 		if (selected == MidletTabRouter.NO_TAB || !amsRegistry.selectTab(selected)) {
@@ -734,16 +803,42 @@ public class MicroActivity extends AppCompatActivity {
 		return selected;
 	}
 
-	/** Launches another instance of the current suite on a new tab. */
+	/** Records the launched MIDlet on the selected tab for per-tab suite identity. */
+	private void noteLaunchedSuite(String mainClass) {
+		launchedMainClass = mainClass;
+		if (amsRegistry != null) {
+			amsRegistry.setTabSuite(MidletTabRouter.selectedTabId(), appPath, expectedAppId,
+					mainClass);
+		}
+	}
+
+	/** Launches the suite recorded on a tab (falls back to the current host suite). */
 	private void launchTabMidlet(int tabId) {
-		if (microLoader == null || launchedMainClass == null) {
+		AmsRegistry.Tab target = null;
+		if (amsRegistry != null) {
+			for (AmsRegistry.Tab candidate : amsRegistry.snapshot()) {
+				if (candidate.id == tabId) {
+					target = candidate;
+					break;
+				}
+			}
+		}
+		String targetAppPath = target != null && target.appPath != null
+				? target.appPath : appPath;
+		long targetAppId = target != null && target.appPath != null ? target.expectedAppId
+				: microLoader != null ? microLoader.getExpectedAppId() : expectedAppId;
+		String targetMainClass = target != null && target.mainClass != null
+				? target.mainClass : launchedMainClass;
+		String targetTitle = target != null && target.title != null
+				? target.title : appName;
+		if (microLoader == null) {
 			toast(R.string.error);
 			amsRegistry.closeTab(tabId);
 			tabBarController.refresh();
 			return;
 		}
 		MicroLoader tabLoader = new MicroLoader(
-				appPath, microLoader.getExpectedAppId(),
+				targetAppPath, targetAppId,
 				microLoader.isBuiltInThemeLinked(), microLoader.getGuestLocale(), tabId);
 		if (!tabLoader.init()) {
 			toast(R.string.error);
@@ -752,10 +847,76 @@ public class MicroActivity extends AppCompatActivity {
 			switchToTab(MidletTabRouter.selectedTabId());
 			return;
 		}
+		if (targetMainClass == null) {
+			// The suite was picked from the library: resolve its MIDlets from
+			// the manifest and let the user choose when there is more than one.
+			launchTabChooser(tabId, tabLoader, targetAppPath, targetAppId,
+					targetTitle);
+			return;
+		}
+		if (amsRegistry != null) {
+			amsRegistry.setTabSuite(tabId, targetAppPath, targetAppId, targetMainClass,
+					targetTitle);
+		}
 		tabLoader.applyConfiguration();
-		tabLoader.loadMidlet(launchedMainClass, appName);
+		tabLoader.loadMidlet(targetMainClass, targetTitle);
 		// Frame two moves the selection after the new tab has been measured.
 		binding.tabBar.post(() -> switchToTab(tabId));
+	}
+
+	/** Resolves a picked suite's MIDlets and launches the chosen one on its tab. */
+	private void launchTabChooser(int tabId, MicroLoader tabLoader, String targetAppPath,
+			long targetAppId, String targetTitle) {
+		Map<String, String> midlets;
+		try {
+			midlets = tabLoader.loadMIDletList();
+		} catch (IOException failure) {
+			toast(R.string.error);
+			amsRegistry.closeTab(tabId);
+			tabBarController.refresh();
+			switchToTab(MidletTabRouter.selectedTabId());
+			return;
+		}
+		if (midlets == null || midlets.isEmpty()) {
+			toast(R.string.error);
+			amsRegistry.closeTab(tabId);
+			tabBarController.refresh();
+			switchToTab(MidletTabRouter.selectedTabId());
+			return;
+		}
+		if (midlets.size() == 1) {
+			Map.Entry<String, String> only = midlets.entrySet().iterator().next();
+			if (amsRegistry != null) {
+				amsRegistry.setTabSuite(tabId, targetAppPath, targetAppId, only.getKey(),
+						targetTitle);
+			}
+			tabLoader.applyConfiguration();
+			tabLoader.loadMidlet(only.getKey(), targetTitle);
+			binding.tabBar.post(() -> switchToTab(tabId));
+			return;
+		}
+		List<String> classes = new ArrayList<>(midlets.keySet());
+		String[] names = midlets.values().toArray(new String[0]);
+		new AlertDialog.Builder(this)
+				.setTitle(targetTitle)
+				.setItems(names, (dialog, which) -> {
+					String picked = classes.get(which);
+					if (amsRegistry != null) {
+						amsRegistry.setTabSuite(tabId, targetAppPath, targetAppId, picked,
+								targetTitle);
+					}
+					tabLoader.applyConfiguration();
+					tabLoader.loadMidlet(picked, targetTitle);
+					binding.tabBar.post(() -> switchToTab(tabId));
+				})
+				.setOnCancelListener(dialog -> {
+					// The tab never launched: drop the orphan without touching
+					// the running tabs (destroyTabApp is null-thread safe).
+					amsRegistry.closeTab(tabId);
+					tabBarController.refresh();
+					switchToTab(MidletTabRouter.selectedTabId());
+				})
+				.show();
 	}
 
 	/** Presents a tab: pause the outgoing guest, foreground the incoming one. */
@@ -1324,12 +1485,12 @@ public class MicroActivity extends AppCompatActivity {
 		if (size == 0) {
 			showErrorDialog(getString(R.string.runtime_no_midlets));
 		} else if (size == 1) {
-			launchedMainClass = midletsClassArray[0];
+			noteLaunchedSuite(midletsClassArray[0]);
 			microLoader.loadMidlet(midletsClassArray[0], appName);
 		} else {
 			String requestedClass = getIntent().getStringExtra(KEY_MIDLET_CLASS);
 			if (requestedClass != null && midlets.containsKey(requestedClass)) {
-				launchedMainClass = requestedClass;
+				noteLaunchedSuite(requestedClass);
 				microLoader.loadMidlet(requestedClass, appName);
 			} else {
 				showMidletDialog(midletsNameArray, midletsClassArray);

@@ -28,12 +28,14 @@ import android.util.Log;
 import org.microemu.cldc.file.FileSystemFileConnection;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 
 import javax.microedition.io.ConnectionNotFoundException;
 import javax.microedition.io.Connector;
 import javax.microedition.lcdui.Display;
 import javax.microedition.shell.MicroActivity;
+import javax.microedition.shell.MidletTabRouter;
 import javax.microedition.shell.MidletThread;
 import javax.microedition.util.ContextHolder;
 import io.github.h3nb.jlmodplus.MainActivity;
@@ -43,6 +45,9 @@ public abstract class MIDlet {
 
 	private static Map<String, String> properties;
 
+	/** Per-tab manifest properties for multi-JAR tabs; the static above stays as fallback. */
+	private static final Map<Integer, Map<String, String>> TAB_PROPERTIES = new HashMap<>();
+
 	protected MIDlet() {
 		Display.getDisplay(this); // init display for this instance
 	}
@@ -51,10 +56,44 @@ public abstract class MIDlet {
 		properties = p;
 	}
 
+	/** Stores manifest properties under an explicit tab id (no selected-tab guessing). */
+	public static void initPropsForTab(int tabId, Map<String, String> p) {
+		properties = p;
+		synchronized (MIDlet.class) {
+			TAB_PROPERTIES.put(tabId, p);
+		}
+	}
+
+	/** Drops a terminated tab's properties; the static fallback is left untouched. */
+	public static void removePropsForTab(int tabId) {
+		synchronized (MIDlet.class) {
+			TAB_PROPERTIES.remove(tabId);
+		}
+	}
+
 	public String getAppProperty(String key) {
-		String value = properties.get(key);
+		String value = propsForCurrentGuest().get(key);
 		Log.d(TAG, "getAppProperty: " + key + "=" + value);
 		return value;
+	}
+
+	private Map<String, String> propsForCurrentGuest() {
+		int tabId = MidletTabRouter.tabForGuestKey(this);
+		if (tabId == MidletTabRouter.NO_TAB) {
+			tabId = MidletTabRouter.tabForThread(Thread.currentThread());
+		}
+		if (tabId == MidletTabRouter.NO_TAB) {
+			tabId = MidletTabRouter.selectedTabId();
+		}
+		if (tabId != MidletTabRouter.NO_TAB) {
+			synchronized (MIDlet.class) {
+				Map<String, String> tabProps = TAB_PROPERTIES.get(tabId);
+				if (tabProps != null) {
+					return tabProps;
+				}
+			}
+		}
+		return properties;
 	}
 
 	/**

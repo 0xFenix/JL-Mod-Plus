@@ -373,6 +373,7 @@
     <string name="midlet_tab_remove" translatable="false">−</string>
     <string name="midlet_tab_add_description">Open new tab</string>
     <string name="midlet_tab_close_description">Close tab %1$d</string>
+    <string name="midlet_tab_pick_suite">Choose app for the new tab</string>
     <string name="fps_limit_maximum">Maximum</string>
     <string name="virtual_key_0" translatable="false">0</string>
     <string name="virtual_key_1" translatable="false">1</string>

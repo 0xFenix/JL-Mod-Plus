@@ -24,25 +24,56 @@
  */
 package javax.microedition.rms;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 import javax.microedition.rms.impl.AndroidRecordStoreManager;
+import javax.microedition.shell.MidletTabRouter;
 
 public class RecordStore {
 	public static final int AUTHMODE_PRIVATE = 0;
 	public static final int AUTHMODE_ANY = 1;
 
-	private static final AndroidRecordStoreManager recordStoreManager = new AndroidRecordStoreManager();
+	/**
+	 * Per-tab RMS managers. RecordStore names are only unique within a suite, so each tab
+	 * keeps its own name-to-store cache; the on-disk files were already separated per suite
+	 * by the tab-dispatched data dir. Tab 0 is the implicit single-suite fallback.
+	 */
+	private static final ConcurrentHashMap<Integer, AndroidRecordStoreManager> MANAGERS =
+			new ConcurrentHashMap<>();
+
+	static AndroidRecordStoreManager managerForCurrentThread() {
+		int tab = MidletTabRouter.tabForThread(Thread.currentThread());
+		if (tab == MidletTabRouter.NO_TAB) {
+			tab = MidletTabRouter.selectedTabId();
+		}
+		if (tab == MidletTabRouter.NO_TAB) {
+			tab = 0;
+		}
+		AndroidRecordStoreManager manager = MANAGERS.get(tab);
+		if (manager == null) {
+			AndroidRecordStoreManager created = new AndroidRecordStoreManager();
+			AndroidRecordStoreManager raced = MANAGERS.putIfAbsent(tab, created);
+			manager = raced != null ? raced : created;
+		}
+		return manager;
+	}
+
+	/** Drops the cached manager of a torn-down tab; the on-disk stores are untouched. */
+	public static void removeManagerForTab(int tabId) {
+		MANAGERS.remove(tabId);
+	}
 
 	public static void deleteRecordStore(String recordStoreName) throws RecordStoreException {
-		recordStoreManager.deleteRecordStore(recordStoreName);
+		managerForCurrentThread().deleteRecordStore(recordStoreName);
 	}
 
 	public static String[] listRecordStores() {
-		return recordStoreManager.listRecordStores();
+		return managerForCurrentThread().listRecordStores();
 	}
 
 	public static RecordStore openRecordStore(String recordStoreName, boolean createIfNecessary)
 			throws RecordStoreException {
-		return recordStoreManager.openRecordStore(recordStoreName, createIfNecessary);
+		return managerForCurrentThread().openRecordStore(recordStoreName, createIfNecessary);
 	}
 
 	public static RecordStore openRecordStore(String recordStoreName, boolean createIfNecessary,

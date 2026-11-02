@@ -9,6 +9,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,7 +25,29 @@ public final class MidletPermissionManager {
     static final int SESSION = 2;
     static final int ALWAYS = 3;
     static final int DENY = 4;
-    private static volatile Session current;
+    private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
+
+    /**
+     * Resolves the permission session for the calling suite: guest threads route by their
+     * tab's suite path, host threads by the selected tab, legacy single-suite callers by the
+     * sole live session.
+     */
+    private static Session activeSession() {
+        int tabId = MidletTabRouter.tabForThread(Thread.currentThread());
+        if (tabId == MidletTabRouter.NO_TAB) {
+            tabId = MidletTabRouter.selectedTabId();
+        }
+        String appPath = tabId == MidletTabRouter.NO_TAB ? null
+                : MicroLoader.suitePathForTab(tabId);
+        Session found = appPath != null ? SESSIONS.get(appPath) : null;
+        if (found != null) {
+            return found;
+        }
+        if (SESSIONS.size() == 1) {
+            return SESSIONS.values().iterator().next();
+        }
+        return null;
+    }
 
     @FunctionalInterface
     public interface Choice {
@@ -36,14 +59,31 @@ public final class MidletPermissionManager {
     static StorageMode install(Context context, String appPath, long appId, String jarSha256) {
         PresetAuthorityClient authority = new PresetAuthorityClient(context);
         MidletPermissionStore.Access decisions = authority.getFilePermissions(appPath, appId, jarSha256);
-        clear();
-        current = new Session(authority, appPath, appId, jarSha256, decisions.mode, decisions.read, decisions.write);
+        Session installed = new Session(authority, appPath, appId, jarSha256,
+                decisions.mode, decisions.read, decisions.write);
+        // Per-suite publish: installing one suite must not evict another tab's session.
+        Session previous = SESSIONS.put(appPath, installed);
+        if (previous != null) {
+            previous.closed = true;
+            cancel(previous);
+        }
         return decisions.mode;
     }
 
     public static void clear() {
-        Session previous = current;
-        current = null;
+        for (Session installed : SESSIONS.values()) {
+            installed.closed = true;
+            cancel(installed);
+        }
+        SESSIONS.clear();
+    }
+
+    /** Releases one suite's session; sibling tabs on other suites keep theirs. */
+    static void clearSuite(String appPath) {
+        if (appPath == null) {
+            return;
+        }
+        Session previous = SESSIONS.remove(appPath);
         if (previous != null) {
             previous.closed = true;
             cancel(previous);
@@ -51,8 +91,8 @@ public final class MidletPermissionManager {
     }
 
     public static void cancelPending() {
-        Session active = current;
-        if (active != null) cancel(active);
+        Session pending = activeSession();
+        if (pending != null) cancel(pending);
     }
 
     private static void cancel(Session active) {
@@ -69,7 +109,7 @@ public final class MidletPermissionManager {
         // Only storage participates in this policy. Preserve alpha's unconditional result for
         // every other input, including unknown names and null, without requiring a session.
         if (!read && !write) return 1;
-        Session active = current;
+        Session active = activeSession();
         if (active == null || active.closed) return 0;
         return write ? status(active.writeDecision, active.writeSession)
                 : status(active.readDecision, active.readSession);
@@ -82,7 +122,7 @@ public final class MidletPermissionManager {
     }
 
     public static void requireFileAccess(String root, boolean write) {
-        Session active = current;
+        Session active = activeSession();
         if (active == null || active.closed) throw new SecurityException("No active MIDlet permissions");
         try {
             if (org.microemu.cldc.file.VirtualFileSystem.isPrivate(root)) return;

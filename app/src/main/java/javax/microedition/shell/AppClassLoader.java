@@ -28,6 +28,8 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 import dalvik.system.DexClassLoader;
 import io.github.h3nb.jlmodplus.BuildConfig;
@@ -43,6 +45,46 @@ public class AppClassLoader extends DexClassLoader {
 	private static ZipFile zipFile;
 	private static String sDataDir;
 	private static File sOldResDir;
+
+	/**
+	 * Per-tab resource roots for multi-JAR tabs. The statics above keep last-writer-wins
+	 * legacy behavior; each tab snapshots them at bind time and readers dispatch to the
+	 * calling thread's tab, so two different JARs never read each other's resources.
+	 */
+	private static final class TabResources {
+		final ZipFile zipFile;
+		final String dataDir;
+		final File oldResDir;
+
+		TabResources(ZipFile zipFile, String dataDir, File oldResDir) {
+			this.zipFile = zipFile;
+			this.dataDir = dataDir;
+			this.oldResDir = oldResDir;
+		}
+	}
+
+	private static final Map<Integer, TabResources> TAB_RESOURCES = new HashMap<>();
+
+	/** Snapshots the just-constructed static roots under the loader's own tab id. */
+	static synchronized void bindTab(int tabId) {
+		TAB_RESOURCES.put(tabId, new TabResources(zipFile, sDataDir, sOldResDir));
+	}
+
+	/** Drops a terminated tab's snapshot; the static fallback is left untouched. */
+	static synchronized void removeForTab(int tabId) {
+		TAB_RESOURCES.remove(tabId);
+	}
+
+	private static synchronized TabResources resourcesForCurrentThread() {
+		int tabId = MidletTabRouter.tabForThread(Thread.currentThread());
+		if (tabId == MidletTabRouter.NO_TAB) {
+			tabId = MidletTabRouter.selectedTabId();
+		}
+		if (tabId == MidletTabRouter.NO_TAB) {
+			return null;
+		}
+		return TAB_RESOURCES.get(tabId);
+	}
 
 	AppClassLoader(String paths, String tmpDir, ClassLoader parent, File appDir) {
 		super(paths, tmpDir, null, new CoreClassLoader(parent));
@@ -96,7 +138,8 @@ public class AppClassLoader extends DexClassLoader {
 	}
 
 	public static String getDataDir() {
-		return sDataDir;
+		TabResources tab = resourcesForCurrentThread();
+		return tab != null ? tab.dataDir : sDataDir;
 	}
 
 	public static byte[] getResourceAsBytes(String resName) {
@@ -138,8 +181,11 @@ public class AppClassLoader extends DexClassLoader {
 				return null;
 			}
 		}
-		if (zipFile == null) {
-			final File file = new File(sOldResDir, name);
+		TabResources tab = resourcesForCurrentThread();
+		ZipFile tabZip = tab != null ? tab.zipFile : zipFile;
+		File tabResDir = tab != null ? tab.oldResDir : sOldResDir;
+		if (tabZip == null) {
+			final File file = new File(tabResDir, name);
 			try {
 				return FileUtils.getBytes(file);
 			} catch (Exception e) {
@@ -149,11 +195,11 @@ public class AppClassLoader extends DexClassLoader {
 		}
 		DataInputStream dis = null;
 		try {
-			FileHeader header = zipFile.getFileHeader(name);
+			FileHeader header = tabZip.getFileHeader(name);
 			if (header == null) {
 				return null;
 			}
-			dis = new DataInputStream(zipFile.getInputStream(header));
+			dis = new DataInputStream(tabZip.getInputStream(header));
 			byte[] data = new byte[(int) header.getUncompressedSize()];
 			dis.readFully(data);
 			return data;

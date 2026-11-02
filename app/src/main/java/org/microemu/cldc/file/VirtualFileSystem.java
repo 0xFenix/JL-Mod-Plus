@@ -12,13 +12,18 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
+
+import javax.microedition.shell.MicroLoader;
+import javax.microedition.shell.MidletTabRouter;
 
 /**
  * Java ME storage with a workdir-backed default and an explicit Android compatibility mode.
  * An installation owns its private mounts; C and E are shared by installations in the workdir.
  */
 public final class VirtualFileSystem {
-    private static volatile Session session;
+    /** Installed filesystem sessions keyed by suite storageKey; multi-JAR tabs coexist. */
+    private static final ConcurrentHashMap<String, Session> SESSIONS = new ConcurrentHashMap<>();
 
     private VirtualFileSystem() {}
 
@@ -109,11 +114,21 @@ public final class VirtualFileSystem {
                 throw new IOException("Cannot prepare virtual media directory");
             }
         }
-        session = new Session(Collections.unmodifiableMap(mounts));
+        SESSIONS.put(storageKey, new Session(Collections.unmodifiableMap(mounts)));
     }
 
     public static void clear() {
-        session = null;
+        SESSIONS.clear();
+    }
+
+    /** Returns true when this suite already has an installed session (sibling tab reuse). */
+    public static boolean hasSession(String storageKey) {
+        return storageKey != null && SESSIONS.containsKey(storageKey);
+    }
+
+    /** Drops one suite session; other suites keep their mounts. */
+    public static void clearSuite(String storageKey) {
+        if (storageKey != null) SESSIONS.remove(storageKey);
     }
 
     private static void mount(Map<String, Mount> mounts, String name, File directory, boolean shared) {
@@ -128,9 +143,24 @@ public final class VirtualFileSystem {
     }
 
     private static Session active() throws IOException {
-        Session current = session;
+        Session current = sessionForCaller();
         if (current == null) throw new IOException("No active MIDlet filesystem");
         return current;
+    }
+
+    /**
+     * Resolves the calling thread's suite session: exact MIDlet-thread match, then the
+     * selected tab, then the sole session for legacy single-suite hosts. Returns null when
+     * no suite matches (a tab of another suite may be installed).
+     */
+    private static Session sessionForCaller() {
+        int tab = MidletTabRouter.tabForThread(Thread.currentThread());
+        if (tab == MidletTabRouter.NO_TAB) tab = MidletTabRouter.selectedTabId();
+        String key = tab != MidletTabRouter.NO_TAB ? MicroLoader.storageKeyForTab(tab) : null;
+        Session found = key != null ? SESSIONS.get(key) : null;
+        if (found != null) return found;
+        if (SESSIONS.size() == 1) return SESSIONS.values().iterator().next();
+        return null;
     }
 
     public static String rootFor(String guestPath) throws IOException {
@@ -150,7 +180,7 @@ public final class VirtualFileSystem {
 
     public static Enumeration<String> listRoots() {
         Vector<String> roots = new Vector<>();
-        Session current = session;
+        Session current = sessionForCaller();
         if (current != null) {
             for (Map.Entry<String, Mount> entry : current.mounts.entrySet()) {
                 if (entry.getValue().visible) roots.add(entry.getKey());

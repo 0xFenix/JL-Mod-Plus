@@ -35,15 +35,32 @@ public final class AmsRegistry {
 	public static final class Tab {
 		public final int id;
 		public final String label;
+		/** Installed suite path owning this tab, or null when not yet launched. */
+		public final String appPath;
+		public final long expectedAppId;
+		/** MIDlet main class, or null when the chooser has not resolved yet. */
+		public final String mainClass;
+		/** Human-readable suite title for per-tab naming, or null to use the host name. */
+		public final String title;
 
 		Tab(int id, String label) {
+			this(id, label, null, 0L, null, null);
+		}
+
+		Tab(int id, String label, String appPath, long expectedAppId, String mainClass,
+				String title) {
 			this.id = id;
 			this.label = label;
+			this.appPath = appPath;
+			this.expectedAppId = expectedAppId;
+			this.mainClass = mainClass;
+			this.title = title;
 		}
 
 		@Override
 		public String toString() {
-			return "Tab{id=" + id + ", label=" + label + '}';
+			return "Tab{id=" + id + ", label=" + label + ", appPath=" + appPath
+					+ ", mainClass=" + mainClass + ", title=" + title + '}';
 		}
 	}
 
@@ -64,13 +81,62 @@ public final class AmsRegistry {
 	 * Adds a tab and selects it. Returns null when the tab cap is reached.
 	 */
 	public synchronized Tab addTab(String label) {
+		return addTab(label, null, 0L, null);
+	}
+
+	/**
+	 * Adds a tab carrying its suite identity and selects it.
+	 * Returns null when the tab cap is reached.
+	 */
+	public synchronized Tab addTab(String label, String appPath, long expectedAppId,
+			String mainClass) {
+		return addTab(label, appPath, expectedAppId, mainClass, null);
+	}
+
+	/**
+	 * Adds a tab carrying its suite identity and display title, and selects it.
+	 * Returns null when the tab cap is reached.
+	 */
+	public synchronized Tab addTab(String label, String appPath, long expectedAppId,
+			String mainClass, String title) {
 		if (tabs.size() >= maxTabs) {
 			return null;
 		}
-		Tab tab = new Tab(nextId++, label);
+		Tab tab = new Tab(nextId++, label, appPath, expectedAppId, mainClass, title);
 		tabs.add(tab);
 		selectedId = tab.id;
 		return tab;
+	}
+
+	/**
+	 * Records the suite identity of a launched tab, preserving its position
+	 * and display title. Returns false for unknown ids.
+	 */
+	public synchronized boolean setTabSuite(int id, String appPath, long expectedAppId,
+			String mainClass) {
+		for (int i = 0; i < tabs.size(); i++) {
+			if (tabs.get(i).id == id) {
+				return setTabSuite(id, appPath, expectedAppId, mainClass,
+						tabs.get(i).title);
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Records the suite identity and display title of a launched tab,
+	 * preserving its position. Returns false for unknown ids.
+	 */
+	public synchronized boolean setTabSuite(int id, String appPath, long expectedAppId,
+			String mainClass, String title) {
+		for (int i = 0; i < tabs.size(); i++) {
+			if (tabs.get(i).id == id) {
+				tabs.set(i, new Tab(id, tabs.get(i).label, appPath, expectedAppId,
+						mainClass, title));
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Selects an existing tab. Returns false for unknown ids. */
