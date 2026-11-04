@@ -228,6 +228,7 @@ internal data class MemoryInspectorSnapshot(
     val expectedRevision: Long = 0L,
     val provenance: String = "",
     val watchAnchor: Boolean = false,
+    val savedId: String? = null,
     val source: MemoryCandidateSource = MemoryCandidateSource.UNKNOWN,
     val pathStatus: Int = MemoryEngineContract.PATH_UNKNOWN,
     val referencePath: String = "",
@@ -347,7 +348,91 @@ internal object MemoryWatchPageParser {
     }
 }
 
-internal enum class MemoryEditorTab { RESULTS, WATCH, INSPECTOR }
+internal enum class MemoryEditorTab { RESULTS, WATCH, SAVED, INSPECTOR }
+
+/** Session-only navigation; Inspector always re-reads a checked target after reopening. */
+internal data class MemoryEditorInspectorTarget(
+    val candidateId: Long,
+    val savedId: String?,
+    val watchAnchor: Boolean,
+    val radius: Int = MemoryEngineContract.DEFAULT_INSPECT_RADIUS,
+)
+
+internal data class MemoryEditorNavigationState(
+    val tab: MemoryEditorTab = MemoryEditorTab.RESULTS,
+    val pageOffset: Int = 0,
+    val inspectorTarget: MemoryEditorInspectorTarget? = null,
+) {
+    val underlyingTab: MemoryEditorTab
+        get() = if (tab != MemoryEditorTab.INSPECTOR) tab else when {
+            inspectorTarget?.savedId != null -> MemoryEditorTab.SAVED
+            inspectorTarget?.watchAnchor == true -> MemoryEditorTab.WATCH
+            else -> MemoryEditorTab.RESULTS
+        }
+}
+
+/** Held only in :memory_engine memory. A different MIDlet token starts with Search. */
+internal object MemoryEditorSessionNavigation {
+    private var runtimeToken = 0L
+    private var last = MemoryEditorNavigationState()
+
+    @Synchronized fun read(token: Long): MemoryEditorNavigationState {
+        if (token == 0L) return MemoryEditorNavigationState()
+        if (runtimeToken != token) {
+            runtimeToken = token
+            last = MemoryEditorNavigationState()
+        }
+        return last
+    }
+
+    @Synchronized fun remember(token: Long, navigation: MemoryEditorNavigationState) {
+        // Ignore late closes from an older Activity after a new session has opened.
+        if (token != 0L && token == runtimeToken) last = navigation
+    }
+}
+
+internal data class SavedVariableRow(val id: String, val label: String, val path: String)
+
+internal enum class SavedVariableStatus { RESOLVED, REBOUND, NOT_READY, CHANGED, INCOMPATIBLE, FAILED }
+
+internal data class SavedVariableRuntimeValue(
+    val code: Int,
+    val type: Int = MemoryEngineContract.TYPE_AUTO,
+    val value: String = "",
+    val detail: String = "",
+    val changedOwner: Boolean = false,
+    val rebound: Boolean = false,
+    val reboundUntilUptimeMs: Long = 0L,
+) {
+    val resolved: Boolean get() = code == MemoryEngineContract.RESULT_OK
+    val status: SavedVariableStatus get() = when {
+        resolved && rebound -> SavedVariableStatus.REBOUND
+        resolved -> SavedVariableStatus.RESOLVED
+        changedOwner -> SavedVariableStatus.CHANGED
+        code == MemoryEngineContract.RESULT_NO_SESSION ||
+            code == MemoryEngineContract.RESULT_TARGET_LOST -> SavedVariableStatus.NOT_READY
+        code == MemoryEngineContract.RESULT_IDENTITY_UNSAFE ||
+            code == MemoryEngineContract.RESULT_INVALID_REQUEST ||
+            code == MemoryEngineContract.RESULT_UNSUPPORTED -> SavedVariableStatus.INCOMPATIBLE
+        else -> SavedVariableStatus.FAILED
+    }
+}
+
+/** One transient hint per verified rebind, without adding a timer to the Saved tab. */
+internal fun savedValueAfterRefresh(
+    current: SavedVariableRuntimeValue,
+    previous: SavedVariableRuntimeValue?,
+    nowUptimeMs: Long,
+    noticeDurationMs: Long,
+): SavedVariableRuntimeValue {
+    if (!current.resolved) return current.copy(rebound = false, reboundUntilUptimeMs = 0L)
+    val until = if (current.rebound) nowUptimeMs + noticeDurationMs
+        else previous?.reboundUntilUptimeMs ?: 0L
+    return current.copy(
+        rebound = until > nowUptimeMs,
+        reboundUntilUptimeMs = until.takeIf { it > nowUptimeMs } ?: 0L,
+    )
+}
 
 internal data class MemoryEditorUiState(
     val visible: Boolean = false,
@@ -366,8 +451,13 @@ internal data class MemoryEditorUiState(
     val pageOffset: Int = 0,
     val results: List<MemoryResultRow> = emptyList(),
     val watches: List<MemoryWatchRow> = emptyList(),
+    val savedVariables: List<SavedVariableRow> = emptyList(),
+    val savedValues: Map<String, SavedVariableRuntimeValue> = emptyMap(),
+    val savedSelection: Set<String> = emptySet(),
+    val savedError: String? = null,
     val selected: Set<Long> = emptySet(),
     val watchTab: Boolean = false,
+    val savedTab: Boolean = false,
     val message: String? = null,
     val messageIsError: Boolean = false,
     val searchMode: MemorySearchMode = MemorySearchMode.KNOWN,
@@ -385,6 +475,7 @@ internal data class MemoryEditorUiState(
     val activeTab: MemoryEditorTab
         get() = when {
             inspectorLoading || inspector != null -> MemoryEditorTab.INSPECTOR
+            savedTab -> MemoryEditorTab.SAVED
             watchTab -> MemoryEditorTab.WATCH
             else -> MemoryEditorTab.RESULTS
         }
@@ -406,6 +497,24 @@ internal interface MemoryEditorActions {
     fun undo()
     fun refresh()
     fun setWatchTab(watch: Boolean)
+    fun setSavedTab() = Unit
+    fun refreshSavedVariables() = Unit
+    fun saveSelectedVariable(name: String) = Unit
+    fun beginSavedEdit(id: String, onReady: (SavedVariableRuntimeValue?) -> Unit) = Unit
+    fun endSavedEdit() = Unit
+    fun editSavedVariable(id: String, replacement: String, freezeAfter: Boolean = false) = Unit
+    fun renameSavedVariable(id: String, name: String) = Unit
+    fun deleteSavedVariable(id: String) = Unit
+    fun deleteSavedVariables(ids: List<String>) = Unit
+    fun toggleSavedSelection(id: String) = Unit
+    fun selectAllSaved() = Unit
+    fun clearSavedSelection() = Unit
+    fun inspectSavedVariable(id: String) = Unit
+    fun saveInspectorVariable(name: String, relativeOffset: Int) = Unit
+    fun watchInspectorVariable(relativeOffset: Int) = Unit
+    fun editSavedInspectorValue(id: String, relativeOffset: Int, type: Int,
+                                expectedBits: Long, replacement: String,
+                                freezeAfter: Boolean = false) = Unit
     fun toggleSelection(id: Long)
     fun selectVisible()
     fun invertVisible()
@@ -465,6 +574,7 @@ internal interface MemoryEditorActions {
         expectedBits: Long,
         replacementValue: String,
         watchAnchor: Boolean = false,
+        freezeAfter: Boolean = false,
     ) = Unit
     fun closeInspector() = Unit
 }

@@ -22,6 +22,7 @@ import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.locks.ReentrantLock
 import io.github.h3nb.jlmodplus.installer.InstallerExecutionCoordinator
+import io.github.h3nb.jlmodplus.config.ImportedBundleProfileLinkage
 import kotlin.concurrent.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -104,6 +105,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private data class ImportRestoreOutcome(
         val iconRevision: Long?,
         val sourceMetadata: LibraryAppBundleImporter.SourceMetadata?,
+        val savedAdded: Int?,
+        val savedSkipped: Int?,
     )
 
     private val preferences = PreferenceManager.getDefaultSharedPreferences(application)
@@ -580,6 +583,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 storageKey = app.storageKey,
                 prepared = prepared,
             )
+            Unit
         }
     }
 
@@ -606,7 +610,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         appId: Long,
         storageKey: String,
         prepared: LibraryAppBundleImporter.PreparedImport,
-    ) {
+    ): Pair<Int, Int>? {
         val generation = token(expectedGeneration, expectedWorkdir)
         val app = requireNotNull(repository.currentApp(generation, appId)) {
             "Library import target disappeared before restore"
@@ -632,12 +636,29 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         "App bundle descriptor identity does not match the retained JAR",
                     )
                 }
-                val result = LibraryAppBundleImporter.restore(
-                    prepared,
-                    generation.emulatorDir,
-                    storageKey,
-                )
-                ImportRestoreOutcome(result.iconRevision, sourceMetadata)
+                val result = LibraryBundleRuntimeGuard.withClosedMidlets(
+                    getApplication(), listOf(generation.emulatorDir to storageKey),
+                ) {
+                    // Detach only once the target is reserved. A failed pre-commit
+                    // restore returns its prior ownership after filesystem rollback.
+                    val ownership = if (prepared.configDir != null ||
+                        prepared.layoutSkinFile != null || prepared.controlSkinDir != null) {
+                        ImportedBundleProfileLinkage.begin(
+                            getApplication(), generation.emulatorDir, storageKey)
+                    } else null
+                    val restored = try {
+                        LibraryAppBundleImporter.restore(
+                            prepared, generation.emulatorDir, storageKey,
+                        )
+                    } catch (error: Throwable) {
+                        ownership?.rollback()
+                        throw error
+                    }
+                    ownership?.complete()
+                    restored
+                }
+                ImportRestoreOutcome(result.iconRevision, sourceMetadata,
+                    result.savedAdded, result.savedSkipped)
             }
         }
         // Restoring configs/ can change either artwork source, even without a main icon.
@@ -666,6 +687,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 resolvedIconRevision,
             )
         }
+        return outcome.savedAdded?.let { it to (outcome.savedSkipped ?: 0) }
     }
 
     fun setFavorite(appId: Long, favorite: Boolean, callback: MutationCallback<Unit>) {

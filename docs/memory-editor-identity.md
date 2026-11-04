@@ -1,7 +1,6 @@
 # Managed Memory Editor candidate identity
 
-This document records the currently supported candidate-identity contract and the boundary
-for future saved-cheat work. It does not define a saved-cheat format or enable persistence.
+This document records runtime candidate identity and the separately supported Saved Variables contract. Saved definitions are not Watch entries.
 
 ## Runtime target identity
 
@@ -17,6 +16,13 @@ Neither is suitable for a cross-restart descriptor or for comparing DX/D8 output
 
 Search, Refine, Results, Watch, Freeze, Inspector, and edits continue using the checked
 runtime ID rather than a field-path string. Provenance never authorizes a write.
+
+Closing the bubble editor remembers its last tab and Search page only in the
+`:memory_engine` process for the current MIDlet runtime token. Inspector remembers
+only its target identity and origin tab; reopening fetches a fresh, checked
+snapshot. Missing or changed Inspector targets fall back to Search, Watch or
+Saved, never to an old snapshot. A new MIDlet token starts at Search. No tab
+preference, Inspector value, or guest object is written to persistent storage.
 
 ## Direct-reference observation
 
@@ -55,27 +61,74 @@ accounted during scanning without double-charging them at the commit boundary.
 
 The presentation renders a compact summary from typed source metadata while
 Inspector exposes the full declaring class, field name, type and, when verified,
-the root-relative path. A checked path is only an observation of the current
+the root-relative path. When direct-field source metadata is unavailable but a
+root-relative path is verified, Inspector identifies that verified path rather
+than reporting the source as untraced. A checked path is only an observation of the current
 runtime, not a stable identity of a game entity after restart. The existing
 diagnostic location text remains available independently, but must not be parsed
 to construct structural identity. An observation may become stale immediately
 after it is read because the guest is concurrent; refreshing revalidates it.
 
-## Boundary for future resumable targets
+## Persistent Saved locator contract
 
-A future resolver may investigate a selected candidate on demand with bounded
-memory, traversal depth, cancellation and identity-based visited tracking.
-It must establish a complete, unambiguous root-to-target path, not infer one
-from coincidentally equal values or the order in which objects were discovered.
-Static paths need declaring class, field name, type and array index; instance
-paths also need a route from a trusted root to the specific instance. No
-candidate is claimed portable until tested in a new runtime. Such a resolver
-must not force initialization of a guest class that is not ready.
+Saved definitions contain a label, stable record ID and versioned root-relative locator.
+The canonical locator is a bounded ordered sequence of **field** steps (exact declaring
+class, name, type and staticness checked at runtime) and **array index** steps (exact
+Java array type and index). Terminal targets are editable numeric primitive fields
+or primitive-array elements, including nested arrays reached from trusted roots.
+No field slot, owner handle, object reference, search revision or last-seen value
+is persisted. Search/Watch runtime candidate IDs remain independent.
 
-A future persistent record will need independent installed-MIDlet identity
-and compatible source-JAR identity, plus structural path verification. Nothing
-in the current contract serializes candidates, auto-applies writes or introduces
-raw-address scanning, JVM instrumentation, or additional MIDlet bytecode hooks.
+Capture requires a current verified ancestry from the MIDlet, Displayable or an
+already-initialized static class; resolving never initializes guest classes. It
+checks every field signature and array bound and retains weak, pinned runtime
+ancestry. The Saved tab may release and resolve a changed binding again while no
+Saved edit is open, displaying a nonblocking **Target updated** hint for a few seconds during foreground polling. An open edit
+pins its original binding: replacement during the dialog rejects the write, and
+the user can reopen the editor. Rebinding never writes or activates Watch/Freeze.
+An indexed party slot can refer to a different character without any structural
+error, so the displayed current value remains authoritative to the user.
+
+Saved storage is owned by the main process under
+`configs/<storageKey>/saved-variables.json`, as a schema-3 AtomicFile document
+capped at 64 records/64 KiB. Schema-2 typed field/index locators are accepted and
+converted to the canonical steps model at the read boundary; the next authorized
+mutation publishes schema 3 atomically. Corrupt, unsupported-version or oversized
+documents are not overwritten. The document remains portable: installed Library
+IDs, workdirs, JAR fingerprints and runtime handles are never serialized.
+Every Saved authority mutation still validates active installed identity and
+uses `InstalledAppWriteGuard`. The R&D prototype format is not migrated.
+
+Definitions can be listed and renamed/deleted without a running guest; resolving,
+reading, editing and Inspector require a live MIDlet. A committed delete removes
+the definition from the active polling catalog and releases its runtime Saved
+binding; it does not remove or reactivate a separate Watch/Freeze. Saved selection is separate
+from Search/Watch selection. Foreground Saved polling reads active values and
+retries unresolved paths without reloading the document on every frame. Opening
+an edit drains preceding IPC, snapshots the bound value and pauses automatic Saved
+rebind until dismissal. Normal guest value changes during a manual edit are not
+a reason to reject the write; the engine checks pinned ancestry/type and readback.
+Saved Inspector sibling edits retain their stronger expected-snapshot comparison.
+
+A user-initiated Saved **Freeze after edit** promotes the verified current owner
+to Watch. It does not start merely because a bookmark re-resolved. If the owner
+changes, the old Watch Freeze pauses; an explicit new Freeze updates that Watch
+to the current binding rather than reactivating the old owner or creating a
+duplicate. An edit can succeed while a subsequent Freeze promotion fails; report
+the two outcomes separately. Inspector's checked sibling Watch/Freeze behavior
+remains session-bound.
+
+Selective bundle export has a separate Saved component. Saved-only imports
+**merge** bookmarks into an existing collection by canonical locator: local
+records and labels win, duplicate targets are skipped, imported ID collisions
+are assigned fresh local IDs, and size violations reject the entire import.
+A configuration+Saved restore **replaces** Saved as part of the existing
+transactional backup restore. Selected unrelated config and save data remain
+independent. Imports and migrations never partially publish Saved data.
+
+Unsupported routes through arbitrary containers, untraced ancestry or fabricated
+roots remain unavailable. No automatic value restore, VM hook, raw scanner,
+additional idle traversal or persistent Freeze is introduced.
 
 ## Accounting and resource bounds
 

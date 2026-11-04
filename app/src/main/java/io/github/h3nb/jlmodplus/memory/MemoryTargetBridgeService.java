@@ -25,6 +25,8 @@ import android.os.RemoteException;
 
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
+
 /** Minimal :midlet bridge for runtime identity and target-owned Managed Java memory operations. */
 public final class MemoryTargetBridgeService extends Service {
 	private final RemoteCallbackList<IMemoryTargetCallback> callbacks = new RemoteCallbackList<>();
@@ -217,11 +219,196 @@ public final class MemoryTargetBridgeService extends Service {
 					expectedRevision, cancellationEpoch));
 		}
 
+		// Production Saved transport. Keep external persistence and compatibility checks
+		// outside :midlet; the target supplies only bounded typed identities.
+		@Override
+		public Bundle captureSavedLocator(long runtimeToken, long expectedRevision,
+		                                         long candidateId) {
+			ManagedJavaMemoryEngine.SavedLocator locator =
+					managedEngine.captureSavedLocator(runtimeToken, expectedRevision, candidateId);
+            return savedLocatorBundle(runtimeToken, locator);
+		}
+
+
+        @Override
+        public Bundle inspectSaved(long runtimeToken, String savedId, int radius) {
+            return managedInspection(runtimeToken, managedEngine.inspectSaved(
+                    runtimeToken, savedId, radius));
+        }
+
+        @Override
+        public Bundle captureInspectorLocator(long runtimeToken, long expectedRevision,
+                                              long candidateId, boolean watchAnchor, int offset) {
+            return savedLocatorBundle(runtimeToken, managedEngine.captureInspectorLocator(
+                    runtimeToken, expectedRevision, candidateId, watchAnchor, offset));
+        }
+
+        @Override
+        public Bundle captureSavedNeighborLocator(long runtimeToken, String savedId, int offset) {
+            return savedLocatorBundle(runtimeToken, managedEngine.captureSavedNeighborLocator(
+                    runtimeToken, savedId, offset));
+        }
+
+        @Override
+        public Bundle resolveSavedLocator(long runtimeToken, Bundle descriptor,
+                                                 String savedId, long cancellationEpoch) {
+            ManagedJavaMemoryEngine.SavedLocator locator = savedDecode(descriptor);
+            if (locator == null) {
+                return savedStatus(runtimeToken, MemoryEngineContract.RESULT_INVALID_REQUEST);
+            }
+            return managedResult(runtimeToken, managedEngine.resolveSavedLocator(
+                    runtimeToken, locator, savedId, cancellationEpoch));
+        }
+
+        @Override
+        public Bundle readSaved(long runtimeToken, String savedId) {
+            return savedValueBundle(runtimeToken, managedEngine.readSaved(runtimeToken, savedId));
+        }
+
+        @Override
+        public Bundle editSaved(long runtimeToken, String savedId, String replacement,
+                                        long cancellationEpoch) {
+            return savedValueBundle(runtimeToken, managedEngine.editSaved(
+                    runtimeToken, savedId, replacement, cancellationEpoch));
+        }
+
+        @Override
+        public Bundle editSavedInspector(long runtimeToken, String savedId, int relativeOffset,
+                                         int valueType, long expectedBits, String replacement,
+                                         long cancellationEpoch) {
+            return savedValueBundle(runtimeToken, managedEngine.editSavedInspector(
+                    runtimeToken, savedId, relativeOffset, valueType, expectedBits,
+                    replacement, cancellationEpoch));
+        }
+
+        @Override
+        public Bundle freezeSaved(long runtimeToken, String savedId, String label,
+                                  String expectedValue, long cancellationEpoch) {
+            return managedResult(runtimeToken, managedEngine.freezeSaved(
+                    runtimeToken, savedId, label, expectedValue, cancellationEpoch));
+        }
+
+        @Override
+        public Bundle watchInspector(long runtimeToken, String savedId, long expectedRevision,
+                                     long anchorId, boolean watchAnchor, int offset,
+                                     int type, long expectedBits, boolean freeze, long epoch) {
+            return managedResult(runtimeToken, managedEngine.watchInspector(runtimeToken,
+                    savedId, expectedRevision, anchorId, watchAnchor, offset, type,
+                    expectedBits, freeze, epoch));
+        }
+
+        @Override
+        public Bundle editInspectorAndFreeze(long runtimeToken, String savedId,
+                                             long expectedRevision, long anchorId,
+                                             boolean watchAnchor, int offset, int type,
+                                             long expectedBits, String replacement, long epoch) {
+            return managedResult(runtimeToken, managedEngine.editInspectorAndFreeze(runtimeToken,
+                    savedId, expectedRevision, anchorId, watchAnchor, offset, type,
+                    expectedBits, replacement, epoch));
+        }
+
+        @Override
+        public void releaseSaved(long runtimeToken, String savedId) {
+            managedEngine.releaseSaved(runtimeToken, savedId);
+        }
+
 		@Override
 		public void cancelManaged(long runtimeToken, long cancellationEpoch) {
 			managedEngine.cancel(runtimeToken, cancellationEpoch);
 		}
 	};
+
+
+    /** Shared typed transport for Search, Saved and Inspector capture. */
+    private static Bundle savedLocatorBundle(long token, ManagedJavaMemoryEngine.SavedLocator locator) {
+        Bundle result = savedStatus(token, locator == null
+                ? MemoryEngineContract.RESULT_IDENTITY_UNSAFE : MemoryEngineContract.RESULT_OK);
+        if (locator == null) return result;
+        if (!savedSafeName(locator.rootClass) || locator.steps.length < 1
+                || locator.steps.length > 24) return savedStatus(token,
+                        MemoryEngineContract.RESULT_INVALID_REQUEST);
+        ArrayList<Bundle> steps = new ArrayList<>();
+        for (ManagedJavaMemoryEngine.SavedStep step : locator.steps) {
+            Bundle encoded = new Bundle();
+            encoded.putInt("kind", step.kind);
+            if (step.kind == ManagedJavaMemoryEngine.SavedStep.FIELD && step.field != null) {
+                if (!savedSafeName(step.field.declaringClass)
+                        || !savedSafeName(step.field.name)
+                        || !savedSafeName(step.field.type)) return savedStatus(token,
+                                MemoryEngineContract.RESULT_INVALID_REQUEST);
+                encoded.putString("owner", step.field.declaringClass);
+                encoded.putString("name", step.field.name);
+                encoded.putString("type", step.field.type);
+            } else if (step.kind == ManagedJavaMemoryEngine.SavedStep.INDEX
+                    && savedSafeName(step.arrayType) && step.index >= 0
+                    && step.index < 2_000_000) {
+                encoded.putInt("index", step.index);
+                encoded.putString("arrayType", step.arrayType);
+            } else return savedStatus(token, MemoryEngineContract.RESULT_INVALID_REQUEST);
+            steps.add(encoded);
+        }
+        result.putInt("savedSchema", 2);
+        result.putInt("savedRootKind", locator.rootKind);
+        result.putString("savedRootClass", locator.rootClass);
+        result.putParcelableArrayList("savedSteps", steps);
+        return result;
+    }
+
+    @Nullable
+    private static ManagedJavaMemoryEngine.SavedLocator savedDecode(Bundle descriptor) {
+        if (descriptor == null || descriptor.getInt("savedSchema", -1) != 2
+                || !savedSafeName(descriptor.getString("savedRootClass"))) return null;
+        int rootKind = descriptor.getInt("savedRootKind", -1);
+        if (rootKind < 1 || rootKind > 3) return null;
+        ArrayList<Bundle> parts = descriptor.getParcelableArrayList("savedSteps");
+        if (parts == null || parts.isEmpty() || parts.size() > 24) return null;
+        ManagedJavaMemoryEngine.SavedStep[] steps =
+                new ManagedJavaMemoryEngine.SavedStep[parts.size()];
+        for (int i = 0; i < parts.size(); i++) {
+            Bundle part = parts.get(i);
+            if (part == null) return null;
+            int kind = part.getInt("kind", -1);
+            if (kind == ManagedJavaMemoryEngine.SavedStep.FIELD) {
+                String owner = part.getString("owner"), name = part.getString("name"),
+                        type = part.getString("type");
+                if (!savedSafeName(owner) || !savedSafeName(name)
+                        || !savedSafeName(type)) return null;
+                steps[i] = ManagedJavaMemoryEngine.SavedStep.field(
+                        new ManagedJavaMemoryEngine.SavedField(owner, name, type));
+            } else if (kind == ManagedJavaMemoryEngine.SavedStep.INDEX) {
+                int index = part.getInt("index", -1);
+                String arrayType = part.getString("arrayType");
+                if (index < 0 || index >= 2_000_000 || !savedSafeName(arrayType)
+                        || !arrayType.startsWith("[")) return null;
+                steps[i] = ManagedJavaMemoryEngine.SavedStep.index(index, arrayType);
+            } else return null;
+        }
+        return new ManagedJavaMemoryEngine.SavedLocator(
+                rootKind, descriptor.getString("savedRootClass"), steps);
+    }
+
+    private static Bundle savedValueBundle(long token, ManagedJavaMemoryEngine.SavedValue value) {
+        Bundle result = savedStatus(token, value.code);
+        result.putString("savedValue", value.value);
+        result.putInt("savedValueType", value.type);
+        if (value.detail != null && !value.detail.isEmpty()) {
+            result.putString(MemoryEngineContract.KEY_DIAGNOSTIC_DETAIL,
+                    MemoryEngineContract.truncateMessage(value.detail));
+        }
+        return result;
+    }
+
+	private static Bundle savedStatus(long runtimeToken, int code) {
+		Bundle result = new Bundle();
+		result.putLong(MemoryEngineContract.KEY_RUNTIME_TOKEN, runtimeToken);
+		result.putInt(MemoryEngineContract.KEY_MANAGED_OPERATION_RESULT, code);
+		return result;
+	}
+
+	private static boolean savedSafeName(String name) {
+		return name != null && !name.isEmpty()
+				&& name.length() <= MemoryEngineContract.MAX_IPC_DISPLAY_CHARS;
+	}
 
 	@Override
 	public void onCreate() {
