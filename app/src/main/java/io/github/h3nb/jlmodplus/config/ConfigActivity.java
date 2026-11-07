@@ -49,7 +49,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.widget.Toast;
 
-import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -86,6 +85,7 @@ import javax.microedition.util.ContextHolder;
 
 import kotlin.io.FilesKt;
 import io.github.h3nb.jlmodplus.R;
+import io.github.h3nb.jlmodplus.ui.AppPageTransitions;
 import io.github.h3nb.jlmodplus.filepicker.FilePickerContract;
 import io.github.h3nb.jlmodplus.filepicker.FilePickerResultContract;
 import io.github.h3nb.jlmodplus.filepicker.FilteredFilePickerActivity;
@@ -150,6 +150,11 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 	private File configDir;
 	private File profilesRoot;
 	private ArrayList<ShaderInfo> shaders;
+	@Nullable private String inspectedShaderPreset;
+	@Nullable private String inspectedShaderMode;
+	@Nullable private ShaderPipelineSummary inspectedShaderPipeline;
+	@Nullable private List<CustomShaderStage> inspectedCustomShaderStages;
+	private long shaderInspectionGeneration;
 	private String workDir;
 	private boolean needShow;
 	private boolean operationRunning;
@@ -334,6 +339,13 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 		}
 
 		@Override
+		public void onShaderPickerOpened() {
+			// The selected GLSLP/GLSL path is applied to the in-memory form via
+			// ActivityResult. onResume must not reload the previous disk snapshot.
+			skipNextAssetPickerReload = true;
+		}
+
+		@Override
 		public void onShaderTuning() {
 			showShaderSettings();
 		}
@@ -426,6 +438,7 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 	@Override
 	public void onCreate(@Nullable Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		AppPageTransitions.install(this);
 		Intent intent = getIntent();
 		String action = intent.getAction();
 		isProfile = ACTION_EDIT_PROFILE.equals(action);
@@ -703,16 +716,6 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 				},
 				getTitle() == null ? "" : getTitle().toString(),
 				isProfile);
-		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-			@Override
-			public void handleOnBackPressed() {
-				if (isProfile && composeController != null) {
-					composeController.requestBack();
-				} else {
-					finish();
-				}
-			}
-		});
 		controllerInputRouter = new ControllerInputRouter(this, new ControllerHostSink() {
 			@Override
 			public javax.microedition.lcdui.Canvas currentCanvas() {
@@ -1546,50 +1549,8 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 		if (shaders != null) {
 			return;
 		}
-		File dir = new File(workDir + Config.SHADERS_DIR);
-		if (!dir.exists()) {
-			//noinspection ResultOfMethodCallIgnored
-			dir.mkdirs();
-		}
-		shaders = new ArrayList<>();
-		String[] files = dir.list();
-		if (files != null) {
-			for (String fileName : files) {
-				if (!TextUtils.endsWithIgnoreCase(fileName, ".ini")) {
-					continue;
-				}
-				File file = new File(dir, fileName);
-				String text;
-				try {
-					//noinspection CharsetObjectCanBeUsed
-					text = FilesKt.readText(file, Charset.forName("UTF-8"));
-				} catch (Exception e) {
-					Log.e(TAG, "getText: " + file, e);
-					continue;
-				}
-
-				String[] split = text.split("[\\n\\r]+");
-				ShaderInfo info = null;
-				for (String line : split) {
-					if (line.startsWith("[")) {
-						if (info != null && info.fragment != null && info.vertex != null) {
-							shaders.add(info);
-						}
-						info = new ShaderInfo(line.replaceAll("[\\[\\]]", ""), "unknown");
-					} else if (info != null) {
-						try {
-							info.set(line);
-						} catch (Exception e) {
-							Log.e(TAG, "initShaderSpinner: ", e);
-						}
-					}
-				}
-				if (info != null && info.fragment != null && info.vertex != null) {
-					shaders.add(info);
-				}
-			}
-			Collections.sort(shaders);
-		}
+		shaders = ShaderCatalog.scan(new File(workDir + Config.SHADERS_DIR));
+		Collections.sort(shaders);
 		shaders.add(0, new ShaderInfo(getString(R.string.identity_filter), "woesss"));
 		ShaderInfo selected = params.shader == null ? null : params.shader.toInfo();
 		if (selected != null) {
@@ -2624,6 +2585,38 @@ public class ConfigActivity extends AppCompatActivity implements ShaderTuneAlert
 				shaders == null ? Collections.emptyList() : shaders, removableScreenPresets,
 				profileStatus, templates, isProfile || hasCompatibleTimingTransform(),
 				profileNames, hasControllerDevice(), updatePresetName, fileAccessBusy ? null : fileAccess);
+		String requestedPreset = state.shader == null ? null : state.shader.preset;
+		List<CustomShaderStage> requestedStages = state.shader == null
+				? null : state.shader.customStages;
+		String requestedMode = state.shader == null ? null : state.shader.customMode;
+		if (!Objects.equals(inspectedShaderPreset, requestedPreset)
+				|| !Objects.equals(inspectedShaderMode, requestedMode)
+				|| !Objects.equals(inspectedCustomShaderStages, requestedStages)) {
+			inspectedShaderPreset = requestedPreset;
+			inspectedShaderMode = requestedMode;
+			inspectedCustomShaderStages = requestedStages == null
+					? null : new ArrayList<>(requestedStages);
+			inspectedShaderPipeline = null;
+			long generation = ++shaderInspectionGeneration;
+			if (requestedStages != null || requestedPreset != null) {
+				List<CustomShaderStage> stages = inspectedCustomShaderStages;
+				File shaderRoot = new File(workDir + Config.SHADERS_DIR);
+				profileMetadataExecutor.execute(() -> {
+					ShaderPipelineSummary summary = stages != null
+							? ShaderPipelineSummary.inspectCustom(stages, shaderRoot,
+									requestedPreset, requestedMode)
+							: ShaderPipelineSummary.inspect(requestedPreset, shaderRoot);
+					runOnUiThread(() -> {
+						if (generation != shaderInspectionGeneration || isFinishing() || isDestroyed())
+							return;
+						inspectedShaderPipeline = summary;
+						if (composeController != null) composeController.update(createUiState());
+					});
+				});
+			}
+		}
+		result.shaderPipeline = inspectedShaderPipeline;
+		result.shaderDirectory = new File(workDir + Config.SHADERS_DIR);
 		if (state.controlSkinSetId == null) {
 			result.controlSkinName = getString(R.string.control_skin_default);
 		} else {

@@ -16,10 +16,10 @@ package io.github.h3nb.jlmodplus.filepicker
 
 import java.io.File
 import java.nio.file.Files
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 class FilePickerModelTest {
     @Test
@@ -177,6 +177,44 @@ class FilePickerModelTest {
             assertTrue(FilePickerRules.isValidFolderName("My Games"))
         } finally {
             root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun scopedShaderPickerIsSingleSelectAndRootIsConstrained() {
+        val root = Files.createTempDirectory("jlmod-shader-root").toFile()
+        val sub = File(root, "nested").apply { mkdir() }
+        val outside = Files.createTempDirectory("jlmod-outside-root").toFile()
+        try {
+            val request = FilePickerRequest(
+                startPath = sub.path,
+                mode = FilePickerContract.MODE_FILE,
+                allowMultiple = false,
+                singleClick = true,
+                allowCreateDirectory = false,
+                allowExistingFile = true,
+                allowedExtensions = setOf(".glslp", ".glsl", ".ini"),
+                rootPath = root.path,
+            )
+            assertEquals(root.path, request.rootPath)
+            assertEquals(root, FilePickerRules.parent(sub, root))
+            assertEquals(root, FilePickerRules.parent(root, root))
+            assertFalse(FilePickerRules.isWithinRoot(outside, root))
+            assertEquals(root,
+                FilePickerRules.normalizeStartPath(File(outside, "effect.glslp").path, root))
+            File(sub, "effect.glslp").createNewFile()
+            File(sub, "effect.ini").createNewFile()
+            File(sub, "secret.txt").createNewFile()
+            assertEquals(listOf("effect.glslp", "effect.ini"),
+                FilePickerRules.sortEntries(
+                    sub.listFiles()!!.asIterable(),
+                    request.mode,
+                    allowedExtensions = request.allowedExtensions,
+                    root = root,
+                ).map { it.name })
+        } finally {
+            root.deleteRecursively()
+            outside.deleteRecursively()
         }
     }
 }
