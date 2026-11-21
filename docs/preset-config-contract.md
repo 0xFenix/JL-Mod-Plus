@@ -34,6 +34,34 @@ rear/automatic without requiring publication or a configuration-version change.
 They participate in form drafts, preset copies and effective-change comparison.
 Runtime swaps never persist those temporary lens overrides to config or preset.
 
+## Internal resolution profile setting
+
+New MIDlet profiles created by `ProfileModel.fresh()` (including built-in
+profiles) default to `GraphicsMode = 1` (OpenGL ES) and
+`InternalResolutionScale = 0` (Auto). Auto selects an integer rendering factor
+from the viewport and current allocation limits; values 1–10 request manual
+factors. Existing profiles with verified **Built-in ownership** receive these updated
+rendering defaults on their next configuration preparation. The Built-in marker
+is retained and the two values are saved atomically; this is not a Custom edit.
+Existing Custom profiles and named presets retain their explicit settings.
+Historical serialized profiles without Built-in ownership still decode missing
+`GraphicsMode` as 0 and missing `InternalResolutionScale` as fixed 1×. No global
+schema migration changes those values indiscriminately. Editor drafts,
+preset copies and runtime configuration retain the saved choices without
+changing guest-visible logical dimensions. The effective resolution is fixed
+at Canvas creation and changes require a MIDlet restart.
+
+## Bitmap upscaling profile setting
+
+`BitmapUpscalingMode` is an additive per-MIDlet profile value: 0 = nearest
+(default), 1 = bilinear, 2 = MMPX, 3 = Edge-aware (smooth)
+(GPL-2.0-or-later Azahar CPU translation). Form edits and
+presets preserve the value. At an internal resolution above 1× it
+reconstructs supported immutable 2D sprites and opaque immutable Micro3D
+model textures; source pixels, dimensions and post-processing are unchanged.
+Mutable textures, alpha-cutouts and native M3G source textures are not
+reconstructed. Restarting the MIDlet applies profile changes consistently.
+
 ## Persistence and recovery
 
 - Preset source and installed-snapshot publication must not expose a partially written state as committed. Recover interrupted publication before consuming, replacing, renaming, deleting, or synchronizing the affected snapshot.
@@ -43,7 +71,7 @@ Runtime swaps never persist those temporary lens overrides to config or preset.
 
 ## Runtime storage
 
-- A selective app bundle exports only the chosen MIDlet-owned data and explicitly chosen referenced shared skin assets. Importing a configuration normalizes missing screen skin, virtual control skin, soundbank, and shader selections to the built-in defaults; an asset-name/ID collision may create a distinct imported asset without changing the existing shared asset. Runtime storage leases prohibit export/restore while any selected MIDlet is active.
+- A selective app bundle exports only chosen MIDlet-owned data, never global screen layout or virtual control skin files. Importing a configuration normalizes references to missing screen skins, virtual control skins, soundbanks, and shaders to built-in defaults without modifying existing shared assets. Runtime storage leases prohibit export/restore while any selected MIDlet is active.
 - A live runtime must hold an exclusive lifetime reservation for its installed storage identity that is meaningful across process concurrency and distinguishes an active owner from stale filesystem residue. The current implementation uses an OS-backed file lock.
 - A deleted or replaced installed identity must not let an old runtime gain authority over its replacement. Fresh allocation must avoid filesystem identities still reserved by active runtime state or surviving side data.
 - Runtime private/cache paths must remain scoped to the launched workdir/storage identity whose lifetime is reserved.

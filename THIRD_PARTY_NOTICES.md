@@ -6,6 +6,18 @@ The app-facing copy is `app/src/main/assets/licenses.html`, reachable from **Abo
 
 This ledger is a provenance/notice inventory for the current project state, not a legal certification. Release packaging should be re-audited when a bundled source component, runtime coordinate, or native binary package changes.
 
+## GLES post-processing shaders
+
+| Source | Local path | Provenance | Upstream license |
+| --- | --- | --- | --- |
+| CRT Classic | `app/src/main/assets/shaders/effects/crt-classic.fsh` | Independently authored for JL-Mod Plus using scanline and RGB-triad mathematics | Apache-2.0 project source |
+| LCD-style effect | `app/src/main/assets/shaders/effects/lcd.fsh` (original GLES2 implementation) | Concept informed by Gigaherz's LCD3x: `https://github.com/libretro/glsl-shaders/blob/master/handheld/shaders/lcd3x.glsl`; upstream source not copied | LCD3x explicitly declares public domain; JL-Mod Plus shader authored under Apache-2.0 |
+
+The formerly bundled GPL-marked CRT EasyMode adaptation has been removed,
+not relicensed. All bundled post-processing shaders are authored by the
+project under Apache-2.0. PPSSPP and Eden were consulted only for renderer
+design and UI architecture; no corresponding source was copied.
+
 ## Bundled and inherited source
 
 | Component | Local evidence / path | Traceable origin | License / redistribution note |
@@ -16,6 +28,22 @@ This ledger is a provenance/notice inventory for the current project state, not 
 | Nokia M3G / JSR-184 native reference code | `app/src/main/cpp/m3g/src/**`; source headers identify Nokia Corporation | Nokia M3G reference implementation lineage carried by JL-Mod | EPL-1.0; source is available in the public JL-Mod Plus repository at the local path shown |
 | SoniVox EAS | Vendored `app/src/main/cpp/sonivox/**`; local patches in `UPSTREAM.md`, upstream `NOTICE` and license retained | `https://github.com/EmbeddedSynth/sonivox`, v4.0.2 at `bb8668b91118318b0e6017aca59ce34e7bc93bf8`; Sonic Network Inc. / Android lineage | Apache-2.0 |
 | Mascot Capsule Micro3D implementation | `app/src/main/java/com/mascotcapsule/micro3d/**` and `app/src/main/cpp/micro3d/**`; current files identify JL-Mod/Yury Kharchenko/woesss authorship | JL-Mod implementation currently in this tree | Apache-2.0 where stated by the source files |
+
+## Bitmap upscaling algorithms
+
+- `app/src/main/java/io/github/h3nb/jlmodplus/graphics/MmpxScaler.java` adapts the MIT-licensed MMPX reference from
+  [ITotalJustice/mmpx](https://github.com/ITotalJustice/mmpx/tree/cce39009dbccfab8b70cb1c3bdcbf30a38ea351b)
+  (Morgan McGuire and Mara Gagiu, copyright 2020).
+  License: `app/src/main/assets/bitmap-scaler-licenses/MMPX-MIT.txt`.
+- `app/src/main/java/io/github/h3nb/jlmodplus/graphics/XbrFreeScaler.java` adapts
+  the MIT-licensed [xBR Lv3 shader by Hyllian](https://github.com/libretro/glsl-shaders/blob/dd8e4fa8e8ddca41e17280d85cc0a67fde125a37/xbr/shaders/xbr-lv3.glsl)
+  (Copyright 2011-2015 Hyllian), with CPU-oriented edge classification,
+  free-scale subpixel coverage, mirrored decisions and alpha-aware blending.
+  License: `app/src/main/assets/bitmap-scaler-licenses/xBR-MIT.txt`.
+  This does not use GPL xBRZ code or claim pixel-equivalent xBRZ output.
+  Historical commits retain the original Azahar-derived GPL xBRZ attribution.
+- Nearest-neighbor and bilinear use Android Canvas filtering. No external
+  interpolation code is bundled for those choices.
 
 ## AndroidSVG
 

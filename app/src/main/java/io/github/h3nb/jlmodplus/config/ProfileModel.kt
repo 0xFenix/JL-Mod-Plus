@@ -48,9 +48,12 @@ data class ProfileModel(
     @SerialName("ScreenGravity") @JvmField var screenGravity: Int = 0,
     @SerialName("ScreenPadding") @JvmField var screenPadding: Int = 0,
     @SerialName("ScreenFilter") @JvmField var screenFilter: Boolean = false,
+    @SerialName("InternalResolutionScale") @JvmField var internalResolutionScale: Int = 1,
+    @SerialName("BitmapUpscalingMode") @JvmField var bitmapUpscalingMode: Int = 0,
     @SerialName("ImmediateMode") @JvmField var immediateMode: Boolean = false,
     @SerialName("GraphicsMode") @JvmField var graphicsMode: Int = 0,
     @SerialName("Shader") @JvmField var shader: ShaderSelection? = null,
+    @SerialName("PostEffects") @JvmField var effects: List<EffectEntry> = emptyList(),
     @SerialName("ParallelRedrawScreen") @JvmField var parallelRedrawScreen: Boolean = false,
     @SerialName("ShowFps") @JvmField var showFps: Boolean = false,
     @SerialName("PerformanceOverlayMetrics") @JvmField var performanceOverlayMetrics: Int = PerformanceOverlayOptions.STANDARD,
@@ -99,7 +102,7 @@ data class ProfileModel(
     @SerialName("SkipResumeCall") @JvmField var skipResumeCall: Boolean = false,
 ) {
     companion object {
-        const val VERSION = 9
+        const val VERSION = 10
 
         @JvmStatic fun builtInThemePreferenceKey(configDir: File): String =
             "config_profile_builtin_theme:" + configDir.absolutePath
@@ -112,7 +115,8 @@ data class ProfileModel(
         @JvmStatic fun fresh(defaultSystemProperties: String): ProfileModel = ProfileModel(
             version = VERSION, screenWidth = 240, screenHeight = 320,
             screenBackgroundColor = 0xD0D0D0, screenScaleType = 1,
-            screenGravity = 1, screenScaleRatio = 100, graphicsMode = 1,
+            screenGravity = 1, screenScaleRatio = 100,
+            graphicsMode = 1, internalResolutionScale = 0,
             fontSizeSmall = 18, fontSizeMedium = 22, fontSizeLarge = 26, fontAA = true,
             showKeyboard = true, touchInput = true,
             vkButtonShape = VirtualKeyboard.SHAPE_ROUND_RECT, vkAlpha = 64,

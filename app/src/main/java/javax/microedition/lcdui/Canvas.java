@@ -62,7 +62,6 @@ import java.nio.IntBuffer;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import io.github.h3nb.jlmodplus.input.HostCommand;
 
@@ -98,13 +97,9 @@ import javax.microedition.shell.timing.PerformanceDiagnostics;
 import javax.microedition.shell.timing.PresentationMailbox;
 import javax.microedition.util.ContextHolder;
 
-import io.reactivex.Single;
-import io.reactivex.schedulers.Schedulers;
 import io.github.h3nb.jlmodplus.R;
 import io.github.h3nb.jlmodplus.config.BackgroundMode;
-import io.github.h3nb.jlmodplus.gles.GlslpAssets;
-import io.github.h3nb.jlmodplus.gles.GlslpPipeline;
-import io.github.h3nb.jlmodplus.gles.GlslpPreset;
+import io.github.h3nb.jlmodplus.gles.PostProcessRenderer;
 import io.github.h3nb.jlmodplus.ui.LegacyThemeColors;
 import io.github.h3nb.jlmodplus.ui.AppBackgroundColors;
 import io.github.h3nb.jlmodplus.config.ProfileModel;
@@ -163,11 +158,6 @@ public abstract class Canvas extends Displayable {
 	// Also read by the overlay sampler; guest/runtime code can change it while the surface is live.
 	private static volatile int fpsLimit;
 	private static boolean screenshotRawMode;
-	private static boolean usesGlslp() {
-		return settings != null && settings.graphicsMode == 1
-				&& settings.shader != null && (settings.shader.preset != null
-					|| settings.shader.customStages != null);
-	}
 	private static boolean timingOverlayEnabled;
 
 	private final Object bufferLock = new Object();
@@ -179,6 +169,30 @@ public abstract class Canvas extends Displayable {
 
 	protected int width, height;
 	protected int maxHeight;
+	/** Session density only decreases on resize or allocation failure; restart resets it. */
+	private volatile int internalResolutionScale = 1;
+	/** 0 until a canvas resolves its scale; 1 is a valid effective scale. */
+	private static volatile int lastInternalResolutionScale;
+
+	/** Mutable images may be created in guest static initializers before any Canvas exists. */
+	static int mutableImageScale(int width, int height) {
+		int scale = lastInternalResolutionScale;
+		if (scale == 0) {
+			ProfileModel profile = settings;
+			int requested = profile == null ? 1 : profile.internalResolutionScale;
+			scale = requested > 0 ? requested : 2;
+		}
+		scale = Math.max(1, Math.min(InternalResolution.MAX_SCALE, scale));
+		while (scale > 1 && !InternalResolution.fitsBitmap(width, height, scale)) {
+			scale--;
+		}
+		return scale;
+	}
+	private int lastReportedInternalScale;
+
+	protected final int getInternalResolutionScale() {
+		return internalResolutionScale;
+	}
 	private LinearLayout layout;
 	private SurfaceView innerView;
 	private FrameLayout videoHost;
@@ -203,7 +217,9 @@ public abstract class Canvas extends Displayable {
 	private long notifiedShowGeneration;
 	private volatile boolean visible;
 	private boolean sizeChangedCalled;
-	private static Image offscreen;
+	// One serialized guest paint runs at a time. A PaintEvent pins its snapshot
+	// while the UI may prepare the next scratch backing.
+	private static volatile Image offscreen;
 	private Image offscreenCopy;
 	private volatile long publishedFrameSequence;
 	private volatile FrameMetrics frameMetrics;
@@ -315,12 +331,13 @@ public abstract class Canvas extends Displayable {
 	}
 
 	public String getPerformanceRenderer() {
-		return switch (settings.graphicsMode) {
+		String backend = switch (settings.graphicsMode) {
 			case 1 -> "GLES";
 			case 2 -> "VIEW";
 			case 3 -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? "HW" : "SOFT";
 			default -> "SOFT";
 		};
+		return internalResolutionScale == 1 ? backend : backend + " " + internalResolutionScale + "x HD";
 	}
 
 	public static void setScreenshotRawMode(boolean enable) {
@@ -336,6 +353,9 @@ public abstract class Canvas extends Displayable {
 	public static void setSettings(ProfileModel settings, java.io.File shaderDirectory) {
 		Canvas.shaderDirectory = shaderDirectory;
 		Canvas.settings = settings;
+		lastInternalResolutionScale = 0;
+		Graphics.configureBitmapUpscaling(settings.bitmapUpscalingMode);
+		io.github.h3nb.jlmodplus.micro3d.TextureImpl.configureEnhancement(settings.bitmapUpscalingMode);
 		fpsLimit = settings.fpsLimit;
 		int mode = settings.graphicsMode;
 		parallelRedraw = (mode == 0 || mode == 3) && settings.parallelRedrawScreen;
@@ -487,7 +507,7 @@ public abstract class Canvas extends Displayable {
 			if (offscreenCopy != null) {
 				long sequence = publishedFrameSequence;
 				if (sequence != 0L && (ambientGeometryDirty || sequence != lastAmbientSampleSequence)) {
-					Rect bounds = offscreenCopy.getBounds();
+					Rect bounds = offscreenCopy.getPhysicalContentRect();
 					sampled = ambientSampler.captureGrid(offscreenCopy.getBitmap(), bounds.right,
 							bounds.bottom);
 					if (sampled) sampledSequence = sequence;
@@ -965,26 +985,36 @@ public abstract class Canvas extends Displayable {
 		}
 	}
 
-	public Single<Bitmap> getScreenshot() {
-		if (renderer != null && !screenshotRawMode) {
-			return renderer.takeScreenShot();
-		}
-		return Single.create(emitter -> {
-			Bitmap bitmap;
-			if (screenshotRawMode) {
-				synchronized (bufferLock) {
-					bitmap = Bitmap.createBitmap(offscreenCopy.getBitmap(), 0, 0,
-							offscreenCopy.getWidth(), offscreenCopy.getHeight());
-				}
-			} else {
-				bitmap = Bitmap.createBitmap(onWidth, onHeight, Bitmap.Config.ARGB_8888);
-				canvasWrapper.bind(new android.graphics.Canvas(bitmap));
-				synchronized (bufferLock) {
-					canvasWrapper.drawImage(offscreenCopy, new RectF(0, 0, onWidth, onHeight));
-				}
+	public boolean needsGlScreenshot() {
+		return renderer != null && !screenshotRawMode;
+	}
+
+	public Bitmap captureSoftwareScreenshot() {
+		if (screenshotRawMode) {
+			synchronized (bufferLock) {
+				return Bitmap.createBitmap(offscreenCopy.getBitmap(), 0, 0,
+						offscreenCopy.getWidth() * offscreenCopy.getPixelScale(),
+						offscreenCopy.getHeight() * offscreenCopy.getPixelScale());
 			}
-			emitter.onSuccess(bitmap);
-		});
+		}
+		Bitmap bitmap = Bitmap.createBitmap(onWidth, onHeight, Bitmap.Config.ARGB_8888);
+		canvasWrapper.bind(new android.graphics.Canvas(bitmap));
+		synchronized (bufferLock) {
+			canvasWrapper.drawImage(offscreenCopy, new RectF(0, 0, onWidth, onHeight));
+		}
+		return bitmap;
+	}
+
+	@FunctionalInterface
+	public interface GlScreenshotCallback {
+		void complete(int[] pixels, int width, int height, Throwable error);
+	}
+
+	/** Readback runs on the GL thread; pixel conversion and PNG encoding belong to the caller. */
+	public void captureGlScreenshot(GlScreenshotCallback callback) {
+		GLRenderer active = renderer;
+		if (active == null) throw new IllegalStateException("Screenshot renderer is unavailable");
+		active.capturePixels(callback);
 	}
 
 	private boolean checkSizeChanged() {
@@ -997,6 +1027,7 @@ public abstract class Canvas extends Displayable {
 	/**
 	 * Update the size and position of the virtual screen relative to the real one.
 	 */
+
 	public void updateSize() {
 		// We turn the sizes of the virtual screen into the sizes of the visible canvas.
 		// At the same time, we take into account that one or both virtual sizes can be less
@@ -1126,25 +1157,68 @@ public abstract class Canvas extends Displayable {
 		virtualScreen.set(onX, onY, onX + onWidth, onY + onHeight);
 
 		synchronized (bufferLock) {
-			if (offscreenCopy == null) {
-				offscreenCopy = Image.createImage(width, usesGlslp() ? height : maxHeight);
-			}
-			if (usesGlslp() && (offscreenCopy.getBitmap().getWidth() != width
-					|| offscreenCopy.getBitmap().getHeight() != height)) {
-				// GLSLP input must end at the actual content edge, not padded softbar pixels.
-				Image next = Image.createImage(width, height);
-				int overlapWidth = Math.min(width, offscreenCopy.getWidth());
-				int overlapHeight = Math.min(height, offscreenCopy.getHeight());
-				if (overlapWidth > 0 && overlapHeight > 0) {
-					Rect rect = new Rect(0, 0, overlapWidth, overlapHeight);
-					new android.graphics.Canvas(next.getBitmap()).drawBitmap(
-							offscreenCopy.getBitmap(), rect, rect, null);
+			int requested = offscreenCopy == null
+					? settings.internalResolutionScale : internalResolutionScale;
+			int maximum = InternalResolution.resolve(
+					requested, width, height, maxHeight, onWidth, onHeight);
+			int previousScale = internalResolutionScale;
+			int resolvedScale = InternalResolution.allocateWithFallback(maximum, scale -> {
+				boolean tight = scale > 1
+						|| (settings.effects != null && !settings.effects.isEmpty());
+				int physicalWidth = width * scale;
+				int physicalHeight = (tight ? height : maxHeight) * scale;
+				Image previous = offscreenCopy;
+				boolean replace = previous == null || previous.getPixelScale() != scale
+						|| previous.getWidth() != width || previous.getHeight() != height
+						|| previous.getBitmap().getWidth() < physicalWidth
+						|| previous.getBitmap().getHeight() < physicalHeight
+						|| (tight && (previous.getBitmap().getWidth() != physicalWidth
+								|| previous.getBitmap().getHeight() != physicalHeight));
+				Image next = replace
+						? Image.createDisplayTarget(width, tight ? height : maxHeight, scale)
+						: previous;
+				if (replace && previous != null) {
+					int overlapWidth = Math.min(width, previous.getWidth());
+					int overlapHeight = Math.min(height, previous.getHeight());
+					if (overlapWidth > 0 && overlapHeight > 0) {
+						new android.graphics.Canvas(next.getBitmap()).drawBitmap(
+								previous.getBitmap(),
+								new Rect(0, 0, overlapWidth * previous.getPixelScale(),
+										overlapHeight * previous.getPixelScale()),
+								new Rect(0, 0, overlapWidth * scale, overlapHeight * scale), null);
+					}
 				}
-				offscreenCopy = next;
-			} else if (offscreenCopy.getWidth() != width || offscreenCopy.getHeight() != height) {
-				offscreenCopy.setSize(width, height);
+				if (next.getWidth() != width || next.getHeight() != height) {
+					next.setSize(width, height);
+				}
+				Image nextPaint = offscreen;
+				if (nextPaint == null || nextPaint.getPixelScale() != scale
+						|| nextPaint.getBitmap().getWidth() < physicalWidth
+						|| nextPaint.getBitmap().getHeight() < maxHeight * scale) {
+					nextPaint = Image.createDisplayTarget(width, maxHeight, scale);
+				}
+
+				// All allocations precede the GameCanvas rebind. On failure
+				// the previous published and paint buffers remain available.
+				internalResolutionScale = scale;
+				int previousMutableScale = lastInternalResolutionScale;
+				lastInternalResolutionScale = scale;
+				try {
+					onDisplayTargetResized();
+					offscreenCopy = next;
+					offscreen = nextPaint;
+				} catch (OutOfMemoryError error) {
+					internalResolutionScale = previousScale;
+					lastInternalResolutionScale = previousMutableScale;
+					throw error;
+				}
+			});
+			int target = requested == 0 ? maximum : requested;
+			if (resolvedScale < target) {
+				reportInternalResolutionReduction(target, resolvedScale);
 			}
 		}
+
 		configureAmbientGeometry();
 		ViewHandler.postEvent(this::updateVideoDisplays);
 		if (overlay != null) {
@@ -1159,19 +1233,39 @@ public abstract class Canvas extends Displayable {
 			float gt = 1.0f - 2.0f * virtualScreen.top / displayHeight;
 			float gr = 2.0f * virtualScreen.right / displayWidth - 1.0f;
 			float gb = 1.0f - 2.0f * virtualScreen.bottom / displayHeight;
-			float th = (float) height / offscreenCopy.getBitmap().getHeight();
-			float tw = (float) width / offscreenCopy.getBitmap().getWidth();
+			float th = (float) (height * internalResolutionScale)
+					/ offscreenCopy.getBitmap().getHeight();
+			float tw = (float) (width * internalResolutionScale)
+					/ offscreenCopy.getBitmap().getWidth();
 			renderer.updateSize(gl, gt, gr, gb, th, tw);
 		}
 		repaintInternal();
 	}
 
-	/**
-	 * Convert the screen coordinates of the pointer into the virtual ones.
-	 *
-	 * @param x the pointer coordinate on the real screen
-	 * @return the corresponding pointer coordinate on the virtual screen
-	 */
+	private void reportInternalResolutionReduction(int requested, int actual) {
+		if (actual >= requested || lastReportedInternalScale == actual) return;
+		MicroActivity activity = ContextHolder.getActivity();
+		if (activity != null) {
+			lastReportedInternalScale = actual;
+			activity.showRenderingNotice(R.string.render_resolution_reduced, requested, actual);
+		}
+	}
+
+	/** Cap a session after a subclass fails to allocate its initial HD backing. */
+	protected final void capInternalResolution(int scale) {
+		int previous = internalResolutionScale;
+		if (scale < previous) {
+			internalResolutionScale = scale;
+			updateSize();
+			reportInternalResolutionReduction(previous, internalResolutionScale);
+		}
+	}
+
+	/** Called after the host-owned display target geometry changes. */
+	protected void onDisplayTargetResized() {
+	}
+
+	/** Convert the host pointer X coordinate into MIDlet units. */
 	private int convertPointerX(float x) {
 		return (int) ((x - onX) * width / onWidth);
 	}
@@ -1330,7 +1424,7 @@ public abstract class Canvas extends Displayable {
 			long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
 					? System.nanoTime() : 0L;
 			if (Thread.holdsLock(paintEvent)) {
-				offscreen.getSingleGraphics().flush(image, x, y, width, height);
+				paintEvent.paintingTarget.getSingleGraphics().flush(image, x, y, width, height);
 				if (copyStarted != 0L) {
 					diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
 				}
@@ -1725,7 +1819,47 @@ public abstract class Canvas extends Displayable {
 		private GLSurfaceView mView;
 		private final int[] bgTextureId = new int[1];
 		private ShaderProgram program;
-		private GlslpPipeline glslpPipeline;
+		private PostProcessRenderer effectRenderer;
+		private boolean effectFailureReported;
+		private int maxSourceTextureSide = Integer.MAX_VALUE;
+		private final TextureUploadRetry uploadRetry = new TextureUploadRetry();
+		private int lastUploadFailureNotice;
+
+		private void requestGpuRecovery(int textureWidth, int textureHeight,
+				int scale, int supportedScale, boolean exceedsTextureLimit,
+				long nowNanos, long expectedGeneration) {
+			boolean canReduce = supportedScale >= 1 && supportedScale < scale;
+			uploadRetry.recordFailure(textureWidth, textureHeight, scale,
+					!canReduce && !exceedsTextureLimit, nowNanos);
+			if (canReduce) {
+				mView.post(() -> capInternalResolution(supportedScale));
+				return;
+			}
+			int notice = exceedsTextureLimit ? R.string.render_gpu_texture_limit
+					: R.string.render_gpu_upload_failed;
+			MicroActivity activity = ContextHolder.getActivity();
+			if (activity != null && lastUploadFailureNotice != notice) {
+				lastUploadFailureNotice = notice;
+				activity.showRenderingNotice(notice);
+			}
+			if (!exceedsTextureLimit) {
+				mView.postDelayed(() -> {
+					if (innerView != mView || !visible) return;
+					if (presentationMailbox.invalidateHost(expectedGeneration) != 0L) {
+						requestFlushToScreen();
+					}
+				}, TextureUploadRetry.RETRY_DELAY_MILLIS);
+			}
+		}
+
+		private void reportEffectFailure() {
+			if (effectFailureReported) return;
+			MicroActivity activity = ContextHolder.getActivity();
+			if (activity != null) {
+				effectFailureReported = true;
+				activity.showRenderingNotice(R.string.render_effect_unavailable);
+			}
+		}
 		private int hostGlWidth, hostGlHeight;
 		private AmbientGlRenderer ambientRenderer;
 		private long lastUploadedSequence = Long.MIN_VALUE;
@@ -1736,7 +1870,7 @@ public abstract class Canvas extends Displayable {
 
 		@Override
 		public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-			program = new ShaderProgram(usesGlslp() ? null : settings.shader, shaderDirectory);
+			program = new ShaderProgram();
 			program.use();
 			int c = effectiveBackgroundArgb();
 			glClearColor((c >> 16 & 0xff) / 255.0f, (c >> 8 & 0xff) / 255.0f,
@@ -1745,19 +1879,19 @@ public abstract class Canvas extends Displayable {
 			glDisable(GL_DEPTH_TEST);
 			glDepthMask(false);
 			initTex();
-			glslpPipeline = null;
-			if (usesGlslp()) {
+			int[] textureLimit = new int[1];
+			glGetIntegerv(GL_MAX_TEXTURE_SIZE, textureLimit, 0);
+			maxSourceTextureSide = textureLimit[0] > 0
+					? textureLimit[0] : Integer.MAX_VALUE;
+			uploadRetry.reset();
+			lastUploadFailureNotice = 0;
+			effectRenderer = null;
+			if (settings.effects != null && !settings.effects.isEmpty()) {
 				try {
-					GlslpPreset preset = settings.shader.customStages != null
-							? GlslpAssets.loadCustom(settings.shader.customStages, shaderDirectory,
-								settings.shader.preset, settings.shader.customMode)
-							: GlslpAssets.load(settings.shader.preset, shaderDirectory);
-					preset = preset.withParameterOverrides(settings.shader.glslParameters);
-					String shaderSelection = settings.shader.preset;
-					glslpPipeline = new GlslpPipeline(preset, GlslpAssets.stockSource(),
-							path -> GlslpAssets.loadTextureBitmap(shaderSelection, shaderDirectory, path));
+					effectRenderer = new PostProcessRenderer(settings.effects, shaderDirectory);
 				} catch (Exception e) {
-					Log.w(TAG, "GLSLP unavailable; using identity renderer", e);
+					Log.w(TAG, "Post-processing effects unavailable; using identity renderer", e);
+					reportEffectFailure();
 				}
 				program.use();
 			}
@@ -1767,10 +1901,6 @@ public abstract class Canvas extends Displayable {
 			lastUploadedWidth = bitmap.getWidth();
 			lastUploadedHeight = bitmap.getHeight();
 			program.loadVbo(vbo, bitmap.getWidth(), bitmap.getHeight());
-			if (settings.shader != null && program.uSetting >= 0) {
-				float[] values = settings.shader.valuesArray();
-				if (values != null) glUniform4fv(program.uSetting, 1, values, 0);
-			}
 			if (isImmersiveMode()) {
 				ambientRenderer = new AmbientGlRenderer();
 				if (!ambientRenderer.initialize()) {
@@ -1830,8 +1960,8 @@ public abstract class Canvas extends Displayable {
 				synchronized (bufferLock) {
 					Image source = offscreenCopy;
 					Bitmap bitmap = source.getBitmap();
-					contentWidth = source.getWidth();
-					contentHeight = source.getHeight();
+					contentWidth = source.getWidth() * source.getPixelScale();
+					contentHeight = source.getHeight() * source.getPixelScale();
 					frameSequence = publishedFrameSequence;
 					publicationNanos = publishedFrameNanos;
 					if (diagnostics != null && diagnostics.enabled(
@@ -1839,36 +1969,75 @@ public abstract class Canvas extends Displayable {
 							| PerformanceDiagnostics.RENDER_CADENCE)) {
 						consumptionNanos = System.nanoTime();
 					}
+					int bitmapWidth = bitmap.getWidth();
+					int bitmapHeight = bitmap.getHeight();
+					int scale = source.getPixelScale();
+					if (uploadRetry.shouldSkip(bitmapWidth, bitmapHeight, scale, nowNs)) {
+						presented = true;
+						return;
+					}
+					if (bitmapWidth > maxSourceTextureSide || bitmapHeight > maxSourceTextureSide) {
+						int supported = Math.min(maxSourceTextureSide / Math.max(1, Canvas.this.width),
+								maxSourceTextureSide / Math.max(1, Canvas.this.maxHeight));
+						requestGpuRecovery(bitmapWidth, bitmapHeight, scale, supported, true,
+								nowNs, presentationGeneration);
+						presented = true;
+						return;
+					}
 					if (!textureValid || frameSequence != lastUploadedSequence
-							|| bitmap.getWidth() != lastUploadedWidth
-							|| bitmap.getHeight() != lastUploadedHeight) {
-						GLUtils.texImage2D(GL_TEXTURE_2D, 0, bitmap, 0);
+							|| bitmapWidth != lastUploadedWidth
+							|| bitmapHeight != lastUploadedHeight) {
+						try {
+							GLUtils.texImage2D(GL_TEXTURE_2D, 0, bitmap, 0);
+							int error = glGetError();
+							if (error != GL_NO_ERROR) {
+								Log.w(TAG, "Game texture upload failed: GL error " + error);
+								requestGpuRecovery(bitmapWidth, bitmapHeight, scale, scale - 1, false,
+										nowNs, presentationGeneration);
+								presented = true;
+								return;
+							}
+						} catch (RuntimeException | OutOfMemoryError error) {
+							Log.w(TAG, "Game texture upload failed", error);
+							requestGpuRecovery(bitmapWidth, bitmapHeight, scale, scale - 1, false,
+										nowNs, presentationGeneration);
+							presented = true;
+							return;
+						}
+						uploadRetry.reset();
 						textureValid = true;
 						lastUploadedSequence = frameSequence;
-						lastUploadedWidth = bitmap.getWidth();
-						lastUploadedHeight = bitmap.getHeight();
+						lastUploadedWidth = bitmapWidth;
+						lastUploadedHeight = bitmapHeight;
 					}
 				}
-				boolean glslpDrawn = false;
+				boolean effectDrawn = false;
 				synchronized (vbo) {
 					program.loadVbo(vbo, lastUploadedWidth, lastUploadedHeight);
-					if (glslpPipeline != null) {
+					if (effectRenderer != null) {
 						try {
-							glslpPipeline.draw(bgTextureId[0], vbo, lastUploadedWidth,
-									lastUploadedHeight, contentWidth, contentHeight,
-									hostGlWidth, hostGlHeight, frameSequence,
+							effectDrawn = effectRenderer.draw(bgTextureId[0], vbo,
+									lastUploadedWidth, lastUploadedHeight, contentWidth, contentHeight,
+									Canvas.this.width, Canvas.this.height, hostGlWidth, hostGlHeight,
 									settings.screenFilter ? GL_LINEAR : GL_NEAREST);
-							glslpDrawn = true;
 						} catch (RuntimeException e) {
-							Log.w(TAG, "GLSLP draw failed; using identity renderer", e);
-							glslpPipeline.release();
-							glslpPipeline = null;
+							Log.w(TAG, "Post-processing failed; using identity renderer", e);
+							reportEffectFailure();
+							effectRenderer.release();
+							effectRenderer = null;
 						}
 						program.use();
+						glActiveTexture(GL_TEXTURE0);
+						glBindTexture(GL_TEXTURE_2D, bgTextureId[0]);
 						program.loadVbo(vbo, lastUploadedWidth, lastUploadedHeight);
 					}
 				}
-				if (!glslpDrawn) glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+				if (!effectDrawn) {
+					int sample = settings.screenFilter ? GL_LINEAR : GL_NEAREST;
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sample);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sample);
+					glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+				}
 				presented = true;
 				if (metrics != null) {
 					metrics.recordRender(frameSequence);
@@ -1942,39 +2111,37 @@ public abstract class Canvas extends Displayable {
 			mView.onResume();
 		}
 
-		private Single<Bitmap> takeScreenShot() {
-			return Single.<int[]>create(emitter -> {
-						IntBuffer buf = IntBuffer.allocate(onWidth * onHeight);
-						mView.requestRender();
-						mView.queueEvent(() -> {
-							try {
-								glReadPixels(displayWidth - onWidth - onX, displayHeight - onHeight - onY, onWidth, onHeight, GL_RGBA, GL_UNSIGNED_BYTE, buf);
-								int error = glGetError();
-								if (error != GL_NO_ERROR) {
-									emitter.onError(new RuntimeException(GLU.gluErrorString(error)));
-								} else {
-									emitter.onSuccess(buf.array());
-								}
-							} catch (Throwable e) {
-								emitter.onError(e);
-							}
-						});
-					}).timeout(3, TimeUnit.SECONDS)
-					.subscribeOn(Schedulers.computation())
-					.observeOn(Schedulers.computation())
-					.map(pixels -> {
-						for (int i = 0, len = pixels.length; i < len; i++) {
-							int p = pixels[i];
-							pixels[i] = (p & 0xff00ff00) | ((p & 0xff0000) >> 16) | ((p & 0xff) << 16);
-						}
-						return Bitmap.createBitmap(pixels, onWidth * (onHeight - 1), -onWidth, onWidth, onHeight, Bitmap.Config.ARGB_8888);
-					});
+		private void capturePixels(GlScreenshotCallback callback) {
+			int width = onWidth;
+			int height = onHeight;
+			IntBuffer buf = IntBuffer.allocate(width * height);
+			mView.requestRender();
+			mView.queueEvent(() -> {
+				int[] pixels = null;
+				Throwable failure = null;
+				try {
+					glReadPixels(displayWidth - width - onX, displayHeight - height - onY,
+							width, height, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+					int error = glGetError();
+					if (error != GL_NO_ERROR) {
+						failure = new RuntimeException(GLU.gluErrorString(error));
+					} else {
+						pixels = buf.array();
+					}
+				} catch (Throwable error) {
+					failure = error;
+				}
+				callback.complete(pixels, width, height, failure);
+			});
 		}
+
 	}
 
 	private class PaintEvent extends Event implements EventFilter {
 		final Rect clip = new Rect();
 
+		// Valid only while this thread holds the PaintEvent monitor.
+		Image paintingTarget;
 		boolean isPending;
 
 		private int enqueued = 0;
@@ -2000,44 +2167,57 @@ public abstract class Canvas extends Displayable {
 			if (l >= r || t >= b) {
 				return;
 			}
-			if (offscreen == null) {
-				offscreen = Image.createImage(width, maxHeight);
+			int paintWidth = width;
+			int paintHeight = height;
+			int paintMaxHeight = maxHeight;
+			int paintScale = internalResolutionScale;
+			Image snapshot = offscreen;
+			if (snapshot == null || snapshot.getPixelScale() != paintScale
+					|| snapshot.getBitmap().getWidth() < paintWidth * paintScale
+					|| snapshot.getBitmap().getHeight() < paintMaxHeight * paintScale) {
+				snapshot = Image.createDisplayTarget(paintWidth, paintMaxHeight, paintScale);
+				offscreen = snapshot;
 			}
-			if (offscreen.getWidth() != width || offscreen.getHeight() != height) {
-				offscreen.setSize(width, height);
+			if (snapshot.getWidth() != paintWidth || snapshot.getHeight() != paintHeight) {
+				snapshot.setSize(paintWidth, paintHeight);
 			}
-			Graphics g = offscreen.getSingleGraphics();
-			g.reset(l, t, r, b);
-			boolean enteredGuest = MidletThread.enterGuestExecution();
-			PerformanceDiagnostics diagnostics = performanceDiagnostics;
-			long paintStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.PAINT)
-					? System.nanoTime() : 0L;
+			paintingTarget = snapshot;
 			try {
-				paint(g);
-			} catch (Exception e) {
-				Log.e(TAG, "Error in paint()", e);
-			} catch (Error fatal) {
-				MidletThread.markEscapingGuestFailure(fatal);
-				throw fatal;
-			} finally {
-				if (paintStarted != 0L) {
-					diagnostics.recordDuration(PerformanceDiagnostics.PAINT, paintStarted, System.nanoTime());
-				}
-				MidletThread.exitGuestExecution(enteredGuest);
-			}
-			synchronized (bufferLock) {
-				long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
+				Graphics g = snapshot.getSingleGraphics();
+				g.reset(l, t, r, b);
+				boolean enteredGuest = MidletThread.enterGuestExecution();
+				PerformanceDiagnostics diagnostics = performanceDiagnostics;
+				long paintStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.PAINT)
 						? System.nanoTime() : 0L;
-				offscreen.copyTo(offscreenCopy);
-				if (copyStarted != 0L) {
-					diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
+				try {
+					paint(g);
+				} catch (Exception e) {
+					Log.e(TAG, "Error in paint()", e);
+				} catch (Error fatal) {
+					MidletThread.markEscapingGuestFailure(fatal);
+					throw fatal;
+				} finally {
+					if (paintStarted != 0L) {
+						diagnostics.recordDuration(PerformanceDiagnostics.PAINT, paintStarted, System.nanoTime());
+					}
+					MidletThread.exitGuestExecution(enteredGuest);
 				}
-				publishFrameLocked();
+				synchronized (bufferLock) {
+					long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
+							? System.nanoTime() : 0L;
+					snapshot.copyTo(offscreenCopy);
+					if (copyStarted != 0L) {
+						diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
+					}
+					publishFrameLocked();
+				}
+				if (surface == null || !surface.isValid()) {
+					return;
+				}
+				requestFlushToScreen();
+			} finally {
+				paintingTarget = null;
 			}
-			if (surface == null || !surface.isValid()) {
-				return;
-			}
-			requestFlushToScreen();
 		}
 
 		@Override

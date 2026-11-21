@@ -56,8 +56,8 @@ public final class ConfigFormState {
 	public final String screenBackgroundImage;
 	@Nullable
 	public final String soundBank;
-	@Nullable
-	public final ShaderInfo shader;
+	/** Ordered per-game GLES post-processing effect drafts. */
+	public final List<EffectEntry> effects;
 	/** Opaque controller subtree; known controller editors merge into it instead of dropping fields. */
 	@Nullable
 	public final JsonElement controller;
@@ -67,6 +67,8 @@ public final class ConfigFormState {
 	public final int screenScaleType;
 	public final int screenGravity;
 	public final int graphicsMode;
+	public final int internalResolutionScale;
+	public final int bitmapUpscalingMode;
 	public final int keyCodesLayout;
 	public final int vkButtonShape;
 	public final int vkAlpha;
@@ -113,13 +115,15 @@ public final class ConfigFormState {
 		systemProperties = builder.systemProperties;
 		screenBackgroundImage = builder.screenBackgroundImage;
 		soundBank = builder.soundBank;
-		shader = copyShader(builder.shader);
+		effects = ProfileJson.ownedEffects(builder.effects);
 		controller = builder.controller;
 		orientation = builder.orientation;
 		screenBackgroundMode = BackgroundMode.sanitize(builder.screenBackgroundMode);
 		screenScaleType = builder.screenScaleType;
 		screenGravity = builder.screenGravity;
 		graphicsMode = builder.graphicsMode;
+		internalResolutionScale = Math.max(0, Math.min(10, builder.internalResolutionScale));
+		bitmapUpscalingMode = Math.max(0, Math.min(3, builder.bitmapUpscalingMode));
 		keyCodesLayout = builder.keyCodesLayout;
 		vkButtonShape = builder.vkButtonShape;
 		vkAlpha = builder.vkAlpha;
@@ -172,8 +176,10 @@ public final class ConfigFormState {
 				.forceFullscreen(params.forceFullscreen)
 				.allowDisplayCutout(params.allowDisplayCutout)
 				.graphicsMode(params.graphicsMode)
-				.shader(params.shader == null ? null : params.shader.toInfo())
-				.controller(params.controller)
+				.internalResolutionScale(params.internalResolutionScale)
+				.bitmapUpscalingMode(params.bitmapUpscalingMode)
+				.effects(params.effects)
+					.controller(params.controller)
 				.showFps(params.showFps)
 				.performanceOverlayMetrics(params.performanceOverlayMetrics)
 				.performanceOverlayPosition(params.performanceOverlayPosition)
@@ -224,7 +230,10 @@ public final class ConfigFormState {
 		params.screenFilter = screenFilter;
 		params.immediateMode = immediateMode;
 		params.graphicsMode = graphicsMode;
-		params.shader = ShaderSelection.fromInfo(shader);
+		params.internalResolutionScale = internalResolutionScale;
+		params.bitmapUpscalingMode = bitmapUpscalingMode;
+		params.shader = null;
+		params.effects = ProfileJson.ownedEffects(effects);
 		params.parallelRedrawScreen = parallelRedrawScreen;
 		params.forceFullscreen = forceFullscreen;
 		params.allowDisplayCutout = allowDisplayCutout;
@@ -263,10 +272,6 @@ public final class ConfigFormState {
 		params.controller = controller;
 		SystemPropertyLayers.applyEditorText(params, systemProperties);
 		return params;
-	}
-
-	private static ShaderInfo copyShader(ShaderInfo shader) {
-		return shader == null ? null : shader.copyForDialog();
 	}
 
 	public static String normalizeSystemProperties(String text) {
@@ -335,13 +340,15 @@ public final class ConfigFormState {
 		private String systemProperties = "";
 		private String screenBackgroundImage;
 		private String soundBank;
-		private ShaderInfo shader;
+		private List<EffectEntry> effects = Collections.emptyList();
 		private JsonElement controller;
 		private int orientation;
 		private int screenBackgroundMode = BackgroundMode.CUSTOM;
 		private int screenScaleType;
 		private int screenGravity;
 		private int graphicsMode;
+		private int internalResolutionScale = 1;
+		private int bitmapUpscalingMode;
 		private int keyCodesLayout;
 		private int vkButtonShape;
 		private int vkAlpha;
@@ -389,13 +396,15 @@ public final class ConfigFormState {
 			systemProperties = source.systemProperties;
 			screenBackgroundImage = source.screenBackgroundImage;
 			soundBank = source.soundBank;
-			shader = source.shader;
+			effects = source.effects;
 			controller = source.controller;
 			orientation = source.orientation;
 			screenBackgroundMode = source.screenBackgroundMode;
 			screenScaleType = source.screenScaleType;
 			screenGravity = source.screenGravity;
 			graphicsMode = source.graphicsMode;
+			internalResolutionScale = source.internalResolutionScale;
+			bitmapUpscalingMode = source.bitmapUpscalingMode;
 			keyCodesLayout = source.keyCodesLayout;
 			vkButtonShape = source.vkButtonShape;
 			vkAlpha = source.vkAlpha;
@@ -440,7 +449,10 @@ public final class ConfigFormState {
 		public Builder systemProperties(String value) { systemProperties = value; return this; }
 		public Builder screenBackgroundImage(String value) { screenBackgroundImage = value; return this; }
 		public Builder soundBank(String value) { soundBank = value; return this; }
-		public Builder shader(ShaderInfo value) { shader = value; return this; }
+		public Builder effects(List<EffectEntry> entries) {
+			effects = entries == null ? Collections.emptyList() : new ArrayList<>(entries);
+			return this;
+		}
 		public Builder controller(JsonElement value) {
 			controller = ProfileJson.copyJson(value);
 			return this;
@@ -450,6 +462,8 @@ public final class ConfigFormState {
 		public Builder screenScaleType(int value) { screenScaleType = value; return this; }
 		public Builder screenGravity(int value) { screenGravity = value; return this; }
 		public Builder graphicsMode(int value) { graphicsMode = value; return this; }
+		public Builder internalResolutionScale(int value) { internalResolutionScale = value; return this; }
+		public Builder bitmapUpscalingMode(int value) { bitmapUpscalingMode = value; return this; }
 		public Builder keyCodesLayout(int value) { keyCodesLayout = value; return this; }
 		public Builder vkButtonShape(int value) { vkButtonShape = value; return this; }
 		public Builder vkAlpha(int value) { vkAlpha = value; return this; }

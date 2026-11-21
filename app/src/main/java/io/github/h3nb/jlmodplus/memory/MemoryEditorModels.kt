@@ -191,6 +191,7 @@ internal data class MemoryWatchRow(
     val label: String = "",
     val freezeMode: Int = -1,
     val freezePaused: Boolean = false,
+    val savedSourceId: String? = null,
     val source: MemoryCandidateSource = MemoryCandidateSource.UNKNOWN,
 )
 
@@ -206,7 +207,7 @@ internal data class MemoryResultRow(
     val source: MemoryCandidateSource = MemoryCandidateSource.UNKNOWN,
 ) {
     val aliasTypes: List<Int>
-        get() = (MemoryEngineContract.TYPE_BYTE..MemoryEngineContract.TYPE_DOUBLE)
+        get() = (MemoryEngineContract.TYPE_BYTE..MemoryEngineContract.TYPE_BOOLEAN)
             .filter { aliasMask and (1 shl it) != 0 }
 }
 
@@ -297,9 +298,11 @@ internal object MemoryWatchPageParser {
         val labels = bundle.getStringArray(MemoryEngineContract.KEY_WATCH_LABELS) ?: return emptyList()
         val freezeModes = bundle.getIntArray(MemoryEngineContract.KEY_WATCH_FREEZE_MODES) ?: return emptyList()
         val freezePaused = bundle.getBooleanArray(MemoryEngineContract.KEY_WATCH_FREEZE_PAUSED) ?: return emptyList()
+        val savedSourceIds = bundle.getStringArray(MemoryEngineContract.KEY_WATCH_SAVED_SOURCE_IDS)
+            ?: arrayOfNulls(ids.size)
         return parse(
             ids, values, initialValues, previousValues, addresses, types, states, relocations,
-            labels, freezeModes, freezePaused, parseCandidateSources(bundle, ids.size),
+            labels, freezeModes, freezePaused, parseCandidateSources(bundle, ids.size), savedSourceIds,
         )
     }
 
@@ -316,11 +319,12 @@ internal object MemoryWatchPageParser {
         freezeModes: IntArray,
         freezePaused: BooleanArray,
         sources: List<MemoryCandidateSource> = List(ids.size) { MemoryCandidateSource.UNKNOWN },
+        savedSourceIds: Array<String?> = arrayOfNulls(ids.size),
     ): List<MemoryWatchRow> {
         if (listOf(
                 values.size, initialValues.size, previousValues.size, addresses.size, types.size,
                 states.size, relocations.size, labels.size, freezeModes.size, freezePaused.size,
-                sources.size,
+                sources.size, savedSourceIds.size,
             ).any { it != ids.size }) {
             return emptyList()
         }
@@ -341,6 +345,7 @@ internal object MemoryWatchPageParser {
                     label = labels[index],
                     freezeMode = freezeModes[index],
                     freezePaused = freezePaused[index],
+                    savedSourceId = savedSourceIds[index]?.takeIf(String::isNotBlank),
                     source = sources[index],
                 )
             }
@@ -348,7 +353,7 @@ internal object MemoryWatchPageParser {
     }
 }
 
-internal enum class MemoryEditorTab { RESULTS, WATCH, SAVED, INSPECTOR }
+internal enum class MemoryEditorTab { RESULTS, VARIABLES, SCRIPTS, INSPECTOR }
 
 /** Session-only navigation; Inspector always re-reads a checked target after reopening. */
 internal data class MemoryEditorInspectorTarget(
@@ -365,22 +370,40 @@ internal data class MemoryEditorNavigationState(
 ) {
     val underlyingTab: MemoryEditorTab
         get() = if (tab != MemoryEditorTab.INSPECTOR) tab else when {
-            inspectorTarget?.savedId != null -> MemoryEditorTab.SAVED
-            inspectorTarget?.watchAnchor == true -> MemoryEditorTab.WATCH
+            inspectorTarget?.savedId != null || inspectorTarget?.watchAnchor == true -> MemoryEditorTab.VARIABLES
             else -> MemoryEditorTab.RESULTS
         }
 }
+
+/** The exact document allows a reopened editor to resolve an interrupted Save from the catalog. */
+internal data class MemoryEditorPendingScriptSave(val id: String, val document: String)
+
+/** Transient per-MIDlet workspace. Minimize must not turn an editable draft into a new session. */
+internal data class MemoryEditorScriptWorkspace(
+    val selectedId: String? = null,
+    val editing: Boolean = false,
+    val replacingId: String? = null,
+    val initialText: String = "",
+    val text: String = "",
+    val detailId: String? = null,
+    val detailInputs: Map<String, String> = emptyMap(),
+    val detailFreeze: Boolean = false,
+    val builder: MemoryScriptBuilderDraft? = null,
+    val pendingSave: MemoryEditorPendingScriptSave? = null,
+)
 
 /** Held only in :memory_engine memory. A different MIDlet token starts with Search. */
 internal object MemoryEditorSessionNavigation {
     private var runtimeToken = 0L
     private var last = MemoryEditorNavigationState()
+    private var scriptWorkspace = MemoryEditorScriptWorkspace()
 
     @Synchronized fun read(token: Long): MemoryEditorNavigationState {
         if (token == 0L) return MemoryEditorNavigationState()
         if (runtimeToken != token) {
             runtimeToken = token
             last = MemoryEditorNavigationState()
+            scriptWorkspace = MemoryEditorScriptWorkspace()
         }
         return last
     }
@@ -389,9 +412,89 @@ internal object MemoryEditorSessionNavigation {
         // Ignore late closes from an older Activity after a new session has opened.
         if (token != 0L && token == runtimeToken) last = navigation
     }
+
+    @Synchronized fun script(token: Long): MemoryEditorScriptWorkspace =
+        if (token != 0L && token == runtimeToken) scriptWorkspace
+        else MemoryEditorScriptWorkspace()
+
+    @Synchronized fun rememberScript(token: Long, update: MemoryEditorScriptWorkspace) {
+        if (token != 0L && token == runtimeToken) {
+            // Script selection/editor changes must not overwrite detail-input changes.
+            scriptWorkspace = scriptWorkspace.copy(
+                selectedId = update.selectedId,
+                editing = update.editing,
+                replacingId = update.replacingId,
+                initialText = update.initialText,
+                text = update.text,
+                builder = update.builder,
+            )
+        }
+    }
+
+    @Synchronized fun rememberPendingScriptSave(token: Long, pending: MemoryEditorPendingScriptSave?) {
+        if (token != 0L && token == runtimeToken) {
+            scriptWorkspace = scriptWorkspace.copy(pendingSave = pending)
+        }
+    }
+
+    @Synchronized fun rememberScriptDetail(
+        token: Long, id: String?, values: Map<String, String>, freeze: Boolean,
+    ) {
+        if (token != 0L && token == runtimeToken) {
+            scriptWorkspace = scriptWorkspace.copy(
+                detailId = id, detailInputs = values.toMap(), detailFreeze = freeze,
+            )
+        }
+    }
 }
 
-internal data class SavedVariableRow(val id: String, val label: String, val path: String)
+internal data class SavedVariableRow(
+    val id: String, val label: String, val path: String, val hasLocator: Boolean = false,
+)
+internal data class MemoryScriptRow(val id: String, val name: String, val document: String)
+internal data class MemoryRecipeReadValue(
+    val name: String, val value: String, val snapshotTicket: String? = null,
+)
+
+/**
+ * One visible List entry. A Saved definition and its session Watch remain independent
+ * backend records. Fold them only when the engine explicitly supplies their relation.
+ */
+internal data class MemoryListEntry(
+    val saved: SavedVariableRow? = null,
+    val watch: MemoryWatchRow? = null,
+) {
+    init { require(saved != null || watch != null) }
+    val key: String get() = saved?.let { "saved:${it.id}" } ?: "watch:${watch!!.id}"
+    val label: String get() = saved?.label ?: watch?.label.orEmpty()
+}
+
+/** Never infer a shared target from matching names, values or diagnostic paths. */
+internal fun memoryListEntries(
+    saved: List<SavedVariableRow>,
+    watches: List<MemoryWatchRow>,
+): List<MemoryListEntry> {
+    val savedIds = saved.mapTo(HashSet()) { it.id }
+    val linked = watches.filter { it.savedSourceId in savedIds }
+        .associateBy { it.savedSourceId }
+    return (saved.map { MemoryListEntry(saved = it, watch = linked[it.id]) } +
+        // Keep legacy orphan Freezes reachable for manual stopping on an in-place upgrade.
+        watches.filter { it.savedSourceId !in savedIds && it.freezeMode >= 0 }
+            .map { MemoryListEntry(watch = it) })
+        .sortedWith(compareBy({ it.label.lowercase() }, { it.key }))
+}
+
+
+internal data class MemoryListRemovalOutcome(val message: String, val isError: Boolean)
+
+/** Saved and Watch commit independently, but a mixed Remove has one reported outcome. */
+internal fun memoryListRemovalOutcome(savedError: String?, watchError: String?): MemoryListRemovalOutcome {
+    val saved = if (savedError == null) "Bookmark removed"
+        else "Bookmark removal failed: $savedError"
+    val watch = if (watchError == null) "Session tracking removed"
+        else "Session tracking removal failed: $watchError"
+    return MemoryListRemovalOutcome("$saved; $watch", savedError != null || watchError != null)
+}
 
 internal enum class SavedVariableStatus { RESOLVED, REBOUND, NOT_READY, CHANGED, INCOMPATIBLE, FAILED }
 
@@ -453,11 +556,14 @@ internal data class MemoryEditorUiState(
     val watches: List<MemoryWatchRow> = emptyList(),
     val savedVariables: List<SavedVariableRow> = emptyList(),
     val savedValues: Map<String, SavedVariableRuntimeValue> = emptyMap(),
-    val savedSelection: Set<String> = emptySet(),
     val savedError: String? = null,
     val selected: Set<Long> = emptySet(),
-    val watchTab: Boolean = false,
-    val savedTab: Boolean = false,
+    val variablesTab: Boolean = false,
+    val scriptsTab: Boolean = false,
+    val scripts: List<MemoryScriptRow> = emptyList(),
+    val scriptsLoaded: Boolean = false,
+    val scriptsError: String? = null,
+    val scriptActiveFreezes: List<Pair<String, String>> = emptyList(),
     val message: String? = null,
     val messageIsError: Boolean = false,
     val searchMode: MemorySearchMode = MemorySearchMode.KNOWN,
@@ -475,8 +581,8 @@ internal data class MemoryEditorUiState(
     val activeTab: MemoryEditorTab
         get() = when {
             inspectorLoading || inspector != null -> MemoryEditorTab.INSPECTOR
-            savedTab -> MemoryEditorTab.SAVED
-            watchTab -> MemoryEditorTab.WATCH
+            scriptsTab -> MemoryEditorTab.SCRIPTS
+            variablesTab -> MemoryEditorTab.VARIABLES
             else -> MemoryEditorTab.RESULTS
         }
 }
@@ -496,19 +602,27 @@ internal interface MemoryEditorActions {
     fun groupSearch(type: Int, values: Array<String>)
     fun undo()
     fun refresh()
-    fun setWatchTab(watch: Boolean)
-    fun setSavedTab() = Unit
+    fun setVariablesTab(variables: Boolean)
+    fun setScriptsTab() = Unit
+    fun refreshMemoryScripts() = Unit
+    fun captureMemoryScriptBuilderActions(bookmarks: List<SavedVariableRow>): List<MemoryScriptBuilderAction> =
+        error("Script Builder unavailable")
+    fun generateMemoryScript(
+        draft: MemoryScriptBuilderDraft, onReady: (String?, String?) -> Unit,
+    ) = onReady(null, "Script Builder unavailable")
+    fun restoreMemoryScriptBuilder(document: String): MemoryScriptBuilderDraft? = null
+    fun saveMemoryScript(document: String, replacingId: String?,
+                         onComplete: (Boolean) -> Unit) = onComplete(false)
+    fun deleteMemoryScript(id: String, onComplete: (Boolean) -> Unit) = onComplete(false)
     fun refreshSavedVariables() = Unit
     fun saveSelectedVariable(name: String) = Unit
     fun beginSavedEdit(id: String, onReady: (SavedVariableRuntimeValue?) -> Unit) = Unit
     fun endSavedEdit() = Unit
     fun editSavedVariable(id: String, replacement: String, freezeAfter: Boolean = false) = Unit
     fun renameSavedVariable(id: String, name: String) = Unit
+    fun relinkBookmark(id: String, candidateId: Long, expectedRevision: Long) = Unit
     fun deleteSavedVariable(id: String) = Unit
     fun deleteSavedVariables(ids: List<String>) = Unit
-    fun toggleSavedSelection(id: String) = Unit
-    fun selectAllSaved() = Unit
-    fun clearSavedSelection() = Unit
     fun inspectSavedVariable(id: String) = Unit
     fun saveInspectorVariable(name: String, relativeOffset: Int) = Unit
     fun watchInspectorVariable(relativeOffset: Int) = Unit
@@ -557,6 +671,29 @@ internal interface MemoryEditorActions {
     fun labelWatch(id: Long, label: String)
     fun freezeSelected(mode: Int, first: String, second: String)
     fun clearFreezeSelected()
+    fun clearSavedWatchFreeze(savedId: String) = Unit
+    fun keepListWatch(id: Long, name: String) = Unit
+    fun unkeepListSaved(id: String) = Unit
+    fun freezeListSaved(id: String, expectedValue: String) = Unit
+    fun setListWatchFreeze(id: Long, expectedValue: String, freeze: Boolean) = Unit
+    fun removeListEntries(savedIds: List<String>, watchIds: List<Long>) = Unit
+    /** Recipes share one bounded execution format; advanced structure stays out of the UI. */
+    fun runMemoryRecipe(document: String, inputs: Map<String, String>,
+                        freeze: Boolean, preview: Boolean) = Unit
+    fun runMemoryRecipeChecked(
+        document: String, inputs: Map<String, String>, freeze: Boolean,
+        expectedValues: List<String>?, snapshotTicket: String? = null,
+        onComplete: (Boolean) -> Unit,
+    ) = onComplete(false)
+    fun readCurrentMemoryRecipe(
+        document: String, inputs: Map<String, String>,
+        onReady: (List<MemoryRecipeReadValue>?, String?) -> Unit,
+    ) = onReady(null, "Memory Recipe reading unavailable")
+    fun generateSimpleMemoryRecipe(savedId: String, value: String, freeze: Boolean): String? =
+        "Automation is unavailable"
+    fun clearMemoryRecipeFreeze(recipeId: String) = Unit
+    fun listActiveMemoryRecipeFreezes(onReady: (List<Pair<String, String>>) -> Unit) =
+        onReady(emptyList())
     fun copySelected(locations: Boolean)
     fun previousPage()
     fun nextPage()

@@ -530,7 +530,26 @@ public class Display {
 		return queueFor(tabForCurrentThreadOrSelected());
 	}
 
+
 	public void setCurrent(Displayable displayable) {
+		setCurrentInternal(displayable, null, 0L);
+	}
+
+	/**
+	 * The default Alert listener may advance only the presentation it actually dismissed.
+	 * Validation and screen ownership change share stateLock; a separate getCurrent() check
+	 * would race with guest setCurrent calls.
+	 */
+	void completeAlertDismissal(Alert expected, long expectedGeneration, Displayable target) {
+		if (target == null) {
+			restoreAfterAlert(expected, expectedGeneration);
+		} else {
+			setCurrentInternal(target, expected, expectedGeneration);
+		}
+	}
+
+	private void setCurrentInternal(Displayable displayable, Alert expected,
+			long expectedGeneration) {
 		if (displayable == null) {
 			// MIDP defines null as an AMS background request; guest current state is retained.
 			MidletThread.requestBackground();
@@ -541,6 +560,8 @@ public class Display {
 		Alert alert = null;
 		boolean showCanvasAfterClosingAlert;
 		synchronized (stateLock) {
+			if (expected != null && (this.current != expected
+					|| currentRequestGeneration.get() != expectedGeneration)) return;
 			previous = this.current;
 			if (previous instanceof Alert && displayable instanceof Alert) {
 				throw new IllegalArgumentException();
@@ -640,7 +661,7 @@ public class Display {
 			if (current != expectedAlert || currentRequestGeneration.get() != requestGeneration) {
 				return;
 			}
-			AlertDialog alertDialog = expectedAlert.prepareDialog();
+			AlertDialog alertDialog = expectedAlert.prepareDialog(requestGeneration);
 			if (current != expectedAlert || currentRequestGeneration.get() != requestGeneration) {
 				expectedAlert.close();
 				return;
@@ -693,11 +714,11 @@ public class Display {
 	 * MIDP defines the latter as a background request and it must not clear the guest current
 	 * Displayable.
 	 */
-	void restoreAfterAlert(Alert expectedAlert) {
+	private void restoreAfterAlert(Alert expectedAlert, long expectedGeneration) {
 		MicroActivity activity;
 		long requestGeneration;
 		synchronized (stateLock) {
-			if (current != expectedAlert) {
+			if (current != expectedAlert || currentRequestGeneration.get() != expectedGeneration) {
 				return;
 			}
 			requestGeneration = currentRequestGeneration.incrementAndGet();

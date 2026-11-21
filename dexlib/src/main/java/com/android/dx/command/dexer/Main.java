@@ -41,6 +41,7 @@ import com.android.dx.rop.cst.CstNat;
 import com.android.dx.rop.cst.CstString;
 
 import org.microemu.android.asm.AndroidProducer;
+import org.microemu.android.asm.MethodRenamer;
 import org.microemu.android.asm.ClassProcessingException;
 
 import java.io.BufferedReader;
@@ -180,6 +181,8 @@ public class Main {
     private TreeMap<String, byte[]> outputResources;
 
     /** Thread pool object used for multi-thread class translation. */
+    /** Immutable names for this conversion only, shared by parallel class transforms. */
+    private MethodRenamer methodRenamer;
     private ExecutorService classTranslatorPool;
 
     /** Single thread executor, for collecting results of parallel translation,
@@ -425,6 +428,7 @@ public class Main {
         anyFilesProcessed = false;
         String[] fileNames = args.fileNames;
         Arrays.sort(fileNames);
+        methodRenamer = scanClasses(fileNames);
 
         try {
             for (int i = 0; i < fileNames.length; i++) {
@@ -563,6 +567,39 @@ public class Main {
         return true;
     }
 
+    /**
+     * Read only class headers and declarations before converting in parallel.
+     * Malformed source classes are still diagnosed/skipped by processClass(), not by this scan.
+     */
+    private MethodRenamer scanClasses(String[] paths) {
+        MethodRenamer.Builder builder = new MethodRenamer.Builder();
+        ClassPathOpener.Consumer scanner = new ClassPathOpener.Consumer() {
+            @Override
+            public boolean processFileBytes(String name, long crc, byte[] bytes) {
+                try {
+                    builder.addClass(bytes);
+                } catch (RuntimeException ignored) {
+                    // The normal transform owns source validation and structured diagnostics.
+                }
+                return true;
+            }
+
+            @Override
+            public void onException(Exception ex) {
+                // Let the normal file-processing pass report this failure.
+            }
+
+            @Override
+            public void onProcessArchiveStart(File file) {
+            }
+        };
+        for (String path : paths) {
+            new ClassPathOpener(path, true,
+                    name -> TextUtils.endsWithIgnoreCase(name, ".class"), scanner).process();
+        }
+        return builder.build();
+    }
+
     private void createDexFile() {
         outputDex = new DexFile(args.dexOptions);
 
@@ -676,7 +713,7 @@ public class Main {
         try {
             // Modify guest byte-code with the JL-Mod transform. AndroidProducer distinguishes
             // unreadable source input from failures introduced while transforming valid input.
-            bytes = AndroidProducer.instrument(bytes, name, crc);
+            bytes = AndroidProducer.instrument(bytes, name, crc, methodRenamer);
 
             new DirectClassFileConsumer(name, bytes, null).call(
                     new ClassParserTask(name, bytes).call());

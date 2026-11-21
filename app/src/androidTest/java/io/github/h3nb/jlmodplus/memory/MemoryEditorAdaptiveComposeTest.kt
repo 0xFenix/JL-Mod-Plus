@@ -28,10 +28,12 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
@@ -57,7 +59,7 @@ class MemoryEditorAdaptiveComposeTest {
     @Test fun savedEditKeepsDraftWhenLiveValueChangesAndPausesRebindingUntilDismissed() {
         val state = mutableStateOf(MemoryEditorUiState(
             visible = true, connected = true, supported = true, writeSupported = true,
-            runtimeToken = 1L, savedTab = true,
+            runtimeToken = 1L, variablesTab = true,
             savedVariables = listOf(SavedVariableRow("hp", "Hit points", "guest.Game.hp")),
             savedValues = mapOf("hp" to SavedVariableRuntimeValue(
                 MemoryEngineContract.RESULT_OK, MemoryEngineContract.TYPE_INT, "42",
@@ -103,31 +105,37 @@ class MemoryEditorAdaptiveComposeTest {
 
     @Test fun changingTabsRestoresSavedContentWithoutRetainingOutgoingSemantics() {
         val state = mutableStateOf(MemoryEditorUiState(
-            visible = true, connected = true, supported = true, savedTab = true,
+            visible = true, connected = true, supported = true, variablesTab = true,
             savedVariables = listOf(SavedVariableRow("hp", "Hit points", "guest.Game.hp")),
         ))
         rule.setContent {
             JLModPlusTheme { MemoryEditorRuntimeRoot(state.value, TestMemoryEditorActions()) }
         }
         rule.onNodeWithText("Hit points").assertIsDisplayed()
-        rule.runOnIdle { state.value = state.value.copy(savedTab = false, watchTab = true) }
+        rule.runOnIdle { state.value = state.value.copy(variablesTab = false) }
         rule.onNodeWithText("Hit points").assertDoesNotExist()
-        rule.runOnIdle { state.value = state.value.copy(savedTab = true, watchTab = false) }
+        rule.runOnIdle { state.value = state.value.copy(variablesTab = true) }
         rule.onNodeWithText("Hit points").assertIsDisplayed()
     }
 
-    @Test fun inspectorTabOnlyEnablesForOneSelectedCandidate() {
+    @Test fun inspectorIsAContextualDetailAndReturnsOnBack() {
+        val state = mutableStateOf(MemoryEditorUiState(
+            visible = true, connected = true, supported = true, variablesTab = true,
+        ))
+        var backCount = 0
+        val actions = object : TestMemoryEditorActions() {
+            override fun closeInspector() { backCount++ }
+        }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val state = mutableStateOf(MemoryEditorUiState(visible = true, connected = true, supported = true))
-        val label = context.getString(R.string.memory_editor_inspector)
-        rule.setContent { JLModPlusTheme { MemoryEditorRuntimeRoot(state.value, TestMemoryEditorActions()) } }
-        rule.onNodeWithContentDescription(label).assertIsNotEnabled()
-        rule.runOnIdle { state.value = state.value.copy(selected = setOf(1L)) }
-        rule.onNodeWithContentDescription(label).assertIsEnabled()
-        rule.runOnIdle { state.value = state.value.copy(selected = setOf(1L, 2L)) }
-        rule.onNodeWithContentDescription(label).assertIsNotEnabled()
-        rule.runOnIdle { state.value = state.value.copy(selected = setOf(1L), busy = true) }
-        rule.onNodeWithContentDescription(label).assertIsNotEnabled()
+        val inspector = context.getString(R.string.memory_editor_inspector)
+        rule.setContent { JLModPlusTheme { MemoryEditorRuntimeRoot(state.value, actions) } }
+        rule.onNodeWithText(inspector).assertDoesNotExist()
+        rule.runOnIdle { state.value = state.value.copy(inspectorLoading = true) }
+        rule.onNodeWithText(inspector).assertIsDisplayed()
+        rule.onNodeWithContentDescription(context.getString(R.string.memory_variables_tab))
+            .assertDoesNotExist()
+        pressBack()
+        rule.runOnIdle { assertEquals(1, backCount) }
     }
 
     @Test fun shortInspectorWithLargeTextScrollsToTheLastEditableValue() {
@@ -203,16 +211,16 @@ class MemoryEditorAdaptiveComposeTest {
                 for (watch in listOf(false, true)) {
                     for (loading in listOf(false, true)) {
                         setter.invoke(controller, MemoryEditorUiState(
-                            watchTab = watch,
+                            variablesTab = watch,
                             inspector = if (loading) null else inspectorSnapshot(),
                             inspectorLoading = loading,
                             selected = setOf(1L),
                         ))
-                        controller.setWatchTab(watch)
+                        controller.setVariablesTab(watch)
                         val state = getter.invoke(controller) as MemoryEditorUiState
                         assertNull(state.inspector)
                         assertFalse(state.inspectorLoading)
-                        assertEquals(if (watch) MemoryEditorTab.WATCH else MemoryEditorTab.RESULTS, state.activeTab)
+                        assertEquals(if (watch) MemoryEditorTab.VARIABLES else MemoryEditorTab.RESULTS, state.activeTab)
                         assertEquals(setOf(1L), state.selected)
                     }
                 }
@@ -404,7 +412,7 @@ class MemoryEditorAdaptiveComposeTest {
                 useUnmergedTree = true,
             ).getUnclippedBoundsInRoot()
             val close = rule.onNodeWithContentDescription(
-                context.getString(R.string.memory_editor_close),
+                context.getString(R.string.memory_editor_minimize),
                 useUnmergedTree = true,
             ).getUnclippedBoundsInRoot()
             val peek = rule.onNodeWithTag("memory-editor-peek").getUnclippedBoundsInRoot()
@@ -454,34 +462,104 @@ class MemoryEditorAdaptiveComposeTest {
         }
     }
 
-    @Test fun watchTabKeepsSelectPageAccessible() {
-        val watches = listOf(1L, 2L).map { id ->
-            MemoryWatchRow(
-                id = id, type = MemoryEngineContract.TYPE_INT,
-                valueText = "2", initialValueText = "2", previousValueText = "2",
-                label = "watch", locationText = "test",
-                state = MemoryEngineContract.CANDIDATE_STABLE,
-                relocations = 0,
-            )
-        }
-        val state = mutableStateOf(MemoryEditorUiState(
-            visible = true, connected = true, supported = true,
-            watchTab = true, watches = watches,
-        ))
+    @Test fun searchBookmarksSelectedCandidateWithQuickAction() {
+        val candidate = MemoryResultRow(
+            id = 1L, valueText = "42", locationText = "guest.Game.hp",
+            aliasMask = 1 shl MemoryEngineContract.TYPE_INT,
+            primaryType = MemoryEngineContract.TYPE_INT,
+            state = MemoryEngineContract.CANDIDATE_STABLE,
+            relocations = 0,
+        )
+        var bookmarked = false
         val actions = object : TestMemoryEditorActions() {
-            override fun selectVisible() {
-                state.value = state.value.copy(selected = watches.map { it.id }.toSet())
-            }
+            override fun watchSelected(add: Boolean) { bookmarked = add }
         }
-        val label = InstrumentationRegistry.getInstrumentation().targetContext
-            .getString(R.string.memory_editor_select_visible)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
         rule.setContent {
-            DeviceConfigurationOverride(DeviceConfigurationOverride.WindowSize(DpSize(360.dp, 640.dp))) {
-                JLModPlusTheme { MemoryEditorRuntimeRoot(state.value, actions) }
+            DeviceConfigurationOverride(
+                DeviceConfigurationOverride.WindowSize(DpSize(720.dp, 360.dp))
+            ) {
+                JLModPlusTheme {
+                    MemoryEditorRuntimeRoot(
+                        MemoryEditorUiState(
+                            visible = true, connected = true, supported = true,
+                            writeSupported = true, selected = setOf(1L),
+                            results = listOf(candidate), resultCount = 1,
+                            sessionStage = MemorySessionStage.CANDIDATES,
+                        ),
+                        actions,
+                    )
+                }
             }
         }
-        rule.onNodeWithContentDescription(label).assertIsDisplayed().performClick()
-        rule.runOnIdle { assertEquals(setOf(1L, 2L), state.value.selected) }
+        rule.onNodeWithContentDescription(context.getString(R.string.memory_list_add))
+            .assertIsDisplayed().assertIsEnabled().performClick()
+        rule.runOnIdle { assertTrue(bookmarked) }
+    }
+
+    @Test fun listCheckboxSelectsBookmarkedTargetAndOpensInspector() {
+        val watch = MemoryWatchRow(
+            1L, MemoryEngineContract.TYPE_INT, MemoryEngineContract.CANDIDATE_STABLE, 0,
+            "2", "2", "2", "player.coins", "Coins", savedSourceId = "coins",
+        )
+        val state = MemoryEditorUiState(
+            visible = true, connected = true, supported = true, writeSupported = true,
+            variablesTab = true, savedVariables = listOf(SavedVariableRow(
+                "coins", "Coins", "player.coins")),
+            watches = listOf(watch),
+        )
+        var inspectedId: Long? = null
+        var inspectedAsWatch = false
+        val actions = object : TestMemoryEditorActions() {
+            override fun inspectCandidate(candidateId: Long, radius: Int, watchAnchor: Boolean) {
+                inspectedId = candidateId
+                inspectedAsWatch = watchAnchor
+            }
+        }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val inspector = context.getString(R.string.memory_editor_inspector)
+        rule.setContent { JLModPlusTheme { MemoryEditorRuntimeRoot(state, actions) } }
+        rule.onNodeWithContentDescription(inspector).assertDoesNotExist()
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.memory_editor_select_result_value)
+        ).assertIsDisplayed().performClick()
+        rule.onNodeWithText(context.resources.getQuantityString(
+            R.plurals.memory_editor_selected, 1, 1)).assertIsDisplayed()
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.memory_editor_edit)
+        ).assertIsDisplayed().assertIsEnabled()
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.memory_editor_inspect_memory)
+        ).assertIsEnabled().performClick()
+        rule.runOnIdle {
+            assertEquals(1L, inspectedId)
+            assertTrue(inspectedAsWatch)
+        }
+    }
+
+    @Test fun longPressStillSelectsListEntryAndBackClearsSelection() {
+        val watch = MemoryWatchRow(
+            1L, MemoryEngineContract.TYPE_INT, MemoryEngineContract.CANDIDATE_STABLE, 0,
+            "2", "2", "2", "player.coins", "Coins", savedSourceId = "coins",
+        )
+        val state = MemoryEditorUiState(
+            visible = true, connected = true, supported = true,
+            variablesTab = true, savedVariables = listOf(
+                SavedVariableRow("coins", "Coins", "player.coins")),
+            watches = listOf(watch),
+        )
+        rule.setContent { JLModPlusTheme { MemoryEditorRuntimeRoot(state, TestMemoryEditorActions()) } }
+        val rowBounds = rule.onNodeWithText("Coins").getUnclippedBoundsInRoot()
+        rule.onNodeWithText("Coins").performTouchInput { longClick() }
+        assertEquals(rowBounds, rule.onNodeWithText("Coins").getUnclippedBoundsInRoot())
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val selected = context.resources.getQuantityString(R.plurals.memory_editor_selected, 1, 1)
+        rule.onNodeWithText(selected).assertIsDisplayed()
+        pressBack()
+        rule.onNodeWithText(selected).assertDoesNotExist()
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.library_selection_select_all)
+        ).assertIsDisplayed()
     }
 
     @Test fun spaciousLandscapeShowsExtraActionsDirectlyWithoutMore() {
@@ -509,7 +587,7 @@ class MemoryEditorAdaptiveComposeTest {
         rule.onNodeWithContentDescription(context.getString(R.string.memory_editor_remove))
             .assertIsDisplayed()
         rule.onNodeWithContentDescription(context.getString(R.string.more))
-            .assertDoesNotExist()
+            .assertIsDisplayed()
     }
 
     @Test fun constrainedWindowKeepsSecondaryActionsInMore() {
@@ -532,7 +610,7 @@ class MemoryEditorAdaptiveComposeTest {
             }
         }
         val more = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.more)
-        rule.onNodeWithContentDescription(more).assertIsDisplayed().performClick()
+        rule.onAllNodesWithContentDescription(more)[1].assertIsDisplayed().performClick()
         rule.onNodeWithText(
             InstrumentationRegistry.getInstrumentation().targetContext
                 .getString(R.string.memory_editor_remove),
@@ -580,6 +658,142 @@ class MemoryEditorAdaptiveComposeTest {
         }
         rule.runOnIdle { assertEquals(2, nextCalls) }
     }
+
+    @Test fun watchEditAppliesValueAndClosesItsDialog() {
+        var appliedValue: String? = null
+        val watch = MemoryWatchRow(
+            id = 1L, type = MemoryEngineContract.TYPE_INT,
+            valueText = "42", initialValueText = "42", previousValueText = "42",
+            label = "Session health", locationText = "guest.Game.hp",
+            state = MemoryEngineContract.CANDIDATE_STABLE, relocations = 0,
+            savedSourceId = "session-health",
+        )
+        val actions = object : TestMemoryEditorActions() {
+            override fun editTargetsWithOptions(
+                targets: List<MemoryEditTarget>, expectedRevision: Long,
+                value: String, type: Int, addToWatch: Boolean, freezeAfter: Boolean,
+            ) {
+                appliedValue = value
+            }
+        }
+        rule.setContent {
+            JLModPlusTheme {
+                MemoryEditorRuntimeRoot(
+                    MemoryEditorUiState(
+                        visible = true, connected = true, supported = true,
+                        writeSupported = true, variablesTab = true,
+                        savedVariables = listOf(SavedVariableRow(
+                            "session-health", "Session health", "guest.Game.hp")),
+                        watches = listOf(watch),
+                    ),
+                    actions,
+                )
+            }
+        }
+        rule.onNodeWithText("Session health").performClick()
+        rule.onNode(hasSetTextAction()).performTextReplacement("99")
+        rule.onNodeWithText(
+            InstrumentationRegistry.getInstrumentation().targetContext
+                .getString(R.string.memory_editor_save),
+        ).performClick()
+        rule.onNodeWithText("Cancel").assertDoesNotExist()
+        rule.runOnIdle { assertEquals("99", appliedValue) }
+    }
+
+    @Test fun linkedRuntimeRowIsNotShownAsASecondBookmarkAfterDeletion() {
+        val saved = SavedVariableRow("hp", "Hit points", "guest.Game.hp")
+        val watch = MemoryWatchRow(
+            id = 1L, type = MemoryEngineContract.TYPE_INT,
+            valueText = "42", initialValueText = "42", previousValueText = "42",
+            label = "Session health", locationText = "guest.Game.hp",
+            state = MemoryEngineContract.CANDIDATE_STABLE, relocations = 0,
+            savedSourceId = "hp",
+        )
+        val state = mutableStateOf(MemoryEditorUiState(
+            visible = true, connected = true, supported = true,
+            variablesTab = true, savedVariables = listOf(saved),
+            savedValues = mapOf("hp" to SavedVariableRuntimeValue(
+                MemoryEngineContract.RESULT_OK, MemoryEngineContract.TYPE_INT, "42")),
+            watches = listOf(watch),
+        ))
+        rule.setContent {
+            JLModPlusTheme { MemoryEditorRuntimeRoot(state.value, TestMemoryEditorActions()) }
+        }
+        rule.onNodeWithText("Hit points").assertIsDisplayed()
+        rule.onNodeWithText("Session health").assertDoesNotExist()
+        rule.runOnIdle { state.value = state.value.copy(
+            savedVariables = emptyList(), savedValues = emptyMap(),
+        ) }
+        rule.onNodeWithText("Session health").assertDoesNotExist()
+    }
+
+    @Test fun linkedWatchStaysInspectableWhenSavedLocatorIsNotReady() {
+        val saved = SavedVariableRow("hp", "Health", "guest.Game.hp")
+        val watch = MemoryWatchRow(
+            id = 1L, type = MemoryEngineContract.TYPE_INT,
+            valueText = "42", initialValueText = "42", previousValueText = "42",
+            label = "Session health", locationText = "guest.Game.hp",
+            state = MemoryEngineContract.CANDIDATE_STABLE, relocations = 0,
+            savedSourceId = "hp",
+        )
+        var inspectedId: Long? = null
+        val actions = object : TestMemoryEditorActions() {
+            override fun inspectCandidate(candidateId: Long, radius: Int, watchAnchor: Boolean) {
+                if (watchAnchor) inspectedId = candidateId
+            }
+        }
+        rule.setContent {
+            JLModPlusTheme {
+                MemoryEditorRuntimeRoot(
+                    MemoryEditorUiState(
+                        visible = true, connected = true, supported = true,
+                        variablesTab = true, savedVariables = listOf(saved),
+                        watches = listOf(watch),
+                    ),
+                    actions,
+                )
+            }
+        }
+        rule.onNodeWithText("42").assertIsDisplayed()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.memory_editor_select_result_value)
+        ).performClick()
+        rule.onNodeWithContentDescription(
+            context.getString(R.string.memory_editor_inspector)
+        ).assertIsEnabled().performClick()
+        rule.runOnIdle { assertEquals(1L, inspectedId) }
+    }
+
+    @Test fun booleanKnownSearchUsesChoicesInsteadOfNumericKeypad() {
+        var submittedValue: String? = null
+        var submittedType = -1
+        val actions = object : TestMemoryEditorActions() {
+            override fun startSearch(value: String, secondValue: String, type: Int,
+                                     predicate: Int, unknown: Boolean) {
+                submittedValue = value
+                submittedType = type
+            }
+        }
+        rule.setContent {
+            JLModPlusTheme {
+                RuntimeKnownSearchDialog(
+                    state = MemoryEditorUiState(
+                        connected = true, supported = true,
+                        requestedType = MemoryEngineContract.TYPE_BOOLEAN,
+                    ),
+                    actions = actions, onDismiss = {},
+                )
+            }
+        }
+        rule.onNodeWithText("true").performClick()
+        rule.onNodeWithText("New search").assertIsEnabled().performClick()
+        rule.runOnIdle {
+            assertEquals("true", submittedValue)
+            assertEquals(MemoryEngineContract.TYPE_BOOLEAN, submittedType)
+        }
+    }
+
 
     private fun inspectorSnapshot() = MemoryInspectorSnapshot(
         candidateId = 1L, type = MemoryEngineContract.TYPE_INT, label = "Values",

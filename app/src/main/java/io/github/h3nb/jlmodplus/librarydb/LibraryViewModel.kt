@@ -33,6 +33,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -51,7 +53,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -90,6 +91,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             /** Changes only when the authoritative Room-backed repository snapshot changes. */
             val sourceRevision: Long = 0L,
             val localizedDescriptions: Map<Long, String> = emptyMap(),
+            val iconFiles: Map<Long, LibraryIconFiles> = emptyMap(),
         ) : DisplayState
         data class Error(val emulatorDir: File, val message: String) : DisplayState
     }
@@ -248,16 +250,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun isReadyGeneration(expectedGeneration: Long, expectedWorkdir: File): Boolean =
         repository.isReadyGeneration(token(expectedGeneration, expectedWorkdir))
 
-    /**
-     * Waits for Room's observable projection to include a committed installer result.
-     *
-     * This Java-friendly boundary is intentionally blocking: AppInstaller calls it from its
-     * dedicated visibility executor while retaining the process-wide installer permit. StateFlow
-     * suspension avoids timing sleeps and wakes immediately on either visibility or generation
-     * drift.
-     */
+    /** Wait for the Room-backed projection after the installer commit, without blocking a worker. */
     @Throws(IOException::class)
-    fun awaitInstalledAppVisible(
+    suspend fun awaitInstalledAppVisible(
         expectedGeneration: Long,
         expectedWorkdir: File,
         appId: Long,
@@ -266,15 +261,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     ) {
         val expected = token(expectedGeneration, expectedWorkdir)
         try {
-            runBlocking {
-                withTimeout(timeoutMillis) {
-                    repository.state.first { state ->
+            withTimeout(timeoutMillis) {
+                repository.state.first { state ->
                         check(repository.isReadyGeneration(expected)) {
                             "Library generation changed before committed install became visible"
                         }
-                        state is LibraryRepository.State.Ready &&
-                            state.apps.any { app -> app.id == appId && app.storageKey == storageKey }
-                    }
+                    state is LibraryRepository.State.Ready &&
+                        state.apps.any { app -> app.id == appId && app.storageKey == storageKey }
                 }
             }
         } catch (error: TimeoutCancellationException) {
@@ -641,8 +634,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 ) {
                     // Detach only once the target is reserved. A failed pre-commit
                     // restore returns its prior ownership after filesystem rollback.
-                    val ownership = if (prepared.configDir != null ||
-                        prepared.layoutSkinFile != null || prepared.controlSkinDir != null) {
+                    val ownership = if (prepared.configDir != null) {
                         ImportedBundleProfileLinkage.begin(
                             getApplication(), generation.emulatorDir, storageKey)
                     } else null
@@ -831,7 +823,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun recordInstalledApp(
+    /** Commit installer metadata within the captured Library generation. */
+    suspend fun recordInstalledApp(
         expectedGeneration: Long,
         expectedWorkdir: File,
         existingId: Long?,
@@ -842,25 +835,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         sourceDescription: String?,
         iconRevision: Long,
         addedAt: Long,
-        callback: MutationCallback<Long>,
-    ) {
-        val generation = token(expectedGeneration, expectedWorkdir)
-        launchCriticalMutation(callback) {
-            repository.recordInstalledApp(
-                expected = generation,
-                existingId = existingId,
-                metadata = InstalledAppMetadata(
-                    storageKey = storageKey,
-                    sourceTitle = sourceTitle,
-                    sourceVendor = sourceVendor,
-                    sourceVersion = sourceVersion,
-                    sourceDescription = sourceDescription,
-                    iconRevision = iconRevision,
-                    addedAt = addedAt,
-                ),
-            )
-        }
-    }
+    ): Long = repository.recordInstalledApp(
+        expected = token(expectedGeneration, expectedWorkdir),
+        existingId = existingId,
+        metadata = InstalledAppMetadata(
+            storageKey = storageKey,
+            sourceTitle = sourceTitle,
+            sourceVendor = sourceVendor,
+            sourceVersion = sourceVersion,
+            sourceDescription = sourceDescription,
+            iconRevision = iconRevision,
+            addedAt = addedAt,
+        ),
+    )
 
     fun deleteInstalledApp(appId: Long, callback: MutationCallback<LibraryFileOperations.DeleteResult>) {
         val generation = readyGeneration()
@@ -1142,6 +1129,7 @@ private data class LibraryOrderedSource(
     val ordered: LibraryListProjection.OrderedRows,
     val localizedDescriptions: Map<Long, String>,
     val descriptionLocale: DescriptionLocale,
+    val iconFiles: Map<Long, LibraryIconFiles>,
 ) {
     fun matches(input: LibraryDisplayInputs): Boolean {
         val ready = input.repositoryState as? LibraryRepository.State.Ready ?: return false
@@ -1192,30 +1180,61 @@ internal fun libraryDisplayStates(
                 prepared = null
                 LibraryViewModel.DisplayState.Error(state.emulatorDir, state.message)
             }
-            is LibraryRepository.State.Ready -> {
+            is LibraryRepository.State.Ready -> coroutineScope {
                 val previous = prepared
-                val translated = if (previous != null &&
-                    previous.repositoryState === state &&
-                    previous.descriptionLocale == input.descriptionLocale) {
-                    previous.localizedDescriptions
-                } else withContext(Dispatchers.IO) {
-                    val context = currentCoroutineContext()
-                    descriptionCatalogMutex.withLock {
-                        descriptionCatalog.resolve(
-                            state.emulatorDir, state.apps, input.descriptionLocale.value,
-                            state.descriptionOverrides,
-                        ) { context.ensureActive() }
+                val translatedTask = async(Dispatchers.IO) {
+                    if (previous != null &&
+                        previous.repositoryState.generation == state.generation &&
+                        previous.repositoryState.emulatorDir == state.emulatorDir &&
+                        previous.repositoryState.apps === state.apps &&
+                        previous.repositoryState.descriptionOverrides == state.descriptionOverrides &&
+                        previous.descriptionLocale == input.descriptionLocale) {
+                        previous.localizedDescriptions
+                    } else {
+                        val context = currentCoroutineContext()
+                        descriptionCatalogMutex.withLock {
+                            descriptionCatalog.resolve(
+                                state.emulatorDir, state.apps, input.descriptionLocale.value,
+                                state.descriptionOverrides,
+                            ) { context.ensureActive() }
+                        }
                     }
                 }
-                val (source, projected) = withContext(workerDispatcher) {
-                    val context = currentCoroutineContext()
-                    val ordered = if (previous != null && previous.matches(input)) previous.ordered
-                    else LibraryListProjection.prepare(state.apps, input.sortVariant,
-                        input.locale, input.quickView) { context.ensureActive() }
-                    val projected = LibraryListProjection.project(ordered, input.filter,
-                        input.quickView, translated) { context.ensureActive() }
-                    LibraryOrderedSource(state, ordered, translated, input.descriptionLocale) to projected
+                val iconsTask = async(Dispatchers.IO) {
+                    if (previous != null &&
+                        previous.repositoryState.generation == state.generation &&
+                        previous.repositoryState.emulatorDir == state.emulatorDir &&
+                        previous.repositoryState.apps === state.apps) {
+                        previous.iconFiles
+                    } else {
+                        val context = currentCoroutineContext()
+                        val reusable = previous?.takeIf {
+                            it.repositoryState.generation == state.generation &&
+                                it.repositoryState.emulatorDir == state.emulatorDir
+                        }?.iconFiles.orEmpty()
+                        resolveLibraryIconFiles(state.emulatorDir, state.apps, reusable) {
+                            context.ensureActive()
+                        }
+                    }
                 }
+                val orderingTask = async(workerDispatcher) {
+                    val context = currentCoroutineContext()
+                    if (previous != null && previous.matches(input)) previous.ordered
+                    else LibraryListProjection.prepare(
+                        state.apps, input.sortVariant, input.locale, input.quickView,
+                    ) { context.ensureActive() }
+                }
+                val translated = translatedTask.await()
+                val iconFiles = iconsTask.await()
+                val ordered = orderingTask.await()
+                val projected = withContext(workerDispatcher) {
+                    val context = currentCoroutineContext()
+                    LibraryListProjection.project(ordered, input.filter, input.quickView,
+                        translated) { context.ensureActive() }
+                }
+                val source = LibraryOrderedSource(
+                    state, ordered, translated, input.descriptionLocale, iconFiles,
+                )
                 // Only completed, still-current work becomes the one retained ordering.
                 prepared = source
                 LibraryViewModel.DisplayState.Ready(
@@ -1223,6 +1242,7 @@ internal fun libraryDisplayStates(
                     emulatorDir = state.emulatorDir,
                     apps = projected,
                     localizedDescriptions = translated,
+                    iconFiles = iconFiles,
                     collections = state.collections,
                     filter = input.filter,
                     sortVariant = input.sortVariant,

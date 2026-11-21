@@ -63,7 +63,7 @@ final class ManagedJavaMemoryEngine {
 	private static final long RESULT_SLOT_BYTES = Integer.SIZE / Byte.SIZE + 2L * (Long.SIZE / Byte.SIZE);
 	private static final int INITIAL_OWNER_CAPACITY = 16;
 	private static final int FIRST_SUPPORTED_TYPE = MemoryEngineContract.TYPE_BYTE;
-	private static final int LAST_SUPPORTED_TYPE = MemoryEngineContract.TYPE_DOUBLE;
+	private static final int LAST_SUPPORTED_TYPE = MemoryEngineContract.TYPE_BOOLEAN;
 	private static final long STAGED_OWNER_BYTES = 64L;
 	private static final long FINISHED_BUCKET_BYTES = 64L;
 	private static final long TRAVERSAL_ENTRY_BYTES = 64L;
@@ -1081,6 +1081,7 @@ final class ManagedJavaMemoryEngine {
 			page.relocations[index] = 0;
 			page.labels[index] = snapshot.labels[index] == null ? "" : snapshot.labels[index];
 			page.freezeModes[index] = snapshot.freeze[index] ? MemoryEngineContract.FREEZE_LOCK : -1;
+			page.savedSourceIds[index] = snapshot.savedSourceIds[index];
 			page.freezePaused[index] = snapshot.freezePaused[index]
 					|| page.states[index] == MemoryEngineContract.CANDIDATE_LOST;
 			if (page.freezePaused[index] && snapshot.freeze[index]) markFreezePaused(snapshot.ids[index]);
@@ -1919,6 +1920,25 @@ final class ManagedJavaMemoryEngine {
     ManagedOperationResult watchInspector(long token, @Nullable String savedId,
             long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
             int expectedType, long expectedBits, boolean freeze, long epoch) {
+        return watchInspector(token, savedId, expectedRevision, anchorId, watchAnchor,
+                relativeOffset, expectedType, expectedBits, freeze, epoch, null, 0);
+    }
+
+    ManagedOperationResult watchInspector(long token, @Nullable String savedId,
+            long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
+            int expectedType, long expectedBits, boolean freeze, long epoch,
+            @Nullable String bookmarkId) {
+        return watchInspector(token, savedId, expectedRevision, anchorId, watchAnchor,
+                relativeOffset, expectedType, expectedBits, freeze, epoch, bookmarkId, 0);
+    }
+
+    ManagedOperationResult watchInspector(long token, @Nullable String savedId,
+            long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
+            int expectedType, long expectedBits, boolean freeze, long epoch,
+            @Nullable String bookmarkId, int recipeFreezes) {
+        if (bookmarkId != null && (bookmarkId.isEmpty() || bookmarkId.length() > 64))
+            return failure(token, MemoryEngineContract.RESULT_INVALID_REQUEST,
+                    "Invalid Bookmark ID");
         if (Math.abs((long) relativeOffset) > MemoryEngineContract.MAX_INSPECT_RADIUS
                 || !MemoryEngineContract.isCandidateType(expectedType)) {
             return failure(token, MemoryEngineContract.RESULT_INVALID_REQUEST,
@@ -1983,8 +2003,8 @@ final class ManagedJavaMemoryEngine {
             if (!readTyped(proof, slot, actual, current) || current[0] != expectedBits)
                 return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
                         "Inspector value changed since its snapshot");
-            String sourceKey = savedId == null ? null : relativeOffset == 0
-                    ? savedId : savedId + "#" + slot;
+            String sourceKey = bookmarkId != null ? bookmarkId : savedId == null ? null :
+                    relativeOffset == 0 ? savedId : savedId + "#" + slot;
             long existingId = savedId == null
                     ? ManagedJavaMemoryIds.encode(proof.kind, proof.handle, slot) : 0L;
             int existing = savedId == null ? watches.indexOf(existingId) : -1;
@@ -1995,11 +2015,40 @@ final class ManagedJavaMemoryEngine {
                         break;
                     }
                 }
+                // Keeping an existing session Watch must not create a second row or
+                // restart its Freeze. Only the exact live owner and slot may be linked.
+                if (existing < 0 && relativeOffset == 0) {
+                    for (int i = 0; i < watches.count; i++) {
+                        OwnerBucket watching = watches.owners[i];
+                        if (watches.savedSourceIds[i] == null && watching != null
+                                && watching.kind == proof.kind && watches.slots[i] == slot
+                                && watching.strongOwner() == actual
+                                && inspectPath(token, watching, actual, slot).status
+                                    == MemoryEngineContract.PATH_VERIFIED) {
+                            existing = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (existing >= 0 && sourceKey != null && watches.savedSourceIds[existing] != null
+                    && !sourceKey.equals(watches.savedSourceIds[existing])) {
+                return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
+                        "Inspector target already belongs to a different Bookmark");
+            }
+            if (bookmarkId != null) {
+                for (int i = 0; i < watches.count; i++) {
+                    if (i != existing && bookmarkId.equals(watches.savedSourceIds[i])) {
+                        return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
+                                "Bookmark is linked to another session target");
+                    }
+                }
             }
             boolean needsFreezeSlot = freeze && (existing < 0 || !watches.freeze[existing]);
             if ((existing < 0 && watches.count >= MemoryEngineContract.MAX_WATCH_RECORDS)
                     || (needsFreezeSlot
-                        && watches.freezeCount() >= MemoryEngineContract.MAX_FREEZE_RECORDS)
+                        && watches.freezeCount() + recipeFreezes
+                            >= MemoryEngineContract.MAX_FREEZE_RECORDS)
                     || (existing < 0 && savedId != null
                         && (owners.size() >= limits.maxOwners
                         || nextOwnerHandle > ManagedJavaMemoryIds.OWNER_MAX))) {
@@ -2018,17 +2067,36 @@ final class ManagedJavaMemoryEngine {
                 }
                 watches.append(id, owner, slot, current[0], "");
                 existing = watches.count - 1;
-                if (sourceKey != null) watches.savedSourceIds[existing] = sourceKey;
+                if (sourceKey != null) {
+                    watches.savedSourceIds[existing] = sourceKey;
+                    watches.requiresVerifiedPath[existing] = savedId != null ||
+                            captureSavedOwner(token, owner, actual, slot) != null;
+                    watches.savedLinkVerified[existing] = true;
+                }
             } else if (savedId != null) {
                 if (watches.owners[existing] == null) return failureLocked(
                         MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
                         "Inspector Watch owner is unavailable");
-                boolean moved = retargetSavedWatch(existing, proof, actual, slot, current[0]);
+                boolean moved = false;
+                if (watches.savedSourceIds[existing] == null) {
+                    watches.savedSourceIds[existing] = sourceKey;
+                    watches.requiresVerifiedPath[existing] = true;
+                    watches.savedLinkVerified[existing] = true;
+                } else {
+                    moved = retargetSavedWatch(existing, proof, actual, slot, current[0]);
+                }
+                watches.savedLinkVerified[existing] = true;
                 // An explicit Watch action may retarget, but must not revive an old Freeze.
                 if (moved && !freeze) {
                     watches.freeze[existing] = false;
                     watches.freezePaused[existing] = false;
                 }
+            }
+            if (bookmarkId != null && savedId == null) {
+                watches.savedSourceIds[existing] = bookmarkId;
+                watches.requiresVerifiedPath[existing] =
+                        captureSavedOwner(token, watches.owners[existing], actual, slot) != null;
+                watches.savedLinkVerified[existing] = true;
             }
             if (freeze) {
                 watches.freeze[existing] = true;
@@ -2044,11 +2112,35 @@ final class ManagedJavaMemoryEngine {
     ManagedOperationResult editInspectorAndFreeze(long token, @Nullable String savedId,
             long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
             int type, long expectedBits, String replacement, long epoch) {
+        return editInspectorAndFreeze(token, savedId, expectedRevision, anchorId,
+                watchAnchor, relativeOffset, type, expectedBits, replacement, epoch, null, 0);
+    }
+
+    ManagedOperationResult editInspectorAndFreeze(long token, @Nullable String savedId,
+            long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
+            int type, long expectedBits, String replacement, long epoch,
+            @Nullable String bookmarkId) {
+        return editInspectorAndFreeze(token, savedId, expectedRevision, anchorId,
+                watchAnchor, relativeOffset, type, expectedBits, replacement, epoch, bookmarkId, 0);
+    }
+
+    ManagedOperationResult editInspectorAndFreeze(long token, @Nullable String savedId,
+            long expectedRevision, long anchorId, boolean watchAnchor, int relativeOffset,
+            int type, long expectedBits, String replacement, long epoch,
+            @Nullable String bookmarkId, int recipeFreezes) {
         if (!MemoryEngineContract.isCandidateType(type)) return failure(token,
                 MemoryEngineContract.RESULT_INVALID_REQUEST, "Inspector type is unsupported");
         long[] parsed = new long[1];
         if (!ManagedJavaValue.parse(replacement, type, parsed)) return failure(token,
                 MemoryEngineContract.RESULT_INVALID_REQUEST, "Inspector replacement is invalid");
+        synchronized (stateLock) {
+            if (isCurrentLocked(token)
+                    && watches.freezeCount() + recipeFreezes >= MemoryEngineContract.MAX_FREEZE_RECORDS
+                    && !isInspectorFreezeActive(savedId, anchorId, relativeOffset, bookmarkId)) {
+                return failureLocked(MemoryEngineContract.RESULT_RESOURCE_LIMIT,
+                        "Freeze capacity reached before Inspector edit");
+            }
+        }
         if (savedId != null) {
             SavedValue edited = editSavedInspector(token, savedId, relativeOffset,
                     type, expectedBits, replacement, epoch);
@@ -2060,16 +2152,44 @@ final class ManagedJavaMemoryEngine {
             if (edited.code != MemoryEngineContract.RESULT_OK) return edited;
         }
         ManagedOperationResult watched = watchInspector(token, savedId, expectedRevision,
-                anchorId, watchAnchor, relativeOffset, type, parsed[0], true, epoch);
+                anchorId, watchAnchor, relativeOffset, type, parsed[0], true, epoch,
+                bookmarkId, recipeFreezes);
         return watched.code == MemoryEngineContract.RESULT_OK ? watched :
                 result(token, MemoryEngineContract.RESULT_PARTIAL_WRITE,
                         "Value edited, but Freeze could not start: " + watched.message,
                         1, 1, 0, 0);
     }
 
+    private boolean isInspectorFreezeActive(@Nullable String savedId, long anchorId,
+                                            int relativeOffset, @Nullable String bookmarkId) {
+        if (savedId != null) {
+            SavedBinding binding = savedBindings.get(savedId);
+            if (binding == null) return false;
+            long slot = (long) binding.slot + relativeOffset;
+            String sourceId = bookmarkId != null ? bookmarkId :
+                    relativeOffset == 0 ? savedId : savedId + "#" + slot;
+            for (int i = 0; i < watches.count; i++) {
+                if (watches.freeze[i] && sourceId.equals(watches.savedSourceIds[i])) return true;
+            }
+            return false;
+        }
+        if (!ManagedJavaMemoryIds.hasValidNamespace(anchorId)) return false;
+        long slot = (long) ManagedJavaMemoryIds.slot(anchorId) + relativeOffset;
+        if (slot < 0 || slot > Integer.MAX_VALUE) return false;
+        long targetId = ManagedJavaMemoryIds.encode(ManagedJavaMemoryIds.kind(anchorId),
+                ManagedJavaMemoryIds.ownerHandle(anchorId), (int) slot);
+        int index = watches.indexOf(targetId);
+        return index >= 0 && watches.freeze[index];
+    }
+
     /** Explicit Freeze promotes a pinned Saved target into Watch, with guarded periodic writes. */
     ManagedOperationResult freezeSaved(long token, String id, String label,
                                       String expectedValue, long epoch) {
+        return freezeSaved(token, id, label, expectedValue, epoch, 0);
+    }
+
+    ManagedOperationResult freezeSaved(long token, String id, String label,
+                                      String expectedValue, long epoch, int recipeFreezes) {
         synchronized (stateLock) {
             if (!isCurrentLocked(token) || !isOperationActive(token, epoch))
                 return failureLocked(MemoryEngineContract.RESULT_TARGET_LOST, "Saved runtime changed");
@@ -2097,7 +2217,8 @@ final class ManagedJavaMemoryEngine {
             if ((existing < 0 && (watches.count >= MemoryEngineContract.MAX_WATCH_RECORDS ||
                     owners.size() >= limits.maxOwners ||
                     nextOwnerHandle > ManagedJavaMemoryIds.OWNER_MAX)) ||
-                    (additionalFreeze && watches.freezeCount() >= MemoryEngineContract.MAX_FREEZE_RECORDS)) {
+                    (additionalFreeze && watches.freezeCount() + recipeFreezes
+                            >= MemoryEngineContract.MAX_FREEZE_RECORDS)) {
                 return failureLocked(MemoryEngineContract.RESULT_RESOURCE_LIMIT,
                         "Watch/Freeze capacity reached");
             }
@@ -2111,6 +2232,8 @@ final class ManagedJavaMemoryEngine {
                         MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
                         "Saved Watch owner is unavailable");
                 retargetSavedWatch(existing, proof, actual, binding.slot, expected[0]);
+                watches.requiresVerifiedPath[existing] = true;
+                watches.savedLinkVerified[existing] = true;
                 watches.freeze[existing] = true;
                 watches.freezeValues[existing] = expected[0];
                 watches.freezePaused[existing] = false;
@@ -2124,6 +2247,8 @@ final class ManagedJavaMemoryEngine {
             watches.append(candidateId, owner, binding.slot, expected[0], label == null ? "" : label);
             int index = watches.count - 1;
             watches.savedSourceIds[index] = id;
+            watches.requiresVerifiedPath[index] = true;
+            watches.savedLinkVerified[index] = true;
             watches.freeze[index] = true;
             watches.freezeValues[index] = expected[0];
             watches.freezePaused[index] = false;
@@ -2150,10 +2275,35 @@ final class ManagedJavaMemoryEngine {
         return true;
     }
 
-    /** Release a definition after Delete; it must not consume a bounded runtime slot. */
+    /**
+     * An invalid binding cannot publicly claim a Watch during passive Saved re-resolve.
+     * Keep its private origin so an explicit Watch/Freeze action can retarget the same row.
+     */
     void releaseSaved(long token, String id) {
         synchronized (stateLock) {
-            if (isCurrentLocked(token) && id != null) savedBindings.remove(id);
+            if (!isCurrentLocked(token) || id == null) return;
+            savedBindings.remove(id);
+            for (int i = 0; i < watches.count; i++) {
+                String sourceId = watches.savedSourceIds[i];
+                if (id.equals(sourceId) || (sourceId != null && sourceId.startsWith(id + "#"))) {
+                    watches.savedLinkVerified[i] = false;
+                }
+            }
+        }
+    }
+
+    /** Clear the origin after permanent Saved deletion, retaining a guarded session Watch. */
+    void forgetSaved(long token, String id) {
+        synchronized (stateLock) {
+            if (!isCurrentLocked(token) || id == null) return;
+            savedBindings.remove(id);
+            for (int i = 0; i < watches.count; i++) {
+                String sourceId = watches.savedSourceIds[i];
+                if (id.equals(sourceId) || (sourceId != null && sourceId.startsWith(id + "#"))) {
+                    watches.savedSourceIds[i] = null;
+                    watches.savedLinkVerified[i] = false;
+                }
+            }
         }
     }
 
@@ -2208,6 +2358,85 @@ final class ManagedJavaMemoryEngine {
 		}
 		return success(token, null);
 	}
+
+    /**
+     * A Bookmark is durable in the main process; this attaches only an exact session target.
+     * No value/class/address heuristic is permitted. A new session must resolve a typed path
+     * again or be explicitly relinked.
+     */
+    ManagedOperationResult detachBookmark(long token, String bookmarkId, long epoch) {
+        if (bookmarkId == null || bookmarkId.isEmpty() || bookmarkId.length() > 64)
+            return failure(token, MemoryEngineContract.RESULT_INVALID_REQUEST,
+                    "Invalid Bookmark ID");
+        synchronized (stateLock) {
+            if (!isCurrentLocked(token) || !isOperationActive(token, epoch))
+                return failureLocked(MemoryEngineContract.RESULT_TARGET_LOST,
+                        "Bookmark runtime changed");
+            for (int i = watches.count - 1; i >= 0; i--) {
+                String source = watches.savedSourceIds[i];
+                if (bookmarkId.equals(source) ||
+                        (source != null && source.startsWith(bookmarkId + "#"))) {
+                    // Legacy Inspector siblings used the parent's ID plus a slot suffix.
+                    watches.remove(watches.ids[i]); // Also stops Freeze on the old owner.
+                }
+            }
+            savedBindings.remove(bookmarkId);
+            cleanupOwnersLocked();
+            return successLocked("Old Bookmark target detached");
+        }
+    }
+
+    ManagedOperationResult attachBookmark(long token, long revision, long candidateId,
+            String bookmarkId, String label, long epoch) {
+        if (bookmarkId == null || bookmarkId.isEmpty() || bookmarkId.length() > 64
+                || label == null || label.length() > 64) {
+            return failure(token, MemoryEngineContract.RESULT_INVALID_REQUEST,
+                    "Invalid Bookmark identity or label");
+        }
+        ResolvedBatch selected = resolveBatch(token, revision,
+                new long[]{candidateId}, true);
+        if (selected.error != null) return selected.error;
+        long[] current = new long[1];
+        if (!readTyped(selected.owners[0], selected.slots[0],
+                selected.strongOwners[0], current)) {
+            return failure(token, MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
+                    "Bookmark target is no longer readable");
+        }
+        synchronized (stateLock) {
+            ManagedOperationResult validation = revalidateBatchLocked(token, revision,
+                    selected, true, epoch);
+            if (validation != null) return validation;
+            int index = watches.indexOf(candidateId);
+            for (int i = 0; i < watches.count; i++) {
+                if (bookmarkId.equals(watches.savedSourceIds[i]) && i != index) {
+                    return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
+                            "Bookmark is already attached to another runtime candidate");
+                }
+            }
+            if (index >= 0 && watches.savedSourceIds[index] != null
+                    && !bookmarkId.equals(watches.savedSourceIds[index])) {
+                return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
+                        "Candidate belongs to a different Bookmark");
+            }
+            if (index < 0) {
+                if (watches.count >= MemoryEngineContract.MAX_WATCH_RECORDS) {
+                    return failureLocked(MemoryEngineContract.RESULT_RESOURCE_LIMIT,
+                            "Bookmark runtime tracking capacity reached");
+                }
+                watches.append(candidateId, selected.owners[0], selected.slots[0],
+                        current[0], label);
+                index = watches.count - 1;
+            }
+            watches.savedSourceIds[index] = bookmarkId;
+            watches.savedLinkVerified[index] = true;
+            // Untraced objects are valid during this session, but cannot be rebound by guessing.
+            watches.requiresVerifiedPath[index] = captureSavedOwner(token,
+                    selected.owners[0], selected.strongOwners[0], selected.slots[0]) != null;
+            watches.labels[index] = label;
+            cleanupOwnersLocked();
+            return successLocked("Bookmark attached to verified session candidate");
+        }
+    }
 
 	ManagedOperationResult removeWatch(long token, @Nullable long[] ids, long operationEpoch) {
 		if (ids == null || ids.length == 0 || ids.length > MemoryEngineContract.MAX_WATCH_RECORDS) {
@@ -2269,6 +2498,14 @@ final class ManagedJavaMemoryEngine {
 	ManagedOperationResult setFreezeLockTyped(long token, long expectedRevision,
 	                                         @Nullable long[] ids, @Nullable String replacementValue,
 	                                         boolean allowWatchOnly, long operationEpoch) {
+		return setFreezeLockTyped(token, expectedRevision, ids, replacementValue,
+				allowWatchOnly, operationEpoch, 0);
+	}
+
+	ManagedOperationResult setFreezeLockTyped(long token, long expectedRevision,
+	                                         @Nullable long[] ids, @Nullable String replacementValue,
+	                                         boolean allowWatchOnly, long operationEpoch,
+	                                         int recipeFreezes) {
 		if (ids == null || ids.length == 0 || ids.length > MemoryEngineContract.MAX_FREEZE_RECORDS) {
 			return failure(token, MemoryEngineContract.RESULT_SAFETY_LIMIT,
 					"Managed Freeze Lock is limited to 32 rows");
@@ -2300,7 +2537,8 @@ final class ManagedJavaMemoryEngine {
 				else if (!watches.freeze[watchIndex]) additionalFreezes++;
 			}
 			if (watches.count + additionalWatches > MemoryEngineContract.MAX_WATCH_RECORDS
-					|| watches.freezeCount() + additionalFreezes > MemoryEngineContract.MAX_FREEZE_RECORDS) {
+					|| watches.freezeCount() + recipeFreezes + additionalFreezes
+						> MemoryEngineContract.MAX_FREEZE_RECORDS) {
 				return failureLocked(MemoryEngineContract.RESULT_RESOURCE_LIMIT,
 						"The global Watch/Freeze limit would be exceeded");
 			}
@@ -2334,7 +2572,8 @@ final class ManagedJavaMemoryEngine {
 				}
 			}
 			if (watches.count + watchesToAdd > MemoryEngineContract.MAX_WATCH_RECORDS
-					|| watches.freezeCount() + freezesToAdd > MemoryEngineContract.MAX_FREEZE_RECORDS) {
+					|| watches.freezeCount() + recipeFreezes + freezesToAdd
+						> MemoryEngineContract.MAX_FREEZE_RECORDS) {
 				return failureLocked(MemoryEngineContract.RESULT_RESOURCE_LIMIT,
 						"The global Watch/Freeze limit would be exceeded");
 			}
@@ -2405,7 +2644,7 @@ final class ManagedJavaMemoryEngine {
 				eligible++;
 				Object strongOwner = owner == null ? null : owner.strongOwner();
 				if (owner == null || (owner.kind != KIND_STATIC_FIELD && strongOwner == null)
-                        || (watches.savedSourceIds[watchIndex] != null &&
+                        || (watches.requiresVerifiedPath[watchIndex] &&
                             inspectPath(token, owner, strongOwner, slot).status !=
                             MemoryEngineContract.PATH_VERIFIED)) {
 					watches.freezePaused[watchIndex] = true;
@@ -2859,7 +3098,7 @@ final class ManagedJavaMemoryEngine {
 				return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
 						"The managed owner was collected or rebound before the mutation could commit");
 			}
-			if (watchIndex >= 0 && watches.savedSourceIds[watchIndex] != null
+			if (watchIndex >= 0 && watches.requiresVerifiedPath[watchIndex]
 					&& inspectPath(token, owner, batch.strongOwners[index],
 						batch.slots[index]).status != MemoryEngineContract.PATH_VERIFIED) {
 				return failureLocked(MemoryEngineContract.RESULT_IDENTITY_UNSAFE,
@@ -3308,6 +3547,7 @@ final class ManagedJavaMemoryEngine {
 		final int[] relocations;
 		final int[] freezeModes;
 		final boolean[] freezePaused;
+		final String[] savedSourceIds;
 
 		private ManagedPage(int count, long revision, boolean watch) {
 			this.revision = revision;
@@ -3327,6 +3567,7 @@ final class ManagedJavaMemoryEngine {
 			labels = watch ? new String[count] : null;
 			freezeModes = watch ? new int[count] : null;
 			freezePaused = watch ? new boolean[count] : null;
+			savedSourceIds = watch ? new String[count] : null;
 		}
 
 		void setSource(int index, CandidateSource source) {
@@ -3418,7 +3659,7 @@ final class ManagedJavaMemoryEngine {
 			if (!MemoryEngineContract.isValueType(selector)) return null;
 			QueryPlan plan = new QueryPlan(selector, MemoryEngineContract.PREDICATE_EQUAL, false);
 			if (selector == MemoryEngineContract.TYPE_AUTO) {
-				for (int type = FIRST_SUPPORTED_TYPE; type <= LAST_SUPPORTED_TYPE; type++) {
+				for (int type = FIRST_SUPPORTED_TYPE; type <= MemoryEngineContract.TYPE_DOUBLE; type++) {
 					plan.valid[type] = true;
 				}
 			} else {
@@ -3433,6 +3674,7 @@ final class ManagedJavaMemoryEngine {
 					|| predicate > MemoryEngineContract.PREDICATE_BETWEEN) return null;
 			QueryPlan plan = new QueryPlan(selector, predicate, false);
 			for (int type = FIRST_SUPPORTED_TYPE; type <= LAST_SUPPORTED_TYPE; type++) {
+				if (selector == MemoryEngineContract.TYPE_AUTO && type == MemoryEngineContract.TYPE_BOOLEAN) continue;
 				if (selector != MemoryEngineContract.TYPE_AUTO && selector != type) continue;
 				if (ManagedJavaValue.validKnownQuery(type, predicate, first, second)) {
 					plan.valid[type] = true;
@@ -3502,6 +3744,7 @@ final class ManagedJavaMemoryEngine {
 					|| predicate > MemoryEngineContract.PREDICATE_DECREASED_BY_RANGE) return null;
 			QueryPlan plan = new QueryPlan(selector, predicate, true);
 			for (int type = FIRST_SUPPORTED_TYPE; type <= LAST_SUPPORTED_TYPE; type++) {
+				if (selector == MemoryEngineContract.TYPE_AUTO && type == MemoryEngineContract.TYPE_BOOLEAN) continue;
 				if (selector != MemoryEngineContract.TYPE_AUTO && selector != type) continue;
 				if (ManagedJavaValue.validRelativeQuery(type, predicate, first, second)) {
 					plan.valid[type] = true;
@@ -3526,6 +3769,7 @@ final class ManagedJavaMemoryEngine {
 			long[] firstBits = new long[1];
 			long[] secondBits = new long[1];
 			for (int type = FIRST_SUPPORTED_TYPE; type <= LAST_SUPPORTED_TYPE; type++) {
+				if (selector == MemoryEngineContract.TYPE_AUTO && type == MemoryEngineContract.TYPE_BOOLEAN) continue;
 				if (selector != MemoryEngineContract.TYPE_AUTO && selector != type) continue;
 				long first = 0L;
 				long second = 0L;
@@ -4607,6 +4851,8 @@ final class ManagedJavaMemoryEngine {
 		final long[] freezeValues = new long[MemoryEngineContract.MAX_WATCH_RECORDS];
 		final boolean[] freezePaused = new boolean[MemoryEngineContract.MAX_WATCH_RECORDS];
         final String[] savedSourceIds = new String[MemoryEngineContract.MAX_WATCH_RECORDS];
+        final boolean[] savedLinkVerified = new boolean[MemoryEngineContract.MAX_WATCH_RECORDS];
+        final boolean[] requiresVerifiedPath = new boolean[MemoryEngineContract.MAX_WATCH_RECORDS];
 		int count;
 
 		int indexOf(long id) {
@@ -4623,6 +4869,8 @@ final class ManagedJavaMemoryEngine {
 			labels[count] = label;
 			freeze[count] = false;
             savedSourceIds[count] = null;
+            savedLinkVerified[count] = false;
+            requiresVerifiedPath[count] = false;
 			freezePaused[count] = false;
 			count++;
 		}
@@ -4642,6 +4890,8 @@ final class ManagedJavaMemoryEngine {
 				freezeValues[index] = freezeValues[last];
 				freezePaused[index] = freezePaused[last];
                 savedSourceIds[index] = savedSourceIds[last];
+                savedLinkVerified[index] = savedLinkVerified[last];
+                requiresVerifiedPath[index] = requiresVerifiedPath[last];
 			}
 			ids[last] = 0L;
 			owners[last] = null;
@@ -4649,6 +4899,8 @@ final class ManagedJavaMemoryEngine {
 			freeze[last] = false;
 			freezePaused[last] = false;
             savedSourceIds[last] = null;
+            savedLinkVerified[last] = false;
+            requiresVerifiedPath[last] = false;
 			count = last;
 		}
 
@@ -4670,6 +4922,8 @@ final class ManagedJavaMemoryEngine {
 				result.freeze[index] = freeze[index];
 				result.freezeValues[index] = freezeValues[index];
 				result.freezePaused[index] = freezePaused[index];
+				result.savedSourceIds[index] =
+                        savedLinkVerified[index] ? savedSourceIds[index] : null;
 			}
 			result.revision = 0L;
 			return result;
@@ -4700,6 +4954,8 @@ final class ManagedJavaMemoryEngine {
 			Arrays.fill(freeze, false);
 			Arrays.fill(freezePaused, false);
             Arrays.fill(savedSourceIds, null);
+            Arrays.fill(savedLinkVerified, false);
+            Arrays.fill(requiresVerifiedPath, false);
 			count = 0;
 		}
 	}
@@ -4715,6 +4971,7 @@ final class ManagedJavaMemoryEngine {
 		final boolean[] freeze;
 		final long[] freezeValues;
 		final boolean[] freezePaused;
+		final String[] savedSourceIds;
 		long revision;
 
 		WatchSnapshot(int count) {
@@ -4728,6 +4985,7 @@ final class ManagedJavaMemoryEngine {
 			freeze = new boolean[count];
 			freezeValues = new long[count];
 			freezePaused = new boolean[count];
+			savedSourceIds = new String[count];
 		}
 	}
 

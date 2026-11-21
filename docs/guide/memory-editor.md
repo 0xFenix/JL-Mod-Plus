@@ -10,13 +10,13 @@ A MIDlet can run from a converted DEX without the JL-Mod Plus bytecode transform
 
 ## Start with an observation
 
-Open a MIDlet, then launch **Memory Editor** from its runtime controls when available. The main areas are **Search**, **Watch**, **Saved**, and **Inspector**. Wide workspaces show values and locations together, while narrower ones stack the details. When results span multiple pages, the bottom pager moves between result ranges alongside the **Peek** control.
+Open a MIDlet, then launch **Memory Editor** from its runtime controls when available. The three destinations are **Search**, **Saved**, and **Scripts**. Open **Inspector** for one selected inspectable result or Saved entry; it is a detail page rather than a permanent tab. Saved combines persistent Bookmarks and relevant session values. Wider workspaces show values and locations together, while narrower ones stack details. The bottom pager navigates Search result pages alongside **Peek**.
 
-Closing and reopening the bubble editor during the same running MIDlet returns to the last tab. Inspector rechecks its last target rather than displaying an old memory snapshot; if the target is unavailable, the editor returns to its source tab. A new MIDlet session starts at Search.
+Minimizing and reopening Memory Editor during the same running MIDlet returns to the last area. Inspector rechecks its last target rather than displaying an old memory snapshot; if the target is unavailable, the editor returns to its source tab. A new MIDlet session starts at Search. The top Minimize control is not a command to discard an unfinished Script.
 
 A good search begins with something you can reproduce in the game: a counter that increases, health that falls, or a value that stays constant while other numbers change. The editor cannot tell you which candidate is “health” merely from the number alone.
 
-### Search for a known value
+## Search for a known value
 
 Use **Search known values** when you can read the current number on screen.
 
@@ -42,39 +42,71 @@ If an exact-value search finds nothing, inspect the selected type and try a sear
 
 The editor reports **candidates**, not confirmed game variables. Treat them as hypotheses until an edit produces the expected in-game effect.
 
-## Edit, Watch, Freeze, and Inspector
+## Edit, Saved, Freeze, and Inspector
 
-Select a candidate to open **Inspector** for additional information about the current value and its runtime context. **Watch** keeps selected candidates visible so you can observe how they change while playing.
+Select Search results and choose **Bookmark**, or bookmark a primitive field/array
+element from Inspector. Saved contains one persistent Bookmark collection per
+installed MIDlet. Freeze automatically bookmarks its target before activation.
+No separate Watch, Keep or Stop keeping action is required.
 
-Editing applies a value to the selected supported candidate or candidates. Batch actions can affect several values at once; verify the selection before using them. **Freeze** attempts to keep a value at the chosen level as the game runs. It may be inappropriate when the game expects to update that value itself.
+Tap an available Bookmark to edit, or use its menu to Inspect, Freeze/Unfreeze,
+Rename, Relink or Remove. A missing or incompatible target stays in Saved
+without being editable. A Bookmark is never removed automatically when a game
+changes scene, an object is collected or a MIDlet restarts.
 
-Where available, **Undo** and revert actions help reverse recent edits. They do not replace the game's save system or guarantee recovery from arbitrary bad writes.
+## Action Scripts
 
-A practical approach is to change **one candidate at a time**, check the game, then decide whether to watch or freeze it. If the game crashes or behaves strangely, restart it and repeat the search more carefully.
+To create a Script from known targets, select one or more verified Bookmarks in
+**Saved** and choose **Create script**, then choose Freeze Values, Value Editor,
+or Quick Actions. The builder already contains those targets. You can also open
+**Scripts → New script**, choose a type, and add Bookmarks manually. If no
+verified Bookmark exists, go to Search or Saved from the builder and return
+without losing the draft.
 
-## Saved Variables across sessions
+For advanced targets, choose **JSON Editor** directly; it does not require
+Bookmarks. Saving a Script does not run it. Run, Apply, or enable Freeze only
+when ready, and use Refresh to verify the latest values before applying a form.
 
-After identifying a primitive Search candidate, select exactly one result and choose **Save variable**. Give the definition a meaningful name. Saving requires a bounded, currently verified path through an initialized static field, the MIDlet root, or the current Displayable root. Unsupported, ambiguous or untraced locations cannot be saved safely.
+## Finding the target again
 
-The **Saved** tab lists definitions independently from Watch. On a later launch of the same installed MIDlet, open Saved to resolve a recorded structural path and read the latest value **without running Search again**. Select Saved entries with the row checkboxes (or Select all) and use the contextual toolbar. **Edit** and **Inspector** require one resolved selection; **Rename** accepts one selection even when the game is offline, and **Delete** supports multiple definitions in one confirmed operation. While Saved remains open, unresolved or changed paths are retried automatically. Editing is manual; opening Saved never freezes, restores or writes a game value.
+A rooted field/index locator can be resolved again during bounded foreground
+polling. An untraced variable can still be bookmarked and frozen in the current
+session, but after relaunch it needs an explicit **Relink**. From its Saved row
+choose Relink, select the corresponding Search result, then confirm. The old
+Freeze is stopped before the new association is published. Matching names,
+values, or diagnostic addresses are never proof of identity.
 
-Inspector can open from a resolved Saved entry without repeating Search. Tap an editable primitive **Inspector row** to open the same keypad editor used by Search, including an optional **Freeze after edit** checkbox. The three-dot menu for each Inspector field offers **Add to Watch** and **Save variable**. When Inspector originates from Saved, editing, Watch insertion, and Freeze all check the pinned reference chain and the displayed snapshot value; stale or replaced owners are rejected. Save can create a separately named definition in Search, Watch, or Saved Inspector contexts. Only a verified rooted path can be saved.
+A locator identifies a structural game slot, not necessarily the same character,
+item or game state on the next launch. Recheck the current value before editing.
+No Bookmark automatically restores a memory value or starts a previous Freeze.
 
-The **Freeze** checkbox inside the Saved value editor explicitly creates or updates a Watch entry and starts its periodic lock at the edited value. No separate Saved toolbar Freeze action is needed. Freeze from Search likewise adds the target to Watch. A Watch entry originating from Saved pauses its Freeze if an owner or intermediate reference changes. Only enabling Freeze explicitly again after a new Saved binding moves it to the current target. Deleting a Saved definition releases its bookmark and runtime binding, but does **not** remove an existing Watch entry or stop its independently managed Freeze; use the Watch tab to manage those entries.
+## Storage and transfers
 
-While the Saved tab is active, a changed reference can resolve to the current structurally matching target. A **Target updated** hint appears briefly after rebinding; it does not guarantee the same semantic character, particularly for indexed party arrays. A Saved edit that was already open remains pinned to the previous owner and rejects writing if that owner changes; reopen the editor to inspect the new target. **Not ready** means the root or target is not yet available, **Incompatible** means the locator cannot be verified, and **Failed** indicates another error.
+Bookmarks use a single bounded AtomicFile catalog. Old Saved Variables schema-2/3
+documents are read without data loss and upgraded on an authorized write to
+schema 4. The file retains its original name for backward compatibility. Each
+record contains an ID, label and optional rooted locator. Session candidate IDs,
+guest object references and Freeze states are never saved. Invalid catalogs are
+not overwritten.
 
-Definitions belong to the installed game and are kept as portable typed paths, not installation addresses. The experimental `saved-variables-prototype.json` format is not migrated. The selective bundle exporter includes **Saved Variables** as a separate component. Importing a Saved-only bundle into an existing game adds new targets without removing local bookmarks; duplicates are skipped by locator. Importing a bundle with both Configuration and Saved Variables restores the Saved collection as part of the backup. Both flows validate the imported data before replacing installed state.
-
-Supported paths include primitive static and rooted instance fields, numeric primitive array elements reached through trusted field or object-array paths, and multidimensional primitive array indexing. Untraced containers and arbitrary graph recovery remain unsupported. Opening Saved never restores values or activates Freeze automatically.
+Library bundle export/import exposes the existing component as **Bookmarks**.
+Bookmark-only imports merge verified locators with local records taking
+precedence. Untraced records carry stable IDs and may require relinking on a
+different device. A configuration restore uses the existing recoverable
+transaction and does not auto-enable Freeze.
 
 ## Why candidates sometimes disappear
 
-A managed-memory candidate identifies a value within the current MIDlet execution. Objects can be collected, arrays can be replaced, and the runtime can restart. The editor deliberately does **not** guess that another object with the same type, field, or value is the one you previously selected.
+A candidate belongs to one MIDlet runtime. Java objects may be collected or
+replaced, and a new search can invalidate result IDs. The editor refuses to
+retarget such an ID by guessing. If a Bookmark cannot verify its current target,
+it remains listed and read-only until resolution or explicit relink.
 
-As a result, a watch entry may become unavailable after a level change, game transition, or relaunch. This is safer than silently editing a different object.
+Editing and Freeze may affect gameplay or crash an incompatible MIDlet. Try one
+candidate at a time and verify its effect. Undo is not a substitute for a game
+save.
 
-Candidate identities and watches are **session-bound**. Saved definitions separately preserve checked structural locations; they are not save states and do not automatically restore values.
+**Boolean** can be explicitly selected for true/false field and array scanning. It supports Equal/Not equal known searches and Changed/Unchanged refinement. Boolean is deliberately excluded from numeric **Auto** scans to avoid excessive flag matches.
 
 ## If a search or edit doesn't work
 
