@@ -952,13 +952,13 @@ public class AppsListFragment extends Fragment {
 
             @Override
             public boolean onOpenUpdateRelease(@NonNull String url) {
-                return url.startsWith("https://github.com/H3nb/JL-Mod-Plus/releases/tag/v")
+                return url.startsWith("https://github.com/0xFenix/JL-Mod-Plus/releases")
                         && openExternalPage(url, "GitHub Releases",
                                 R.string.updates_link_copied, R.string.updates_browser_unavailable);
             }
             @Override
             public boolean onOpenUpdateDownload(@NonNull String url) {
-                return url.startsWith("https://github.com/H3nb/JL-Mod-Plus/releases/download/v")
+                return url.startsWith("https://github.com/0xFenix/JL-Mod-Plus/releases/download/")
                         && url.endsWith(".apk")
                         && openExternalPage(url, "GitHub Releases",
                                 R.string.updates_link_copied, R.string.updates_browser_unavailable);

@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
@@ -199,71 +200,51 @@ internal class UpdateRepository private constructor(context: Context) {
         }
     }
 
+    /**
+     * Reads this fork's GitHub releases directly, so no hosted manifest is needed.
+     * GitHub releases carry no versionCode; one is derived from the version core
+     * (major * 1_000_000 + minor * 1_000 + patch) purely for update comparison.
+     */
     private fun fetchLatest(requestedChannel: UpdateChannel): UpdateStatus {
-        val connection = URL(MANIFEST_URL).openConnection() as HttpURLConnection
+        val connection = URL(RELEASES_API_URL).openConnection() as HttpURLConnection
         connection.connectTimeout = 5000
         connection.readTimeout = 5000
-        connection.setRequestProperty("Accept", "application/json")
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
         connection.setRequestProperty("User-Agent", "JL-Mod-Plus-Updater")
-        val document = try {
+        val payload = try {
             if (connection.responseCode != 200) {
-                throw IOException("Update manifest HTTP " + connection.responseCode)
+                throw IOException("Update releases HTTP " + connection.responseCode)
             }
-            JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
-        }
-        if (document.getInt("schema") != 1 ||
-            document.getString("applicationId") != "io.github.h3nb.jlmodplus") {
-            throw IOException("Unsupported update manifest")
         }
 
         val installed = ReleaseVersion.parse(BuildConfig.VERSION_NAME)
             ?: return UpdateStatus.NoRelease
-        val entries = document.getJSONArray("releases")
+        val entries = JSONArray(payload)
         var best: Pair<ReleaseVersion, UpdateCandidate>? = null
         var hasNewerIncompatible = false
         var hasPublished = false
         for (i in 0 until entries.length()) {
-            val release = entries.getJSONObject(i)
-            val version = release.getString("versionName")
-            val parsed = ReleaseVersion.parse(version) ?: continue
-            val prerelease = release.getBoolean("prerelease")
-            if (prerelease != ('-' in version)) continue
+            val release = entries.optJSONObject(i) ?: continue
+            if (release.optBoolean("draft")) continue
+            val prerelease = release.optBoolean("prerelease")
             if (requestedChannel == UpdateChannel.Stable && prerelease) continue
+            val version = release.optString("tag_name").removePrefix("v")
+            val parsed = ReleaseVersion.parse(version) ?: continue
             hasPublished = true
             if (parsed <= installed) continue
-            val code = release.getInt("versionCode")
-            val minSdk = release.getInt("minSdk")
-            if (code <= 0 || minSdk < 23) throw IOException("Invalid release metadata")
-            if (code <= BuildConfig.VERSION_CODE || minSdk > Build.VERSION.SDK_INT) {
-                hasNewerIncompatible = true
-                continue
-            }
-
-            val assets = release.getJSONArray("assets")
-            val supportedUrls = mutableMapOf<String, String>()
-            for (assetIndex in 0 until assets.length()) {
-                val asset = assets.getJSONObject(assetIndex)
-                val abi = asset.getString("abi")
-                val url = asset.getString("url")
-                val expected = "https://github.com/H3nb/JL-Mod-Plus/releases/download/v" +
-                    version + "/JL-Mod-Plus-v" + version + "-" + abi + ".apk"
-                if (abi !in SUPPORTED_ASSET_ABIS || url != expected) {
-                    throw IOException("Invalid update asset URL")
-                }
-                supportedUrls[abi] = url
-            }
-            val download = Build.SUPPORTED_ABIS.firstNotNullOfOrNull { supportedUrls[it] }
-                ?: supportedUrls["universal"]
-            if (download == null) {
+            val code = versionCodeFor(version)
+            val download = selectApkAsset(release.optJSONArray("assets"))
+            if (code <= BuildConfig.VERSION_CODE || download == null) {
                 hasNewerIncompatible = true
                 continue
             }
             val candidate = UpdateCandidate(
                 versionName = version,
                 versionCode = code,
-                releaseUrl = "https://github.com/H3nb/JL-Mod-Plus/releases/tag/v" + version,
+                releaseUrl = release.optString("html_url", RELEASES_PAGE_URL),
                 downloadUrl = download,
             )
             if (eligibleUpdate(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, candidate) &&
@@ -279,10 +260,37 @@ internal class UpdateRepository private constructor(context: Context) {
         }
     }
 
+    private fun versionCodeFor(version: String): Int {
+        val match = VERSION_CORE.matchEntire(version) ?: return 0
+        val (major, minor, patch) = match.destructured
+        return major.toInt() * 1_000_000 + minor.toInt() * 1_000 + patch.toInt()
+    }
+
+    private fun selectApkAsset(assets: JSONArray?): String? {
+        if (assets == null) return null
+        val urls = mutableListOf<Pair<String, String>>()
+        for (index in 0 until assets.length()) {
+            val asset = assets.optJSONObject(index) ?: continue
+            val name = asset.optString("name")
+            val url = asset.optString("browser_download_url")
+            if (!name.endsWith(".apk") || !url.startsWith(ASSET_URL_PREFIX)) continue
+            urls.add(name to url)
+        }
+        if (urls.isEmpty()) return null
+        for (abi in Build.SUPPORTED_ABIS) {
+            urls.firstOrNull { (name, _) -> abi in name }?.let { return it.second }
+        }
+        return urls.firstOrNull { (name, _) -> "universal" in name.lowercase() }?.second
+            ?: urls.first().second
+    }
+
     companion object {
-        private const val MANIFEST_URL = "https://h3nb.github.io/JL-Mod-Plus/updates.json"
-        private val SUPPORTED_ASSET_ABIS =
-            setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64", "universal")
+        private const val RELEASES_API_URL =
+            "https://api.github.com/repos/0xFenix/JL-Mod-Plus/releases"
+        private const val RELEASES_PAGE_URL = "https://github.com/0xFenix/JL-Mod-Plus/releases"
+        private const val ASSET_URL_PREFIX =
+            "https://github.com/0xFenix/JL-Mod-Plus/releases/download/"
+        private val VERSION_CORE = Regex("""(\d+)\.(\d+)\.(\d+).*""")
         private const val KEY_CHANNEL = "jlmod_updates_channel"
         private const val KEY_INSTALLED = "jlmod_updates_installed_identity"
         private const val KEY_ENABLED = "jlmod_updates_enabled"
