@@ -160,6 +160,7 @@ public class MicroActivity extends AppCompatActivity {
 	private RuntimeMenuComposeController runtimeMenuController;
 	private MidletTabBarController tabBarController;
 	private AmsRegistry amsRegistry;
+	private VirtualKeyboard attachedVk;
 	private final ActivityResultLauncher<String> cameraPermissionLauncher =
 			registerForActivityResult(new ActivityResultContracts.RequestPermission(),
 					granted -> CameraRuntime.onPermissionResult(this, granted));
@@ -456,6 +457,7 @@ public class MicroActivity extends AppCompatActivity {
 			vk.setView(binding.overlay);
 			vk.setLayoutEditObserver(this::scheduleVirtualKeyboardEditorChromeUpdate);
 			binding.overlay.addLayer(vk);
+			attachedVk = vk;
 			if (vk.isPhone()) {
 				orientation = ORIENTATION_PORTRAIT;
 			}
@@ -833,6 +835,30 @@ public class MicroActivity extends AppCompatActivity {
 		}
 	}
 
+	/**
+	 * Re-attaches the current virtual keyboard after a tab launch replaces it.
+	 * applyConfiguration() swaps the shared instance, which otherwise keeps a
+	 * null view and crashes on the next touch.
+	 */
+	private void attachCurrentVirtualKeyboard() {
+		if (binding == null || binding.overlay == null) {
+			return;
+		}
+		VirtualKeyboard vk = ContextHolder.getVk();
+		if (vk == attachedVk) {
+			return;
+		}
+		if (attachedVk != null) {
+			binding.overlay.removeLayer(attachedVk);
+		}
+		attachedVk = vk;
+		if (vk != null) {
+			vk.setView(binding.overlay);
+			vk.setLayoutEditObserver(this::scheduleVirtualKeyboardEditorChromeUpdate);
+			binding.overlay.addLayer(vk);
+		}
+	}
+
 	/** Launches the suite recorded on a tab (falls back to the current host suite). */
 	private void launchTabMidlet(int tabId) {
 		AmsRegistry.Tab target = null;
@@ -880,6 +906,7 @@ public class MicroActivity extends AppCompatActivity {
 					targetTitle);
 		}
 		tabLoader.applyConfiguration();
+		attachCurrentVirtualKeyboard();
 		tabLoader.loadMidlet(targetMainClass, targetTitle);
 		// Frame two moves the selection after the new tab has been measured.
 		binding.tabBar.post(() -> switchToTab(tabId));
@@ -912,6 +939,7 @@ public class MicroActivity extends AppCompatActivity {
 						targetTitle);
 			}
 			tabLoader.applyConfiguration();
+			attachCurrentVirtualKeyboard();
 			tabLoader.loadMidlet(only.getKey(), targetTitle);
 			binding.tabBar.post(() -> switchToTab(tabId));
 			return;
@@ -927,6 +955,7 @@ public class MicroActivity extends AppCompatActivity {
 								targetTitle);
 					}
 					tabLoader.applyConfiguration();
+					attachCurrentVirtualKeyboard();
 					tabLoader.loadMidlet(picked, targetTitle);
 					binding.tabBar.post(() -> switchToTab(tabId));
 				})

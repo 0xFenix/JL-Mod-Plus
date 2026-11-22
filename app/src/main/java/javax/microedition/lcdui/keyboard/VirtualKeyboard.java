@@ -95,7 +95,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 
 	public static final int TYPE_CUSTOM = 0;
 	private static final int TYPE_PHONE = 1;
-	private static final int TYPE_PHONE_ARROWS = 2;
+	public static final int TYPE_PHONE_ARROWS = 2;
 	public static final int TYPE_NUMBERS_ARROWS = 3;
 	private static final int TYPE_ARR_NUM = 4;
 	private static final int TYPE_NUMBERS = 5;
@@ -2251,7 +2251,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 						associatedKeys[pointer] = key;
 						associatedSources[pointer] = newSourceForPointer(pointer);
 							key.onDown(sourceForPointer(pointer));
-							overlayView.postInvalidate();
+							if (overlayView != null) overlayView.postInvalidate();
 							consumed = true;
 							break;
 					}
@@ -2312,7 +2312,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 					associatedKeys[pointer] = null;
 					associatedSources[pointer] = null;
 					aKey.onUp(source);
-					overlayView.postInvalidate();
+					if (overlayView != null) overlayView.postInvalidate();
 					consumed = pointerPressed(pointer, x, y) || consumed;
 				} else {
 					consumed = true;
@@ -2360,7 +2360,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 						}
 					}
 					snapKeys();
-					overlayView.postInvalidate();
+					if (overlayView != null) overlayView.postInvalidate();
 				}
 			}
 			case LAYOUT_SCALES -> {
@@ -2411,7 +2411,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 				}
 				preservePositionsAfterResize();
 				snapKeys();
-				overlayView.postInvalidate();
+				if (overlayView != null) overlayView.postInvalidate();
 			}
 		}
 		if (consumed && layoutEditMode != LAYOUT_EOF) notifyLayoutEditStateChanged();
@@ -2433,7 +2433,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 				associatedKeys[pointer] = null;
 				associatedSources[pointer] = null;
 					key.onUp(source);
-					overlayView.postInvalidate();
+					if (overlayView != null) overlayView.postInvalidate();
 					consumed = true;
 				}
 		} else if (layoutEditMode == LAYOUT_KEYS) {
@@ -2483,7 +2483,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 			handler.removeCallbacks(this);
 			if (!visible) {
 				visible = true;
-				overlayView.postInvalidate();
+				if (overlayView != null) overlayView.postInvalidate();
 			}
 		}
 	}
@@ -2513,7 +2513,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	@Override
 	public void run() {
 		visible = false;
-		overlayView.postInvalidate();
+		if (overlayView != null) overlayView.postInvalidate();
 	}
 
 	@Override
@@ -2522,7 +2522,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 		for (VirtualKey key : keypad) {
 			if (key.hashCode() == hashCode) {
 				key.selected = true;
-				overlayView.postInvalidate();
+				if (overlayView != null) overlayView.postInvalidate();
 				break;
 			}
 		}
@@ -2540,7 +2540,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 		for (VirtualKey key : keypad) {
 			if (key.hashCode() == hashCode) {
 				key.selected = false;
-				overlayView.postInvalidate();
+				if (overlayView != null) overlayView.postInvalidate();
 				break;
 			}
 		}
