@@ -159,6 +159,18 @@ during `startApp()`.
 - Runtime host menus and dialogs preserve the configured system-bar visibility.
   Presenting or dismissing a host modal is not a runtime-chrome transition;
   transient system bars remain controlled by the user's system gesture.
+- The host menu is a compact adaptive action-tile grid without a MIDlet title.
+  Enabled toggles use the Material accent surface, while ordinary actions remain
+  neutral; Exit is a separate footer. The host menu uses the standard solid
+  Material 3 dialog and modal dimming on every supported Android version
+  (Android 6+), with no native window blur or framebuffer sampling.
+  Controller arrows follow grid rows and columns, with the same action and
+  dismiss behavior as touch.
+- Restart and Exit are equal-width footer actions below the quick-action grid.
+  Tiles center their icon and text, with accent surfaces indicating active toggles.
+  Restart asks for confirmation, then uses the existing main-process runtime
+  replacement handoff to stop the old Java ME heap before relaunching the same
+  installed MIDlet; it never reuses the live heap.
 - The explicit Exit item remains the only host-menu exit path and continues to
   use `showExitConfirmation()`. A MIDlet-owned Exit command and system-level
   task removal/force-stop remain independent termination paths.
@@ -167,12 +179,16 @@ during `startApp()`.
   the launch request and waits for the old process's Binder death before starting
   a fresh heap. Reopening the same live runtime retains its session and heap.
 - Android Home retains the live runtime and its keep-alive service. Removing an
-  emulator task from Recents or explicitly exiting the emulator completes the
-  session as a user stop, removes emulator tasks, and terminates runtime, memory
-  engine, and main processes. MIDlet Exit returns to Library after runtime
-  termination, including when a hung `destroyApp()` requires forced cleanup.
-  Normal emulator shutdown stops auxiliary processes, then runtime, then main.
-  If dispatch to the main coordinator fails, emergency shutdown stops auxiliary
+  emulator task from Recents completes the session as a user stop and terminates
+  the isolated MIDlet process immediately. The removed task has no UI to retain;
+  the main process may remain cached rather than being terminated by a delayed
+  shutdown request that could hit a new Library launch. The memory engine
+  invalidates its target when the runtime process disconnects. Explicit emulator
+  Exit still removes emulator tasks and terminates runtime, memory engine, and
+  main processes. MIDlet Exit returns to Library after runtime termination,
+  including when a hung `destroyApp()` requires forced cleanup. Normal explicit
+  emulator shutdown stops auxiliary processes, then runtime, then main. If
+  dispatch to the main coordinator fails, emergency shutdown stops auxiliary
   processes first and keeps its caller alive until peer termination is requested;
   a runtime caller therefore stops main immediately before terminating itself.
 - A `Displayable` transition closes the menu before replacing its View, then
