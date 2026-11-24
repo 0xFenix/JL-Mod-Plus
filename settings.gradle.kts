@@ -22,4 +22,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "JL-Mod-Plus"
-include(":app", ":dexlib")
+include(":app", ":dexlib", ":core")
