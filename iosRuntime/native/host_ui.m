@@ -18,6 +18,7 @@
 #include "j2me_ui.h"
 #include "host_form.h"
 #include "host_shell.h"
+#include "host_theme.h"
 #include "host_ui.h"
 
 // ---------------------------------------------------------------- MIDP keys
@@ -34,11 +35,6 @@ static const int rt_keypad_keys[] = {
     RT_KEY_SOFT1, RT_KEY_UP, RT_KEY_SOFT2,
     RT_KEY_LEFT, RT_KEY_FIRE, RT_KEY_RIGHT,
     '*', RT_KEY_DOWN, '#',
-};
-static NSString *const rt_keypad_labels[] = {
-    @"LSK", @"▲", @"RSK",
-    @"◀", @"OK", @"▶",
-    @"*", @"▼", @"#",
 };
 
 static const int rt_keypad_cols = 3;
@@ -76,8 +72,6 @@ static double rt_now(void) {
     if (self) {
         self.backgroundColor = [UIColor blackColor];
         self.layer.contentsGravity = kCAGravityResizeAspect;
-        // Keep pixel art crisp: Core Animation smooths scaled layer contents by
-        // default, which blurs a 240x320 framebuffer up to the screen size.
         self.layer.magnificationFilter = kCAFilterNearest;
         self.layer.minificationFilter = kCAFilterNearest;
         self.multipleTouchEnabled = NO;
@@ -101,7 +95,6 @@ static double rt_now(void) {
     }
 }
 
-/// Maps a touch inside the aspect-fitted image area onto canvas coordinates.
 - (void)postTouch:(UITouch *)touch type:(int)type {
     CGSize bounds = self.bounds.size;
     if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -141,13 +134,68 @@ static double rt_now(void) {
 
 @interface RTKeyButton : UIButton
 @property(nonatomic) int midpKeyCode;
+@property(nonatomic, strong) UILabel *detailLabel;
+@property(nonatomic, strong) UIImageView *symbolView;
 @end
 
 @implementation RTKeyButton
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = rt_color_surface_raised();
+        self.layer.cornerRadius = 14.0;
+        self.layer.cornerCurve = kCACornerCurveContinuous;
+        self.clipsToBounds = YES;
+
+        self.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightMedium]];
+        self.titleLabel.textAlignment = NSTextAlignmentCenter;
+        self.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
+
+        UIImageView *symbol = [[UIImageView alloc] init];
+        symbol.translatesAutoresizingMaskIntoConstraints = NO;
+        symbol.contentMode = UIViewContentModeScaleAspectFit;
+        symbol.tintColor = rt_color_text_primary();
+        [self addSubview:symbol];
+        self.symbolView = symbol;
+
+        UILabel *sub = [[UILabel alloc] init];
+        sub.translatesAutoresizingMaskIntoConstraints = NO;
+        sub.textAlignment = NSTextAlignmentCenter;
+        sub.textColor = rt_color_text_secondary();
+        sub.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1]
+                scaledFontForFont:[UIFont systemFontOfSize:11 weight:UIFontWeightMedium]];
+        [self addSubview:sub];
+        self.detailLabel = sub;
+
+        [NSLayoutConstraint activateConstraints:@[
+            [sub.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
+            [sub.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
+            [sub.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
+
+            [symbol.topAnchor constraintEqualToAnchor:sub.bottomAnchor constant:-2],
+            [symbol.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [symbol.widthAnchor constraintEqualToConstant:22],
+            [symbol.heightAnchor constraintEqualToConstant:22],
+            [symbol.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-4],
+        ]];
+    }
+    return self;
+}
+
+- (void)setHighlighted:(BOOL)highlighted {
+    [super setHighlighted:highlighted];
+    self.backgroundColor = highlighted
+            ? [rt_color_text_primary() colorWithAlphaComponent:0.14]
+            : rt_color_surface_raised();
+}
+
 @end
 
 @interface RTKeypadView : UIView
 @property(nonatomic, strong) NSMutableArray<RTKeyButton *> *buttons;
+@property(nonatomic, strong) UIImpactFeedbackGenerator *haptic;
 @end
 
 @implementation RTKeypadView
@@ -156,41 +204,72 @@ static double rt_now(void) {
     self = [super initWithFrame:frame];
     if (!self) return nil;
 
-    // Grid of equal cells so the pad keeps working at any screen width.
-    UIStackView *column = [[UIStackView alloc] initWithFrame:self.bounds];
+    self.haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+
+    UIStackView *column = [[UIStackView alloc] init];
+    column.translatesAutoresizingMaskIntoConstraints = NO;
     column.axis = UILayoutConstraintAxisVertical;
     column.distribution = UIStackViewDistributionFillEqually;
-    column.spacing = 4;
-    column.translatesAutoresizingMaskIntoConstraints = NO;
+    column.spacing = 8;
     [self addSubview:column];
+
     [NSLayoutConstraint activateConstraints:@[
-        [column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-        [column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-        [column.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
-        [column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-4],
+        [column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        [column.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
+        [column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
     ]];
 
     self.buttons = [NSMutableArray array];
-    for (int row = 0; row * rt_keypad_cols < (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0])); row++) {
+    NSDictionary *symbols = @{
+        @(-1): @"chevron.up",
+        @(-2): @"chevron.down",
+        @(-3): @"chevron.left",
+        @(-4): @"chevron.right",
+        @(-5): @"",
+        @(-6): @"chevron.left",
+        @(-7): @"chevron.right",
+    };
+
+    int total = (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
+    for (int row = 0; row * rt_keypad_cols < total; row++) {
         UIStackView *line = [[UIStackView alloc] init];
         line.axis = UILayoutConstraintAxisHorizontal;
         line.distribution = UIStackViewDistributionFillEqually;
-        line.spacing = 4;
+        line.spacing = 8;
 
         for (int col = 0; col < rt_keypad_cols; col++) {
             int index = row * rt_keypad_cols + col;
-            NSString *label = rt_keypad_labels[index];
-            if ([label length] == 0) {
-                UIView *spacer = [[UIView alloc] init];
-                [line addArrangedSubview:spacer];
-                continue;
+            int key = rt_keypad_keys[index];
+            RTKeyButton *button = [[RTKeyButton alloc] initWithFrame:CGRectZero];
+            button.midpKeyCode = key;
+            button.translatesAutoresizingMaskIntoConstraints = NO;
+            [button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
+
+            if (key == RT_KEY_FIRE) {
+                button.backgroundColor = rt_color_accent();
+                [button setTitle:@"OK" forState:UIControlStateNormal];
+                [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
+                button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                        scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightBold]];
+                button.detailLabel.hidden = YES;
+                button.symbolView.hidden = YES;
+            } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
+                button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
+                button.titleLabel.hidden = YES;
+                button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
+                button.symbolView.tintColor = rt_color_text_secondary();
+            } else if (key == '*' || key == '#') {
+                button.detailLabel.hidden = YES;
+                button.symbolView.hidden = YES;
+                [button setTitle:key == '*' ? @"*" : @"#" forState:UIControlStateNormal];
+                [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
+            } else {
+                button.detailLabel.hidden = YES;
+                button.titleLabel.hidden = YES;
+                button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
             }
-            RTKeyButton *button = [RTKeyButton buttonWithType:UIButtonTypeSystem];
-            button.midpKeyCode = rt_keypad_keys[index];
-            [button setTitle:label forState:UIControlStateNormal];
-            button.titleLabel.font = [UIFont monospacedSystemFontOfSize:17 weight:UIFontWeightMedium];
-            button.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.10];
-            button.layer.cornerRadius = 6;
+
             [button addTarget:self
                         action:@selector(keyDown:)
               forControlEvents:UIControlEventTouchDown];
@@ -207,6 +286,8 @@ static double rt_now(void) {
 }
 
 - (void)keyDown:(RTKeyButton *)button {
+    [self.haptic prepare];
+    [self.haptic impactOccurred];
     j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, button.midpKeyCode);
 }
 
@@ -218,9 +299,6 @@ static double rt_now(void) {
 
 // ------------------------------------------------------------ game sessions
 
-// One running MIDlet. A slot is the engine's tab index: every slot owns a JVM,
-// a save directory and a render context, and only the focused slot receives
-// input, so switching tabs changes focus instead of restarting the game.
 @interface RTGameSession : NSObject
 @property(nonatomic) int slot;
 @property(nonatomic, copy) NSString *jarPath;
@@ -229,7 +307,6 @@ static double rt_now(void) {
 @property(nonatomic) int height;
 @property(nonatomic) int fpsLimit;
 @property(nonatomic) BOOL running;
-/// Latest frame for this slot; the setter takes ownership of one reference.
 @property(nonatomic) CGImageRef lastImage;
 @end
 
@@ -252,17 +329,29 @@ static double rt_now(void) {
 
 @interface RTViewController : UIViewController
 @property(nonatomic, strong) RTGameView *gameView;
+@property(nonatomic, strong) UIView *canvasContainer;
+@property(nonatomic, strong) UIView *statusPill;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UIView *topBar;
+@property(nonatomic, strong) UIVisualEffectView *topBarBlur;
+@property(nonatomic, strong) UIView *topBarTint;
+@property(nonatomic, strong) UIView *topBarRule;
 @property(nonatomic, strong) NSLayoutConstraint *topBarHeight;
-@property(nonatomic, strong) UIButton *libraryButton;
+@property(nonatomic, strong) UIButton *backButton;
+@property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UIButton *fpsButton;
 @property(nonatomic, strong) UIScrollView *tabScroll;
 @property(nonatomic, strong) UIStackView *tabStack;
+/// Two placements for the tab strip: beside the title for one game, and using
+/// the whole bar once tabs need the room.
+@property(nonatomic, strong) NSLayoutConstraint *tabLeadingToTitle;
+@property(nonatomic, strong) NSLayoutConstraint *tabLeadingToBack;
+@property(nonatomic, strong) UIView *keypadContainer;
+@property(nonatomic, strong) RTKeypadView *keypad;
 @property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
 @property(nonatomic) int focusedSlot;
 @property(nonatomic) BOOL midletStarted;
-// Set by the library before presentation; globals stay as the script-driven
-// defaults so automated runs keep working unchanged.
+@property(nonatomic) BOOL showsFPS;
 @property(nonatomic, copy) NSString *jarPath;
 @property(nonatomic) int canvasWidth;
 @property(nonatomic) int canvasHeight;
@@ -272,6 +361,18 @@ static double rt_now(void) {
 
 static RTViewController *g_controller = nil;
 
+/// A MIDP screen replaces the canvas with buttons of its own, so the pad is
+/// retired while a panel is up instead of peeking out around it.
+static void rt_set_keypad_visible(int visible) {
+    RTViewController *controller = g_controller;
+    if (!controller) return;
+    controller.keypadContainer.hidden = visible != 0;
+    controller.statusPill.hidden = visible != 0;
+}
+static NSString *const RTShowFPSDefaultsKey = @"RTShowFPS";
+static int g_slot_frames[JVM_BRIDGE_MAX_SLOTS];
+static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
+
 @implementation RTViewController
 
 - (instancetype)init {
@@ -279,6 +380,7 @@ static RTViewController *g_controller = nil;
     if (self) {
         _sessions = [NSMutableArray array];
         _focusedSlot = -1;
+        _showsFPS = [[NSUserDefaults standardUserDefaults] boolForKey:RTShowFPSDefaultsKey];
     }
     return self;
 }
@@ -294,22 +396,61 @@ static RTViewController *g_controller = nil;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor blackColor];
+    self.view.backgroundColor = rt_color_ink();
+    self.navigationItem.hidesBackButton = YES;
 
+    // Top bar
     self.topBar = [[UIView alloc] init];
     self.topBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.topBar.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
     self.topBar.clipsToBounds = YES;
     [self.view addSubview:self.topBar];
 
-    self.libraryButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.libraryButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.libraryButton setTitle:@"‹ Thư viện" forState:UIControlStateNormal];
-    self.libraryButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    [self.libraryButton addTarget:self
-                           action:@selector(closeGame:)
-                 forControlEvents:UIControlEventTouchUpInside];
-    [self.topBar addSubview:self.libraryButton];
+    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterialDark];
+    self.topBarBlur = [[UIVisualEffectView alloc] initWithEffect:blur];
+    self.topBarBlur.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.topBar addSubview:self.topBarBlur];
+
+    self.topBarTint = [[UIView alloc] init];
+    self.topBarTint.translatesAutoresizingMaskIntoConstraints = NO;
+    self.topBarTint.backgroundColor = [rt_color_ink() colorWithAlphaComponent:0.92];
+    [self.topBar addSubview:self.topBarTint];
+
+    self.topBarRule = [[UIView alloc] init];
+    self.topBarRule.translatesAutoresizingMaskIntoConstraints = NO;
+    self.topBarRule.backgroundColor = rt_color_hairline();
+    [self.topBar addSubview:self.topBarRule];
+
+    self.backButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.backButton setImage:[[UIImage systemImageNamed:@"chevron.left"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                     forState:UIControlStateNormal];
+    self.backButton.tintColor = rt_color_accent();
+    self.backButton.backgroundColor = [UIColor clearColor];
+    self.backButton.accessibilityLabel = @"Thư viện";
+    [self.backButton addTarget:self
+                        action:@selector(closeGame:)
+              forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.backButton];
+
+    self.titleLabel = [[UILabel alloc] init];
+    self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.titleLabel.textColor = rt_color_text_secondary();
+    self.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline]
+            scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]];
+    self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.topBar addSubview:self.titleLabel];
+
+    self.fpsButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.fpsButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.fpsButton setImage:[[UIImage systemImageNamed:@"speedometer"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                    forState:UIControlStateNormal];
+    self.fpsButton.tintColor = self.showsFPS ? rt_color_accent() : rt_color_text_secondary();
+    self.fpsButton.backgroundColor = [UIColor clearColor];
+    self.fpsButton.accessibilityLabel = @"Hiện FPS";
+    [self.fpsButton addTarget:self
+                       action:@selector(toggleFPS:)
+             forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.fpsButton];
 
     self.tabScroll = [[UIScrollView alloc] init];
     self.tabScroll.translatesAutoresizingMaskIntoConstraints = NO;
@@ -319,8 +460,20 @@ static RTViewController *g_controller = nil;
     self.tabStack = [[UIStackView alloc] init];
     self.tabStack.translatesAutoresizingMaskIntoConstraints = NO;
     self.tabStack.axis = UILayoutConstraintAxisHorizontal;
-    self.tabStack.spacing = 6;
+    self.tabStack.spacing = 8;
+    self.tabStack.alignment = UIStackViewAlignmentCenter;
     [self.tabScroll addSubview:self.tabStack];
+
+    // Canvas
+    self.canvasContainer = [[UIView alloc] init];
+    self.canvasContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    self.canvasContainer.backgroundColor = [UIColor blackColor];
+    self.canvasContainer.layer.cornerRadius = 10.0;
+    self.canvasContainer.layer.cornerCurve = kCACornerCurveContinuous;
+    self.canvasContainer.layer.borderWidth = 1.0 / [UIScreen mainScreen].scale;
+    self.canvasContainer.layer.borderColor = rt_color_hairline().CGColor;
+    self.canvasContainer.clipsToBounds = YES;
+    [self.view addSubview:self.canvasContainer];
 
     self.gameView = [[RTGameView alloc] init];
     self.gameView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -328,62 +481,159 @@ static RTViewController *g_controller = nil;
     int height = self.canvasHeight > 0 ? self.canvasHeight : g_height;
     self.gameView.canvasWidth = width;
     self.gameView.canvasHeight = height;
-    [self.view addSubview:self.gameView];
+    [self.canvasContainer addSubview:self.gameView];
+
+    self.statusPill = [[UIView alloc] init];
+    self.statusPill.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusPill.backgroundColor = [rt_color_surface() colorWithAlphaComponent:0.92];
+    self.statusPill.layer.cornerRadius = 11.0;
+    self.statusPill.layer.cornerCurve = kCACornerCurveContinuous;
+    self.statusPill.clipsToBounds = YES;
+    [self.canvasContainer addSubview:self.statusPill];
 
     self.statusLabel = [[UILabel alloc] init];
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusLabel.textColor = [UIColor lightGrayColor];
-    self.statusLabel.font = [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-    self.statusLabel.text = @"starting…";
-    [self.view addSubview:self.statusLabel];
+    self.statusLabel.textColor = rt_color_text_secondary();
+    self.statusLabel.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightMedium];
+    self.statusLabel.textAlignment = NSTextAlignmentCenter;
+    self.statusLabel.text = @"Đang khởi động";
+    [self.statusPill addSubview:self.statusLabel];
 
-    RTKeypadView *keypad = [[RTKeypadView alloc] init];
-    keypad.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:keypad];
+    // Keypad
+    self.keypadContainer = [[UIView alloc] init];
+    self.keypadContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    self.keypadContainer.backgroundColor = rt_color_surface();
+    self.keypadContainer.layer.cornerRadius = 20.0;
+    self.keypadContainer.layer.cornerCurve = kCACornerCurveContinuous;
+    self.keypadContainer.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
+    self.keypadContainer.layer.borderWidth = 1.0 / [UIScreen mainScreen].scale;
+    self.keypadContainer.layer.borderColor = rt_color_hairline().CGColor;
+    [self.view addSubview:self.keypadContainer];
+
+    self.keypad = [[RTKeypadView alloc] init];
+    self.keypad.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.keypadContainer addSubview:self.keypad];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     self.topBarHeight = [self.topBar.heightAnchor constraintEqualToConstant:0];
+    self.tabLeadingToTitle = [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.titleLabel.trailingAnchor
+                                                                         constant:8];
+    self.tabLeadingToBack = [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor
+                                                                        constant:4];
+    self.tabLeadingToTitle.active = YES;
     [NSLayoutConstraint activateConstraints:@[
         [self.topBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.topBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.topBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         self.topBarHeight,
 
-        [self.libraryButton.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor constant:6],
-        [self.libraryButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
-        [self.libraryButton.widthAnchor constraintLessThanOrEqualToConstant:100],
+        [self.topBarBlur.topAnchor constraintEqualToAnchor:self.topBar.topAnchor],
+        [self.topBarBlur.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor],
+        [self.topBarBlur.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor],
+        [self.topBarBlur.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
 
-        [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.libraryButton.trailingAnchor constant:6],
-        [self.tabScroll.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor constant:-6],
-        [self.tabScroll.topAnchor constraintEqualToAnchor:self.topBar.topAnchor constant:3],
-        [self.tabScroll.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:-3],
+        [self.topBarTint.topAnchor constraintEqualToAnchor:self.topBar.topAnchor],
+        [self.topBarTint.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor],
+        [self.topBarTint.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor],
+        [self.topBarTint.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
 
-        [self.tabStack.leadingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.leadingAnchor],
-        [self.tabStack.trailingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.trailingAnchor],
+        [self.topBarRule.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor],
+        [self.topBarRule.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor],
+        [self.topBarRule.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
+        [self.topBarRule.heightAnchor constraintEqualToConstant:1.0 / [UIScreen mainScreen].scale],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor constant:4],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44],
+        [self.backButton.heightAnchor constraintEqualToConstant:44],
+
+        [self.fpsButton.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor constant:-4],
+        [self.fpsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.fpsButton.widthAnchor constraintEqualToConstant:44],
+        [self.fpsButton.heightAnchor constraintEqualToConstant:44],
+
+        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:4],
+        [self.titleLabel.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.fpsButton.leadingAnchor constant:-8],
+
+        [self.tabScroll.topAnchor constraintEqualToAnchor:self.topBar.topAnchor constant:4],
+        [self.tabScroll.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:-4],
+        [self.tabScroll.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-4],
+
+        [self.tabStack.leadingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.leadingAnchor constant:4],
+        [self.tabStack.trailingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.trailingAnchor constant:-4],
         [self.tabStack.topAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.topAnchor],
         [self.tabStack.bottomAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.bottomAnchor],
         [self.tabStack.heightAnchor constraintEqualToAnchor:self.tabScroll.frameLayoutGuide.heightAnchor],
 
-        [self.gameView.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
-        [self.gameView.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
-        [self.gameView.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [self.statusLabel.topAnchor constraintEqualToAnchor:self.gameView.bottomAnchor constant:2],
-        [self.statusLabel.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:8],
-        [self.statusLabel.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-8],
-        [keypad.topAnchor constraintEqualToAnchor:self.statusLabel.bottomAnchor constant:4],
-        [keypad.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
-        [keypad.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [keypad.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [keypad.heightAnchor constraintEqualToConstant:150],
+        [self.canvasContainer.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:12],
+        [self.canvasContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:12],
+        [self.canvasContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-12],
+
+        [self.gameView.topAnchor constraintEqualToAnchor:self.canvasContainer.topAnchor],
+        [self.gameView.leadingAnchor constraintEqualToAnchor:self.canvasContainer.leadingAnchor],
+        [self.gameView.trailingAnchor constraintEqualToAnchor:self.canvasContainer.trailingAnchor],
+        [self.gameView.bottomAnchor constraintEqualToAnchor:self.canvasContainer.bottomAnchor],
+
+        [self.statusPill.leadingAnchor constraintEqualToAnchor:self.canvasContainer.leadingAnchor constant:8],
+        [self.statusPill.bottomAnchor constraintEqualToAnchor:self.canvasContainer.bottomAnchor constant:-8],
+        [self.statusPill.heightAnchor constraintEqualToConstant:22],
+
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.statusPill.leadingAnchor constant:8],
+        [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.statusPill.trailingAnchor constant:-8],
+        [self.statusLabel.topAnchor constraintEqualToAnchor:self.statusPill.topAnchor],
+        [self.statusLabel.bottomAnchor constraintEqualToAnchor:self.statusPill.bottomAnchor],
+
+        [self.keypadContainer.topAnchor constraintEqualToAnchor:self.canvasContainer.bottomAnchor],
+        [self.keypadContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [self.keypadContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        [self.keypadContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
+        [self.keypadContainer.heightAnchor constraintEqualToConstant:190],
+
+        [self.keypad.topAnchor constraintEqualToAnchor:self.keypadContainer.topAnchor],
+        [self.keypad.leadingAnchor constraintEqualToAnchor:self.keypadContainer.leadingAnchor],
+        [self.keypad.trailingAnchor constraintEqualToAnchor:self.keypadContainer.trailingAnchor],
+        [self.keypad.bottomAnchor constraintEqualToAnchor:self.keypadContainer.bottomAnchor],
     ]];
 
+    self.statusPill.hidden = NO;
+    [self updateStatus];
+    rt_form_ui_set_visibility_callback(rt_set_keypad_visible);
     rt_form_ui_attach((__bridge void *) self.view);
     rt_form_ui_present(j2me_ui_get_slot_active_action(self.focusedSlot >= 0 ? self.focusedSlot : 0));
     [self rebuildTabs];
 }
 
-/// Tab strip: one entry per running game with a close control, plus the way
-/// back to the library. Hidden while a single game runs full screen.
+- (void)updateStatus {
+    RTGameSession *session = [self sessionForSlot:self.focusedSlot];
+    if (!session) {
+        self.statusLabel.text = @"Đang khởi động";
+        self.statusPill.hidden = NO;
+        return;
+    }
+    if (!session.running) {
+        self.statusLabel.text = @"Đã dừng";
+        self.statusPill.hidden = NO;
+        return;
+    }
+    if (self.showsFPS && g_slot_frames[session.slot] > 0) {
+        double elapsed = rt_now() - g_slot_started[session.slot];
+        double fps = elapsed > 0 ? (double) g_slot_frames[session.slot] / elapsed : 0;
+        self.statusLabel.text = [NSString localizedStringWithFormat:@"%.1f fps", fps];
+        self.statusPill.hidden = NO;
+    } else {
+        self.statusPill.hidden = YES;
+    }
+}
+
+- (void)toggleFPS:(UIButton *)sender {
+    (void)sender;
+    self.showsFPS = !self.showsFPS;
+    [[NSUserDefaults standardUserDefaults] setBool:self.showsFPS forKey:RTShowFPSDefaultsKey];
+    self.fpsButton.tintColor = self.showsFPS ? rt_color_accent() : rt_color_text_secondary();
+    [self updateStatus];
+}
+
 - (void)rebuildTabs {
     for (UIView *view in self.tabStack.arrangedSubviews) {
         [self.tabStack removeArrangedSubview:view];
@@ -391,26 +641,36 @@ static RTViewController *g_controller = nil;
     }
     for (RTGameSession *session in self.sessions) {
         UIView *tab = [[UIView alloc] init];
-        tab.backgroundColor = session.slot == self.focusedSlot
-                ? [UIColor colorWithWhite:1.0 alpha:0.18]
+        BOOL selected = session.slot == self.focusedSlot;
+        tab.backgroundColor = selected
+                ? [rt_color_accent() colorWithAlphaComponent:0.16]
                 : [UIColor colorWithWhite:1.0 alpha:0.06];
-        tab.layer.cornerRadius = 6;
+        tab.layer.cornerRadius = 8.0;
+        tab.layer.cornerCurve = kCACornerCurveContinuous;
+        tab.clipsToBounds = YES;
 
-        UIButton *title = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButton *title = [UIButton buttonWithType:UIButtonTypeCustom];
         title.translatesAutoresizingMaskIntoConstraints = NO;
-        [title setTitle:session.running ? session.title : [session.title stringByAppendingString:@" (x)"]
-               forState:UIControlStateNormal];
-        title.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-        title.contentEdgeInsets = UIEdgeInsetsMake(2, 8, 2, 4);
+        NSString *tabTitle = session.title;
+        [title setTitle:tabTitle forState:UIControlStateNormal];
+        [title setTitleColor:selected ? rt_color_accent()
+                                     : (session.running ? rt_color_text_secondary() : rt_color_text_tertiary())
+                      forState:UIControlStateNormal];
+        title.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1]
+                scaledFontForFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]];
+        title.contentEdgeInsets = UIEdgeInsetsMake(4, 10, 4, 4);
         title.tag = session.slot;
         [title addTarget:self action:@selector(selectTab:) forControlEvents:UIControlEventTouchUpInside];
         [tab addSubview:title];
 
-        UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+        UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
         close.translatesAutoresizingMaskIntoConstraints = NO;
-        [close setTitle:@"✕" forState:UIControlStateNormal];
-        close.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+        [close setImage:[[UIImage systemImageNamed:@"xmark"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+               forState:UIControlStateNormal];
+        close.tintColor = selected ? rt_color_accent() : rt_color_text_secondary();
+        close.backgroundColor = [UIColor clearColor];
         close.tag = session.slot;
+        close.accessibilityLabel = @"Đóng";
         [close addTarget:self action:@selector(closeTab:) forControlEvents:UIControlEventTouchUpInside];
         [tab addSubview:close];
 
@@ -418,16 +678,41 @@ static RTViewController *g_controller = nil;
             [title.leadingAnchor constraintEqualToAnchor:tab.leadingAnchor],
             [title.topAnchor constraintEqualToAnchor:tab.topAnchor],
             [title.bottomAnchor constraintEqualToAnchor:tab.bottomAnchor],
+
             [close.leadingAnchor constraintEqualToAnchor:title.trailingAnchor],
-            [close.trailingAnchor constraintEqualToAnchor:tab.trailingAnchor constant:-4],
+            [close.trailingAnchor constraintEqualToAnchor:tab.trailingAnchor constant:-2],
             [close.centerYAnchor constraintEqualToAnchor:tab.centerYAnchor],
+            [close.widthAnchor constraintEqualToConstant:36],
+            [close.heightAnchor constraintEqualToConstant:36],
         ]];
         [self.tabStack addArrangedSubview:tab];
     }
+
     BOOL showBar = self.sessions.count > 1 || self.showsBackButton;
+    BOOL showTabs = self.sessions.count > 1;
     self.topBar.hidden = !showBar;
-    self.topBarHeight.constant = showBar ? 36 : 0;
+    self.topBarHeight.constant = showBar ? 44 : 0;
+    self.tabScroll.hidden = !showTabs;
+    // With tabs on screen the focused title is redundant and steals the room
+    // the strip needs, so the strip takes the space beside the back button.
+    self.titleLabel.hidden = showTabs;
+    self.tabLeadingToTitle.active = !showTabs;
+    self.tabLeadingToBack.active = showTabs;
+
+    RTGameSession *focused = [self sessionForSlot:self.focusedSlot];
+    self.titleLabel.text = focused ? focused.title : @"";
+    [self.view setNeedsLayout];
     [self.view layoutIfNeeded];
+
+    NSUInteger index = 0;
+    for (RTGameSession *session in self.sessions) {
+        if (session.slot == self.focusedSlot) break;
+        index++;
+    }
+    if (index < self.tabStack.arrangedSubviews.count) {
+        UIView *tab = self.tabStack.arrangedSubviews[index];
+        [self.tabScroll scrollRectToVisible:[tab convertRect:tab.bounds toView:self.tabScroll] animated:NO];
+    }
 }
 
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
@@ -458,8 +743,6 @@ static RTViewController *g_controller = nil;
 }
 
 - (void)startSession:(RTGameSession *)session {
-    // Each game keeps its own save directory so record stores and config do
-    // not bleed between titles.
     NSString *saveRoot = @(g_save_root);
     NSString *base = session.jarPath.lastPathComponent.stringByDeletingPathExtension;
     saveRoot = [saveRoot stringByAppendingPathComponent:base];
@@ -474,8 +757,6 @@ static RTViewController *g_controller = nil;
     int height = session.height;
     int fpsLimit = session.fpsLimit;
 
-    // The MIDlet runs on its own thread; the event loop inside the runtime
-    // blocks until that game exits.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         printf("[RT] slot %d initializing %s\n", slot, jar.UTF8String);
         fflush(stdout);
@@ -485,6 +766,7 @@ static RTViewController *g_controller = nil;
                 session.running = NO;
                 if (slot == self.focusedSlot) {
                     self.statusLabel.text = @"jvm_bridge_init_slot failed";
+                    self.statusPill.hidden = NO;
                 }
                 [self rebuildTabs];
             });
@@ -499,11 +781,9 @@ static RTViewController *g_controller = nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             session.running = NO;
             if (slot == self.focusedSlot) {
-                self.statusLabel.text = @"MIDlet finished";
+                [self updateStatus];
             }
             [self rebuildTabs];
-            // Render contexts are process wide, so they may only be torn down
-            // once no slot is left to draw into them.
             if (self.sessions.count == 0) {
                 j2me_render_stop();
                 j2me_render_cleanup();
@@ -523,7 +803,7 @@ static RTViewController *g_controller = nil;
     self.gameView.canvasWidth = session.width;
     self.gameView.canvasHeight = session.height;
     self.gameView.currentImage = session.lastImage;
-    self.statusLabel.text = session.running ? @"running" : @"MIDlet finished";
+    [self updateStatus];
     rt_form_ui_present(j2me_ui_get_slot_active_action(slot));
     [self rebuildTabs];
 }
@@ -548,8 +828,6 @@ static RTViewController *g_controller = nil;
         return;
     }
     [self.sessions removeObject:session];
-    // The run thread owns teardown: it returns from the game loop, destroys the
-    // slot and then reports completion.
     jvm_bridge_request_stop_slot(slot);
 
     if (self.focusedSlot == slot) {
@@ -559,7 +837,7 @@ static RTViewController *g_controller = nil;
             [self focusSlot:next.slot];
         } else {
             self.gameView.currentImage = NULL;
-            self.statusLabel.text = @"no game";
+            [self updateStatus];
             [self rebuildTabs];
             if (self.navigationController) {
                 [self.navigationController popViewControllerAnimated:YES];
@@ -571,6 +849,7 @@ static RTViewController *g_controller = nil;
 }
 
 - (void)closeGame:(UIButton *)sender {
+    (void)sender;
     [self.navigationController popViewControllerAnimated:YES];
 }
 
@@ -597,13 +876,25 @@ static RTViewController *g_controller = nil;
             });
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if (self.navigationController) {
+        self.navigationController.navigationBarHidden = YES;
+    }
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    if (self.navigationController) {
+        self.navigationController.navigationBarHidden = NO;
+    }
+}
+
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     if (self.midletStarted) return;
     self.midletStarted = YES;
 
-    // Script-driven runs pass the game in the environment; the library adds
-    // sessions through -addGame:width:height:fps:title: instead.
     if (self.sessions.count == 0 && (self.jarPath.length || (g_midlet_jar && g_midlet_jar[0]))) {
         NSString *jar = self.jarPath.length ? self.jarPath : @(g_midlet_jar);
         [self addGame:jar
@@ -613,15 +904,10 @@ static RTViewController *g_controller = nil;
                 title:nil];
     }
 
-    // Synthetic events for automated input verification: prove the ring buffer,
-    // the runner's dispatch, and the Canvas callbacks agree. Real touches still
-    // arrive through RTGameView's aspect-fit mapping.
     if (getenv("RT_SYNTH_INPUT")) {
         [self scheduleSyntheticEvents];
     }
 
-    // Automation hook: cycle focus between tabs so a scripted run can prove
-    // that switching tabs restores the other game's frame.
     const char *cycle = getenv("RT_FOCUS_CYCLE");
     if (cycle && cycle[0]) {
         double seconds = atof(cycle);
@@ -634,8 +920,6 @@ static RTViewController *g_controller = nil;
         }
     }
 
-    // Automation hook: close the oldest tab after N seconds so a scripted run
-    // covers per-slot teardown while another game keeps running.
     const char *closeAfter = getenv("RT_CLOSE_AFTER");
     if (closeAfter && closeAfter[0]) {
         double seconds = atof(closeAfter);
@@ -650,6 +934,7 @@ static RTViewController *g_controller = nil;
 }
 
 - (void)cycleFocus:(NSTimer *)timer {
+    (void)timer;
     if (self.sessions.count < 2) return;
     NSUInteger index = 0;
     for (NSUInteger i = 0; i < self.sessions.count; i++) {
@@ -666,8 +951,6 @@ static RTViewController *g_controller = nil;
 
 // ------------------------------------------------------------- app delegate
 
-// The scene-based life cycle is mandatory for apps built with current SDKs;
-// a legacy UIWindow in the app delegate is rejected at launch.
 static int g_shell_mode = 0;
 
 @interface RTSceneDelegate : UIResponder <UIWindowSceneDelegate>
@@ -679,6 +962,8 @@ static int g_shell_mode = 0;
 - (void)scene:(UIScene *)scene
         willConnectToSession:(UISceneSession *)session
         options:(UISceneConnectionOptions *)connectionOptions {
+    (void)session;
+    (void)connectionOptions;
     if (![scene isKindOfClass:[UIWindowScene class]]) return;
     UIWindow *window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *) scene];
     UIViewController *root = nil;
@@ -704,6 +989,8 @@ static int g_shell_mode = 0;
 - (UISceneConfiguration *)application:(UIApplication *)application
         configurationForConnectingSceneSession:(UISceneSession *)connectingSceneSession
         options:(UISceneConnectionOptions *)options {
+    (void)application;
+    (void)options;
     UISceneConfiguration *config =
             [[UISceneConfiguration alloc] initWithName:@"Default"
                                            sessionRole:connectingSceneSession.role];
@@ -715,9 +1002,6 @@ static int g_shell_mode = 0;
 
 // ------------------------------------------------------------ flush bridge
 
-// Optional frame capture. devicectl has no screenshot command and a script
-// cannot tap the phone, so the only way to see what the device rendered is to
-// have the host write the frames it already receives.
 static int rt_snapshot_interval(void) {
     static int interval = 0;
     if (interval == 0) {
@@ -753,14 +1037,6 @@ static void rt_write_snapshot(CGImageRef image) {
     CFRelease(url);
 }
 
-// Per-slot frame accounting: fps has to be measured per game, not for the
-// process, and the focused log line keeps the old "[RT] ... frames=" shape that
-// the run scripts grep for.
-static int g_slot_frames[JVM_BRIDGE_MAX_SLOTS];
-static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
-
-/// Every slot reports its frames here; the image reference belongs to this
-/// callback. Only the latest frame is kept, for instant redraw on tab switch.
 static void rt_on_slot_flush(int slot, void *image, int width, int height) {
     if (!image) return;
     CGImageRef cg = (CGImageRef) image;
@@ -794,7 +1070,6 @@ static void rt_on_flush(void *image, int width, int height) {
     CGImageRef cg = (CGImageRef) image;
     int slot = jvm_bridge_get_focused_slot();
     g_frames++;
-    // The layer retains the image, so the callback's reference is ours to drop.
     dispatch_async(dispatch_get_main_queue(), ^{
         RTViewController *controller = g_controller;
         if (!controller) {
@@ -804,12 +1079,7 @@ static void rt_on_flush(void *image, int width, int height) {
         controller.gameView.canvasWidth = width;
         controller.gameView.canvasHeight = height;
         controller.gameView.currentImage = cg;
-        if (slot >= 0 && slot < JVM_BRIDGE_MAX_SLOTS && g_slot_frames[slot] > 0) {
-            double elapsed = rt_now() - g_slot_started[slot];
-            double fps = elapsed > 0 ? (double) g_slot_frames[slot] / elapsed : 0;
-            controller.statusLabel.text =
-                    [NSString stringWithFormat:@"%dx%d  %.1f fps", width, height, fps];
-        }
+        [controller updateStatus];
         if (g_frames % rt_snapshot_interval() == 0) {
             rt_write_snapshot(cg);
         }
@@ -817,8 +1087,6 @@ static void rt_on_flush(void *image, int width, int height) {
     });
 }
 
-/// The library's navigation controller, so a game session can be pushed from
-/// code without the library owning host-controller details.
 static UINavigationController *rt_active_navigation_controller(void) {
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
@@ -842,7 +1110,6 @@ void *rt_create_game_controller(const char *jar_path, int width, int height,
     controller.canvasHeight = height;
     controller.fpsLimit = fps_limit;
     controller.showsBackButton = YES;
-    // Flush callbacks target whichever game screen is on screen.
     g_controller = controller;
     return (__bridge_retained void *) controller;
 }

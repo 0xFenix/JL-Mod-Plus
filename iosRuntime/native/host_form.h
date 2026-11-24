@@ -15,6 +15,10 @@ void rt_form_ui_attach(void *host_view);
 /// or hide the panel for Canvas. Main thread only.
 void rt_form_ui_present(int action);
 
+/// Notified with 1 while a screen panel covers the game and 0 for Canvas, so
+/// the host can retire controls the game no longer needs.
+void rt_form_ui_set_visibility_callback(void (*callback)(int visible));
+
 #ifdef __cplusplus
 }
 #endif

@@ -177,15 +177,35 @@ button also imports through `UIDocumentPickerViewController`.
 jar into `Documents/games` and launches the library, and `RT_AUTOLAUNCH=1`
 opens the first row after 0.3 s because `simctl` cannot tap.
 
+## Visual design
+
+The host chrome is a dark console around the frame: near-black ink, quiet
+surfaces, one warm amber accent, SF Symbols, 44 pt touch targets and Dynamic
+Type where the text is user-facing. Tokens live in `native/host_theme.h` and
+are shared by `host_shell.m`, `host_ui.m` and `host_form.m`. The app declares
+`UIUserInterfaceStyle` Dark in its Info.plist so system sheets, alerts and the
+keyboard match the screens instead of rendering light chrome over ink.
+
+The library draws its own large title inside the table header: on the iOS 26
+SDK the system large-title label is never built for this bar, and the slot it
+reserves stays blank. A `UIRefreshControl` is deliberately not used for the
+same reason (the SDK docks it into that slot); the library rescans on every
+appearance and the `Sắp xếp` action changes the order.
+
+While a non-Canvas screen (Form, List, Alert, TextBox) is up, the panel dims
+the game and hides the keypad, because those screens bring their own command
+buttons and the pad would otherwise peek out around the sheet.
+
 ## Known gaps
 
 - `file://` has no protocol handler: the engine ships no
   `javax.microedition.io.file` implementation and the interfaces alone cannot
   open a stream.
 
-- Frames are delivered to a single full-screen view; there is no multi-tab
-  UI. The `‹ Thư viện` button overlaps the top-left of the canvas.
-- The library sorts by filename and has no per-game icon or rename.
+- FPS is hidden behind the speedometer toggle by default (`RTShowFPS`).
+- The library reads the icon named by `MIDlet-1`; titles without one fall
+  back to a generic glyph. Renaming changes the display name only, never the
+  file on disk.
 - `j2me_audio.m` natives are silent stubs in the reference project, and its
   bundled SoundFont is a 1-byte placeholder.
 - Native image memory is not counted toward the GC budget: the reference

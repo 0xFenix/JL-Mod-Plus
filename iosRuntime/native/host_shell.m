@@ -10,6 +10,7 @@
 #import "host_form.h"
 #import "host_jar.h"
 #import "host_shell.h"
+#import "host_theme.h"
 #import "host_ui.h"
 
 static NSString *const RTConfigDefaultsKey = @"RTGameConfig";
@@ -119,12 +120,15 @@ static void rt_forget_game(NSString *file) {
 #pragma mark - Icons
 
 static UIImage *rt_scaled_icon(UIImage *icon) {
-    CGSize size = CGSizeMake(40, 40);
+    CGSize size = CGSizeMake(56, 56);
     UIGraphicsImageRenderer *renderer =
             [[UIGraphicsImageRenderer alloc] initWithSize:size
                                                    format:[UIGraphicsImageRendererFormat defaultFormat]];
     return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         CGContextSetInterpolationQuality(context.CGContext, kCGInterpolationNone);
+        UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height)
+                                                        cornerRadius:14.0];
+        [path addClip];
         [icon drawInRect:CGRectMake(0, 0, size.width, size.height)];
     }];
 }
@@ -160,7 +164,213 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 @implementation RTGameEntry
 @end
 
-@interface RTLibraryViewController : UITableViewController <UIDocumentPickerDelegate>
+#pragma mark - Cells
+
+@interface RTGameCell : UITableViewCell
+@property(nonatomic, strong) UIImageView *iconImageView;
+@property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UILabel *subtitleLabel;
+@end
+
+@implementation RTGameCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+    if (self) {
+        self.backgroundColor = rt_color_surface();
+        self.selectedBackgroundView = [[UIView alloc] init];
+        self.selectedBackgroundView.backgroundColor = [rt_color_surface_raised() colorWithAlphaComponent:0.6];
+
+        UIImageView *icon = [[UIImageView alloc] init];
+        icon.translatesAutoresizingMaskIntoConstraints = NO;
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.layer.cornerRadius = 14.0;
+        icon.layer.cornerCurve = kCACornerCurveContinuous;
+        icon.clipsToBounds = YES;
+        [self.contentView addSubview:icon];
+        self.iconImageView = icon;
+
+        UILabel *title = [[UILabel alloc] init];
+        title.translatesAutoresizingMaskIntoConstraints = NO;
+        title.textColor = rt_color_text_primary();
+        title.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
+        [self.contentView addSubview:title];
+        self.titleLabel = title;
+
+        UILabel *subtitle = [[UILabel alloc] init];
+        subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+        subtitle.textColor = rt_color_text_secondary();
+        subtitle.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote]
+                scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightRegular]];
+        [self.contentView addSubview:subtitle];
+        self.subtitleLabel = subtitle;
+
+        [NSLayoutConstraint activateConstraints:@[
+            [icon.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+            [icon.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [icon.widthAnchor constraintEqualToConstant:56],
+            [icon.heightAnchor constraintEqualToConstant:56],
+
+            [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
+            [title.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
+            [title.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
+
+            [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+            [subtitle.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
+            [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2],
+            [subtitle.bottomAnchor constraintLessThanOrEqualToAnchor:self.contentView.bottomAnchor constant:-10],
+        ]];
+    }
+    return self;
+}
+
+@end
+
+@interface RTRunningCell : UITableViewCell
+@property(nonatomic, strong) UIImageView *playImageView;
+@property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UILabel *subtitleLabel;
+@end
+
+@implementation RTRunningCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+    if (self) {
+        self.backgroundColor = rt_color_surface();
+        self.selectedBackgroundView = [[UIView alloc] init];
+        self.selectedBackgroundView.backgroundColor = [rt_color_surface_raised() colorWithAlphaComponent:0.6];
+
+        UIImageView *play = [[UIImageView alloc] init];
+        play.translatesAutoresizingMaskIntoConstraints = NO;
+        play.contentMode = UIViewContentModeScaleAspectFit;
+        play.tintColor = rt_color_accent();
+        play.image = [UIImage systemImageNamed:@"play.fill"];
+        [self.contentView addSubview:play];
+        self.playImageView = play;
+
+        UILabel *title = [[UILabel alloc] init];
+        title.translatesAutoresizingMaskIntoConstraints = NO;
+        title.textColor = rt_color_text_primary();
+        title.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
+        [self.contentView addSubview:title];
+        self.titleLabel = title;
+
+        UILabel *subtitle = [[UILabel alloc] init];
+        subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+        subtitle.textColor = rt_color_text_secondary();
+        subtitle.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote]
+                scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightRegular]];
+        [self.contentView addSubview:subtitle];
+        self.subtitleLabel = subtitle;
+
+        [NSLayoutConstraint activateConstraints:@[
+            [play.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
+            [play.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [play.widthAnchor constraintEqualToConstant:28],
+            [play.heightAnchor constraintEqualToConstant:28],
+
+            [title.leadingAnchor constraintEqualToAnchor:play.trailingAnchor constant:12],
+            [title.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16],
+            [title.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10],
+
+            [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+            [subtitle.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
+            [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2],
+            [subtitle.bottomAnchor constraintLessThanOrEqualToAnchor:self.contentView.bottomAnchor constant:-10],
+        ]];
+    }
+    return self;
+}
+
+@end
+
+#pragma mark - Empty state
+
+@interface RTEmptyLibraryView : UIView
+@property(nonatomic, copy) void (^importAction)(void);
+@end
+
+@implementation RTEmptyLibraryView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        UIImageView *icon = [[UIImageView alloc] init];
+        icon.translatesAutoresizingMaskIntoConstraints = NO;
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.tintColor = rt_color_text_tertiary();
+        icon.image = [UIImage systemImageNamed:@"square.stack.3d.up"];
+        [self addSubview:icon];
+
+        UILabel *title = [[UILabel alloc] init];
+        title.translatesAutoresizingMaskIntoConstraints = NO;
+        title.textAlignment = NSTextAlignmentCenter;
+        title.numberOfLines = 0;
+        title.textColor = rt_color_text_primary();
+        title.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleTitle2]
+                scaledFontForFont:[UIFont systemFontOfSize:22 weight:UIFontWeightSemibold]];
+        title.text = @"Chưa có trò chơi nào";
+        [self addSubview:title];
+
+        UILabel *body = [[UILabel alloc] init];
+        body.translatesAutoresizingMaskIntoConstraints = NO;
+        body.textAlignment = NSTextAlignmentCenter;
+        body.numberOfLines = 0;
+        body.textColor = rt_color_text_secondary();
+        body.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                scaledFontForFont:[UIFont systemFontOfSize:15 weight:UIFontWeightRegular]];
+        body.text = @"Nhấn Nhập JAR để chọn file .jar từ ứng dụng Files, hoặc chép file vào thư mục Files › RuntimeApp › games.";
+        [self addSubview:body];
+
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.translatesAutoresizingMaskIntoConstraints = NO;
+        button.backgroundColor = rt_color_accent();
+        [button setTitle:@"Nhập JAR" forState:UIControlStateNormal];
+        [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
+        button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline]
+                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
+        button.layer.cornerRadius = 12.0;
+        button.layer.cornerCurve = kCACornerCurveContinuous;
+        button.contentEdgeInsets = UIEdgeInsetsMake(12, 24, 12, 24);
+        [button addTarget:self action:@selector(importTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:button];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [icon.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [icon.topAnchor constraintEqualToAnchor:self.topAnchor constant:40],
+            [icon.widthAnchor constraintEqualToConstant:64],
+            [icon.heightAnchor constraintEqualToConstant:64],
+
+            [title.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:20],
+            [title.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:32],
+            [title.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-32],
+
+            [body.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
+            [body.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+            [body.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
+
+            [button.topAnchor constraintEqualToAnchor:body.bottomAnchor constant:24],
+            [button.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [button.heightAnchor constraintGreaterThanOrEqualToConstant:48],
+            [button.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-40],
+        ]];
+    }
+    return self;
+}
+
+- (void)importTapped:(UIButton *)sender {
+    (void)sender;
+    if (self.importAction) self.importAction();
+}
+
+@end
+
+#pragma mark - Library
+
+@interface RTLibraryViewController : UITableViewController <UIDocumentPickerDelegate, UIContextMenuInteractionDelegate>
 @property(nonatomic, strong) NSArray<RTGameEntry *> *games;
 @end
 
@@ -169,28 +379,85 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"Trò chơi";
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.tableView.rowHeight = 64;
-    self.navigationItem.rightBarButtonItem =
-            [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
-                                                          target:self
-                                                          action:@selector(importGame:)];
+    self.view.backgroundColor = rt_color_ink();
+    self.tableView.backgroundColor = rt_color_ink();
+    self.tableView.separatorColor = rt_color_hairline();
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 76;
+
+    // iOS 26 never builds the system large-title label for this bar, so the
+    // library draws its own header and keeps the bar for controls only.
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    self.navigationItem.title = @"";
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 0, 64)];
+    UILabel *headerLabel = [[UILabel alloc] init];
+    headerLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    headerLabel.text = @"Trò chơi";
+    headerLabel.textColor = rt_color_text_primary();
+    headerLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleLargeTitle]
+            scaledFontForFont:[UIFont systemFontOfSize:34 weight:UIFontWeightBold]];
+    headerLabel.adjustsFontForContentSizeCategory = YES;
+    [header addSubview:headerLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [headerLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [headerLabel.trailingAnchor constraintLessThanOrEqualToAnchor:header.trailingAnchor constant:-20],
+        [headerLabel.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-4],
+    ]];
+    self.tableView.tableHeaderView = header;
+
+    UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+    [appearance configureWithOpaqueBackground];
+    appearance.backgroundColor = rt_color_ink();
+    appearance.shadowColor = [UIColor clearColor];
+    appearance.titleTextAttributes = @{
+        NSForegroundColorAttributeName: rt_color_text_primary(),
+    };
+    appearance.largeTitleTextAttributes = @{
+        NSForegroundColorAttributeName: rt_color_text_primary(),
+    };
+
+    UIBarButtonItemAppearance *buttonAppearance = [[UIBarButtonItemAppearance alloc] init];
+    UIGraphicsImageRenderer *clearRenderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(1, 1)];
+    UIImage *clearImage = [clearRenderer imageWithActions:^(UIGraphicsImageRendererContext *context) {}];
+    buttonAppearance.normal.backgroundImage = clearImage;
+    buttonAppearance.normal.titleTextAttributes = @{NSForegroundColorAttributeName: rt_color_accent()};
+    [appearance setBackButtonAppearance:buttonAppearance];
+    [appearance setDoneButtonAppearance:buttonAppearance];
+
+    UINavigationBar *bar = self.navigationController.navigationBar;
+    bar.prefersLargeTitles = NO;
+    bar.tintColor = rt_color_accent();
+    bar.standardAppearance = appearance;
+    bar.scrollEdgeAppearance = appearance;
+
     self.navigationItem.leftBarButtonItem =
-            [[UIBarButtonItem alloc] initWithTitle:@"Sắp xếp"
+            [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.arrow.down"]
                                              style:UIBarButtonItemStylePlain
                                             target:self
                                             action:@selector(showSortOptions:)];
+    self.navigationItem.leftBarButtonItem.tintColor = rt_color_accent();
+    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Sắp xếp";
 
-    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
-    [refresh addTarget:self action:@selector(reloadGames) forControlEvents:UIControlEventValueChanged];
-    self.refreshControl = refresh;
+    self.navigationItem.rightBarButtonItem =
+            [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"]
+                                             style:UIBarButtonItemStylePlain
+                                            target:self
+                                            action:@selector(importGame:)];
+    self.navigationItem.rightBarButtonItem.tintColor = rt_color_accent();
+    self.navigationItem.rightBarButtonItem.accessibilityLabel = @"Nhập JAR";
+
+    [self.tableView registerClass:[RTGameCell class] forCellReuseIdentifier:@"game"];
+    [self.tableView registerClass:[RTRunningCell class] forCellReuseIdentifier:@"running"];
+
+    // No UIRefreshControl: iOS 26 docks it in the navigation bar, which takes
+    // the large title slot and leaves the title area blank. The library
+    // rescans on every appearance instead.
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reloadGames];
-    // Automation hook: the simulator has no tap API, so tests set
-    // RT_AUTOLAUNCH=1 to open the first game without touching the screen.
     static BOOL autoLaunched = NO;
     if (!autoLaunched && getenv("RT_AUTOLAUNCH") && self.games.count > 0) {
         autoLaunched = YES;
@@ -200,8 +467,6 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
                         (int64_t) (0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self launchGame:games[0]];
             if (openAll) {
-                // Second and later tabs open one after another so each JVM gets
-                // its own slot while the previous one is already running.
                 for (NSUInteger i = 1; i < games.count; i++) {
                     RTGameEntry *entry = games[i];
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
@@ -232,6 +497,17 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
     }
 }
 
+- (NSString *)lastPlayedPhrase:(NSTimeInterval)interval {
+    if (interval <= 0) return @"chưa chơi lần nào";
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:interval];
+    NSDate *now = [NSDate date];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    if ([calendar isDateInToday:date]) return @"đã chơi hôm nay";
+    if ([calendar isDateInYesterday:date]) return @"đã chơi hôm qua";
+    NSDateComponents *components = [calendar components:NSCalendarUnitDay fromDate:date toDate:now options:0];
+    return [NSString stringWithFormat:@"đã chơi %ld ngày trước", (long) MAX(components.day, 2)];
+}
+
 - (void)reloadGames {
     char *dir_c = rt_games_directory();
     NSString *dir = @(dir_c);
@@ -259,11 +535,13 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
         entry.size = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL] fileSize] ?: 0;
 
         NSDictionary *config = rt_game_config(file);
-        entry.detail = [NSString stringWithFormat:@"%@  ·  %@×%@%@", file,
+        NSString *fpsPart = [config[@"fps"] intValue] > 0
+                ? [NSString stringWithFormat:@", %@ fps", config[@"fps"]]
+                : @"";
+        entry.detail = [NSString stringWithFormat:@"%@×%@, %@%@",
                                                   config[@"w"], config[@"h"],
-                                                  [config[@"fps"] intValue] > 0
-                                                          ? [NSString stringWithFormat:@"  ·  %@ fps", config[@"fps"]]
-                                                          : @""];
+                                                  [self lastPlayedPhrase:entry.lastPlayed],
+                                                  fpsPart];
         [entries addObject:entry];
     }
 
@@ -293,37 +571,40 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 }
 
 - (void)updateEmptyState {
-    if (self.games.count > 0) {
+    if (self.games.count > 0 || rt_host_running_count() > 0) {
         self.tableView.backgroundView = nil;
         return;
     }
-    UILabel *label = [[UILabel alloc] init];
-    label.numberOfLines = 0;
-    label.textAlignment = NSTextAlignmentCenter;
-    label.textColor = [UIColor secondaryLabelColor];
-    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    label.text = @"Chưa có trò chơi.\nNhấn + để thêm file .jar\n(hoặc chép vào thư mục Files › RuntimeApp › games).";
-    self.tableView.backgroundView = label;
+    RTEmptyLibraryView *empty = [[RTEmptyLibraryView alloc] initWithFrame:self.tableView.bounds];
+    __weak typeof(self) weakSelf = self;
+    empty.importAction = ^{
+        [weakSelf importGame:empty];
+    };
+    self.tableView.backgroundView = empty;
 }
 
 #pragma mark - Sorting
 
 - (void)showSortOptions:(id)sender {
+    (void)sender;
     UIAlertController *sheet =
             [UIAlertController alertControllerWithTitle:@"Sắp xếp theo"
                                                 message:nil
                                          preferredStyle:UIAlertControllerStyleActionSheet];
     NSArray<NSString *> *titles = @[@"Tên", @"Lần chơi cuối", @"Kích thước"];
     for (NSUInteger i = 0; i < titles.count; i++) {
-        NSString *label = i == (NSUInteger) self.sortMode
-                ? [titles[i] stringByAppendingString:@"  ✓"] : titles[i];
-        [sheet addAction:[UIAlertAction actionWithTitle:label
-                                                 style:UIAlertActionStyleDefault
-                                               handler:^(UIAlertAction *action) {
-                                                   [[NSUserDefaults standardUserDefaults] setObject:@(i)
-                                                                                             forKey:RTSortDefaultsKey];
-                                                   [self reloadGames];
-                                               }]];
+        NSString *label = titles[i];
+        UIAlertAction *action = [UIAlertAction actionWithTitle:label
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *action) {
+                                                           [[NSUserDefaults standardUserDefaults] setObject:@(i)
+                                                                                                     forKey:RTSortDefaultsKey];
+                                                           [self reloadGames];
+                                                       }];
+        if (i == (NSUInteger) self.sortMode) {
+            [action setValue:@YES forKey:@"checked"];
+        }
+        [sheet addAction:action];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.barButtonItem = self.navigationItem.leftBarButtonItem;
@@ -332,66 +613,96 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 
 #pragma mark - Table
 
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    (void)tableView;
+    return rt_host_running_count() > 0 ? 2 : 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    (void)tableView;
+    if (rt_host_running_count() > 0 && section == 0) return @"Đang chơi";
+    return @"Tất cả trò chơi";
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    (void)tableView;
+    if (rt_host_running_count() > 0 && section == 0) return nil;
+    NSUInteger count = self.games.count;
+    return [NSString stringWithFormat:@"%lu trò chơi, dữ liệu lưu trong ứng dụng", (unsigned long) count];
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    // The running-sessions row only exists while games are open, and it stays
-    // first so returning to a running game is one tap from the library.
-    return self.games.count + (rt_host_running_count() > 0 ? 1 : 0);
+    (void)tableView;
+    if (rt_host_running_count() > 0 && section == 0) return 1;
+    return self.games.count;
 }
 
-- (BOOL)isRunningRow:(NSIndexPath *)indexPath {
-    return indexPath.row == 0 && rt_host_running_count() > 0;
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView;
+    (void)indexPath;
+    return 76;
 }
 
-- (RTGameEntry *)gameAtIndexPath:(NSIndexPath *)indexPath {
-    NSInteger offset = rt_host_running_count() > 0 ? 1 : 0;
-    return self.games[(NSUInteger) (indexPath.row - offset)];
+- (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
+    (void)tableView;
+    (void)section;
+    if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+        UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *) view;
+        header.textLabel.textColor = rt_color_text_secondary();
+        header.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote]
+                scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightSemibold]];
+    }
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section {
+    (void)tableView;
+    (void)section;
+    if ([view isKindOfClass:[UITableViewHeaderFooterView class]]) {
+        UITableViewHeaderFooterView *footer = (UITableViewHeaderFooterView *) view;
+        footer.textLabel.textColor = rt_color_text_tertiary();
+        footer.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1]
+                scaledFontForFont:[UIFont systemFontOfSize:11 weight:UIFontWeightRegular]];
+    }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *const identifier = @"game";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                      reuseIdentifier:identifier];
-        cell.accessoryType = UITableViewCellAccessoryDetailButton;
-        cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
-    }
-    if ([self isRunningRow:indexPath]) {
+    if (rt_host_running_count() > 0 && indexPath.section == 0) {
+        RTRunningCell *cell = [tableView dequeueReusableCellWithIdentifier:@"running" forIndexPath:indexPath];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         int running = rt_host_running_count();
-        cell.textLabel.text = [NSString stringWithFormat:@"Đang chơi (%d)", running];
-        cell.detailTextLabel.text = @"Quay lại phiên đang chạy";
-        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-        cell.detailTextLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
-        cell.imageView.image = [UIImage systemImageNamed:@"rectangle.stack.fill"];
-        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.titleLabel.text = [NSString stringWithFormat:@"%d trò chơi đang chạy", running];
+        cell.subtitleLabel.text = @"Nhấn để tiếp tục";
         return cell;
     }
-    cell.accessoryType = UITableViewCellAccessoryDetailButton;
-    RTGameEntry *entry = [self gameAtIndexPath:indexPath];
-    cell.textLabel.text = entry.title;
-    cell.detailTextLabel.text = entry.detail;
-    cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
-    cell.detailTextLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
-    cell.imageView.image = entry.icon;
+    RTGameCell *cell = [tableView dequeueReusableCellWithIdentifier:@"game" forIndexPath:indexPath];
+    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    cell.titleLabel.text = entry.title;
+    cell.subtitleLabel.text = entry.detail;
+    cell.iconImageView.image = entry.icon;
+    if (!cell.iconImageView.image) {
+        cell.iconImageView.backgroundColor = rt_color_surface_raised();
+        cell.iconImageView.image = [UIImage systemImageNamed:@"gamecontroller"];
+        cell.iconImageView.tintColor = rt_color_text_tertiary();
+    } else {
+        cell.iconImageView.backgroundColor = [UIColor clearColor];
+        cell.iconImageView.tintColor = nil;
+    }
+    if (cell.interactions.count == 0) {
+        UIContextMenuInteraction *interaction = [[UIContextMenuInteraction alloc] initWithDelegate:self];
+        [cell addInteraction:interaction];
+    }
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if ([self isRunningRow:indexPath]) {
+    if (rt_host_running_count() > 0 && indexPath.section == 0) {
         UIViewController *host = (__bridge UIViewController *) rt_host_controller();
         [self.navigationController pushViewController:host animated:YES];
         return;
     }
-    [self launchGame:[self gameAtIndexPath:indexPath]];
-}
-
-- (void)tableView:(UITableView *)tableView
-        accessoryButtonTappedForRowWithIndexPath:(NSIndexPath *)indexPath {
-    if ([self isRunningRow:indexPath]) {
-        return;
-    }
-    [self showOptionsForGame:[self gameAtIndexPath:indexPath]];
+    [self launchGame:self.games[(NSUInteger) indexPath.row]];
 }
 
 - (void)tableView:(UITableView *)tableView
@@ -400,10 +711,56 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
     if (editingStyle != UITableViewCellEditingStyleDelete) {
         return;
     }
-    if ([self isRunningRow:indexPath]) {
+    if (rt_host_running_count() > 0 && indexPath.section == 0) {
         return;
     }
-    [self confirmDeleteOfGame:[self gameAtIndexPath:indexPath]];
+    [self confirmDeleteOfGame:self.games[(NSUInteger) indexPath.row]];
+}
+
+#pragma mark - Context menu
+
+- (UIContextMenuConfiguration *)contextMenuInteraction:(UIContextMenuInteraction *)interaction
+                        configurationForMenuAtLocation:(CGPoint)location {
+    (void)location;
+    UIView *view = interaction.view;
+    UITableViewCell *cell = nil;
+    while (view) {
+        if ([view isKindOfClass:[UITableViewCell class]]) {
+            cell = (UITableViewCell *) view;
+            break;
+        }
+        view = view.superview;
+    }
+    NSIndexPath *path = [self.tableView indexPathForCell:cell];
+    if (!path || (rt_host_running_count() > 0 && path.section == 0)) {
+        return nil;
+    }
+    RTGameEntry *entry = self.games[(NSUInteger) path.row];
+    __weak typeof(self) weakSelf = self;
+    return [UIContextMenuConfiguration configurationWithIdentifier:nil
+                                                   previewProvider:nil
+                                                    actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggestedActions) {
+        NSMutableArray<UIMenuElement *> *actions = [NSMutableArray array];
+        [actions addObject:[UIAction actionWithTitle:@"Đổi tên"
+                                               image:[UIImage systemImageNamed:@"pencil"]
+                                          identifier:nil
+                                             handler:^(__kindof UIAction *action) {
+                                                 [weakSelf promptRenameForGame:entry];
+                                             }]];
+        [actions addObject:[UIAction actionWithTitle:@"Màn hình và FPS"
+                                               image:[UIImage systemImageNamed:@"gearshape"]
+                                          identifier:nil
+                                             handler:^(__kindof UIAction *action) {
+                                                 [weakSelf showConfigForGame:entry];
+                                             }]];
+        [actions addObject:[UIAction actionWithTitle:@"Xoá trò chơi"
+                                               image:[UIImage systemImageNamed:@"trash"]
+                                          identifier:nil
+                                             handler:^(__kindof UIAction *action) {
+                                                 [weakSelf confirmDeleteOfGame:entry];
+                                             }]];
+        return [UIMenu menuWithTitle:@"" children:actions];
+    }];
 }
 
 #pragma mark - Launch
@@ -411,8 +768,6 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 - (void)launchGame:(RTGameEntry *)entry {
     NSDictionary *config = rt_game_config(entry.file);
     rt_mark_played(entry.file);
-    // The host owns one controller for every running game; adding a session
-    // there is what makes the tab strip possible.
     rt_present_game(entry.path.UTF8String,
                     [config[@"w"] intValue],
                     [config[@"h"] intValue],
@@ -421,31 +776,6 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 }
 
 #pragma mark - Options
-
-- (void)showOptionsForGame:(RTGameEntry *)entry {
-    UIAlertController *sheet =
-            [UIAlertController alertControllerWithTitle:entry.title
-                                                message:nil
-                                         preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Đổi tên"
-                                             style:UIAlertActionStyleDefault
-                                           handler:^(UIAlertAction *action) {
-                                               [self promptRenameForGame:entry];
-                                           }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Màn hình & FPS"
-                                             style:UIAlertActionStyleDefault
-                                           handler:^(UIAlertAction *action) {
-                                               [self showConfigForGame:entry];
-                                           }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Xoá trò chơi"
-                                             style:UIAlertActionStyleDestructive
-                                           handler:^(UIAlertAction *action) {
-                                               [self confirmDeleteOfGame:entry];
-                                           }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
-    sheet.popoverPresentationController.sourceView = self.view;
-    [self presentViewController:sheet animated:YES completion:nil];
-}
 
 - (void)promptRenameForGame:(RTGameEntry *)entry {
     UIAlertController *alert =
@@ -507,33 +837,33 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
     for (int i = 0; i < RT_RESOLUTION_COUNT; i++) {
         RTResolution resolution = RT_RESOLUTIONS[i];
         NSString *label = [NSString stringWithFormat:@"%d × %d", resolution.width, resolution.height];
-        if ([config[@"w"] intValue] == resolution.width &&
-            [config[@"h"] intValue] == resolution.height) {
-            label = [label stringByAppendingString:@"  ✓"];
-        }
-        [sheet addAction:[UIAlertAction actionWithTitle:label
-                                                 style:UIAlertActionStyleDefault
-                                               handler:^(UIAlertAction *action) {
-                                                   [self setConfig:file
-                                                                 w:resolution.width
-                                                                 h:resolution.height
-                                                               fps:[config[@"fps"] intValue]];
-                                               }]];
+        BOOL checked = [config[@"w"] intValue] == resolution.width &&
+                       [config[@"h"] intValue] == resolution.height;
+        UIAlertAction *action = [UIAlertAction actionWithTitle:label
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *action) {
+                                                           [self setConfig:file
+                                                                         w:resolution.width
+                                                                         h:resolution.height
+                                                                       fps:[config[@"fps"] intValue]];
+                                                       }];
+        if (checked) [action setValue:@YES forKey:@"checked"];
+        [sheet addAction:action];
     }
     for (NSNumber *fps in @[@0, @30, @60]) {
         NSString *label = fps.intValue == 0 ? @"FPS: không giới hạn"
                                             : [NSString stringWithFormat:@"FPS: %@", fps];
-        if ([config[@"fps"] intValue] == fps.intValue) {
-            label = [label stringByAppendingString:@"  ✓"];
-        }
-        [sheet addAction:[UIAlertAction actionWithTitle:label
-                                                 style:UIAlertActionStyleDefault
-                                               handler:^(UIAlertAction *action) {
-                                                   [self setConfig:file
-                                                                 w:[config[@"w"] intValue]
-                                                                 h:[config[@"h"] intValue]
-                                                               fps:fps.intValue];
-                                               }]];
+        BOOL checked = [config[@"fps"] intValue] == fps.intValue;
+        UIAlertAction *action = [UIAlertAction actionWithTitle:label
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *action) {
+                                                           [self setConfig:file
+                                                                         w:[config[@"w"] intValue]
+                                                                         h:[config[@"h"] intValue]
+                                                                       fps:fps.intValue];
+                                                       }];
+        if (checked) [action setValue:@YES forKey:@"checked"];
+        [sheet addAction:action];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.view;
@@ -548,6 +878,7 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 #pragma mark - Import
 
 - (void)importGame:(id)sender {
+    (void)sender;
     UIDocumentPickerViewController *picker =
             [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeData]
                                                                        asCopy:YES];
@@ -558,6 +889,7 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller
         didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    (void)controller;
     char *dir_c = rt_games_directory();
     NSString *dir = @(dir_c);
     free(dir_c);
@@ -580,7 +912,9 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 @end
 
 void *rt_shell_root_controller(void) {
-    RTLibraryViewController *library = [[RTLibraryViewController alloc] initWithStyle:UITableViewStylePlain];
+    RTLibraryViewController *library = [[RTLibraryViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];
     UINavigationController *navigation = [[UINavigationController alloc] initWithRootViewController:library];
+    navigation.navigationBar.prefersLargeTitles = NO;
+    navigation.view.backgroundColor = rt_color_ink();
     return (__bridge_retained void *) navigation;
 }

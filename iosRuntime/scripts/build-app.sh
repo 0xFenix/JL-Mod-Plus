@@ -127,6 +127,7 @@ cat > "$APP/Info.plist" <<PLIST
   <key>MinimumOSVersion</key><string>17.0</string>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
   <key>UILaunchScreen</key><dict/>
+  <key>UIUserInterfaceStyle</key><string>Dark</string>
   <key>NSLocalNetworkUsageDescription</key><string>Kết nối tới máy chủ game trong mạng nội bộ.</string>
   <key>UIFileSharingEnabled</key><true/>
   <key>LSSupportsOpeningDocumentsInPlace</key><true/>

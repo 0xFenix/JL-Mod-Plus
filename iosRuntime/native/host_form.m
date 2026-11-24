@@ -8,6 +8,7 @@
 #import <UIKit/UIKit.h>
 
 #include "host_form.h"
+#include "host_theme.h"
 #include "j2me_ui.h"
 #include "j2me_input.h"
 
@@ -29,13 +30,16 @@ enum {
 
 static __weak UIView *g_host_view = nil;
 static RTFormPanel *g_panel = nil;
+static void (*g_visibility_callback)(int visible) = NULL;
 
 @implementation RTFormPanel
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1.0];
+        // A MIDP screen replaces the canvas, so the panel dims rather than
+        // hides what is behind it and reads as a sheet over the game.
+        self.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
 
         _scrollView = [[UIScrollView alloc] initWithFrame:self.bounds];
         _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -45,7 +49,7 @@ static RTFormPanel *g_panel = nil;
         _stackView = [[UIStackView alloc] init];
         _stackView.translatesAutoresizingMaskIntoConstraints = NO;
         _stackView.axis = UILayoutConstraintAxisVertical;
-        _stackView.spacing = 8;
+        _stackView.spacing = 12;
         [_scrollView addSubview:_stackView];
 
         UILayoutGuide *safe = self.safeAreaLayoutGuide;
@@ -55,36 +59,125 @@ static RTFormPanel *g_panel = nil;
             [_scrollView.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
             [_scrollView.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
 
-            [_stackView.topAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.topAnchor constant:12],
-            [_stackView.leadingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.leadingAnchor constant:12],
-            [_stackView.trailingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.trailingAnchor constant:-12],
-            [_stackView.bottomAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.bottomAnchor constant:-12],
-            [_stackView.widthAnchor constraintEqualToAnchor:_scrollView.frameLayoutGuide.widthAnchor constant:-24],
+            // Bottom-anchored like a sheet: short forms sit above the home
+            // indicator, long ones grow upward and scroll.
+            [_stackView.topAnchor constraintGreaterThanOrEqualToAnchor:_scrollView.contentLayoutGuide.topAnchor
+                                                              constant:16],
+            [_stackView.leadingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.leadingAnchor constant:16],
+            [_stackView.trailingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.trailingAnchor constant:-16],
+            [_stackView.bottomAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.bottomAnchor constant:-16],
+            [_stackView.widthAnchor constraintEqualToAnchor:_scrollView.frameLayoutGuide.widthAnchor constant:-32],
+            [_scrollView.contentLayoutGuide.heightAnchor
+                    constraintGreaterThanOrEqualToAnchor:_scrollView.frameLayoutGuide.heightAnchor],
         ]];
     }
     return self;
 }
 
-- (UILabel *)makeLabel:(NSString *)text bold:(BOOL)bold {
+- (UIView *)makeCard {
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = rt_color_surface();
+    card.layer.cornerRadius = rt_radius_card();
+    card.layer.cornerCurve = kCACornerCurveContinuous;
+    card.layer.borderWidth = 1.0 / [UIScreen mainScreen].scale;
+    card.layer.borderColor = rt_color_hairline().CGColor;
+    card.clipsToBounds = YES;
+    return card;
+}
+
+- (UIStackView *)makeCardStack:(UIView *)card {
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 0;
+    [card addSubview:stack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:12],
+        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+        [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-12],
+    ]];
+    return stack;
+}
+
+- (UIView *)makeHairline {
+    UIView *line = [[UIView alloc] init];
+    line.translatesAutoresizingMaskIntoConstraints = NO;
+    line.backgroundColor = rt_color_hairline();
+    [line.heightAnchor constraintEqualToConstant:1.0 / [UIScreen mainScreen].scale].active = YES;
+    return line;
+}
+
+- (UILabel *)makeTitleLabel:(NSString *)text {
     UILabel *label = [[UILabel alloc] init];
     label.text = text ?: @"";
-    label.textColor = [UIColor whiteColor];
+    label.textColor = rt_color_text_primary();
     label.numberOfLines = 0;
-    label.font = bold ? [UIFont boldSystemFontOfSize:17] : [UIFont systemFontOfSize:15];
+    label.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
     return label;
 }
 
-- (UIButton *)makeButton:(NSString *)title action:(SEL)action {
+- (UILabel *)makeBodyLabel:(NSString *)text {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text ?: @"";
+    label.textColor = rt_color_text_secondary();
+    label.numberOfLines = 0;
+    label.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:15 weight:UIFontWeightRegular]];
+    return label;
+}
+
+- (UILabel *)makeFieldLabel:(NSString *)text {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text ?: @"";
+    label.textColor = rt_color_text_secondary();
+    label.numberOfLines = 0;
+    label.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote]
+            scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightRegular]];
+    return label;
+}
+
+- (UIButton *)makePrimaryButton:(NSString *)title action:(SEL)action {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
     [button setTitle:title ?: @"OK" forState:UIControlStateNormal];
-    button.titleLabel.font = [UIFont systemFontOfSize:16];
-    button.backgroundColor = [UIColor colorWithWhite:0.22 alpha:1.0];
-    button.layer.cornerRadius = 6;
-    button.contentEdgeInsets = UIEdgeInsetsMake(10, 14, 10, 14);
+    [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
+    button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline]
+            scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
+    button.backgroundColor = rt_color_accent();
+    button.layer.cornerRadius = 12.0;
+    button.layer.cornerCurve = kCACornerCurveContinuous;
+    button.contentEdgeInsets = UIEdgeInsetsMake(14, 20, 14, 20);
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
     if (action) {
         [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     }
     return button;
+}
+
+- (UITextField *)makeTextField {
+    UITextField *field = [[UITextField alloc] init];
+    field.translatesAutoresizingMaskIntoConstraints = NO;
+    field.borderStyle = UITextBorderStyleNone;
+    field.backgroundColor = rt_color_surface_raised();
+    field.textColor = rt_color_text_primary();
+    field.tintColor = rt_color_accent();
+    field.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightRegular]];
+    field.delegate = self;
+    field.returnKeyType = UIReturnKeyDone;
+    field.layer.cornerRadius = 10.0;
+    field.layer.cornerCurve = kCACornerCurveContinuous;
+    [field.heightAnchor constraintEqualToConstant:44].active = YES;
+    UIView *leftPad = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
+    UIView *rightPad = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 1)];
+    field.leftView = leftPad;
+    field.rightView = rightPad;
+    field.leftViewMode = UITextFieldViewModeAlways;
+    field.rightViewMode = UITextFieldViewModeAlways;
+    return field;
 }
 
 - (void)clearStack {
@@ -94,60 +187,85 @@ static RTFormPanel *g_panel = nil;
     }
 }
 
+- (void)addSeparatorToStack:(UIStackView *)stack after:(UIView *)view {
+    UIView *line = [self makeHairline];
+    [stack addArrangedSubview:line];
+}
+
 - (void)rebuildForAction:(int)action {
     [self clearStack];
 
     if (action == J2ME_UI_ACTION_SHOW_ALERT) {
+        UIView *card = [self makeCard];
+        UIStackView *stack = [self makeCardStack:card];
         const char *text = j2me_ui_get_alert_text();
-        [self.stackView addArrangedSubview:[self makeLabel:(text ? @(text) : @"") bold:NO]];
-        UIButton *ok = [self makeButton:@"OK" action:@selector(dismissAlert:)];
-        [self.stackView addArrangedSubview:ok];
+        [stack addArrangedSubview:[self makeBodyLabel:(text ? @(text) : @"")]];
+        UIButton *ok = [self makePrimaryButton:@"OK" action:@selector(dismissAlert:)];
+        [stack addArrangedSubview:ok];
+        [stack setCustomSpacing:16 afterView:stack.arrangedSubviews[0]];
+        [self.stackView addArrangedSubview:card];
         return;
     }
 
     if (action == J2ME_UI_ACTION_SHOW_TEXTBOX) {
+        UIView *card = [self makeCard];
+        UIStackView *stack = [self makeCardStack:card];
         const char *title = j2me_ui_get_form_title();
         if (title && title[0]) {
-            [self.stackView addArrangedSubview:[self makeLabel:@(title) bold:YES]];
+            [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
+            [stack setCustomSpacing:14 afterView:stack.arrangedSubviews.lastObject];
         }
         UITextField *field = [self makeTextField];
         const char *text = j2me_ui_get_textbox_text();
         field.text = text ? @(text) : @"";
-        field.tag = -1; // not a Form item
-        [self.stackView addArrangedSubview:field];
-        UIButton *done = [self makeButton:@"OK" action:@selector(acceptTextBox:)];
-        [self.stackView addArrangedSubview:done];
+        field.tag = -1;
+        [stack addArrangedSubview:field];
+        UIButton *done = [self makePrimaryButton:@"OK" action:@selector(acceptTextBox:)];
+        [stack addArrangedSubview:done];
+        [stack setCustomSpacing:16 afterView:field];
+        [self.stackView addArrangedSubview:card];
         return;
     }
 
     if (action == J2ME_UI_ACTION_SHOW_LIST) {
+        UIView *card = [self makeCard];
+        UIStackView *stack = [self makeCardStack:card];
         const char *title = j2me_ui_get_form_title();
         if (title && title[0]) {
-            [self.stackView addArrangedSubview:[self makeLabel:@(title) bold:YES]];
+            [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
         }
         int count = j2me_ui_get_list_item_count();
         for (int i = 0; i < count; i++) {
+            if (stack.arrangedSubviews.count > 0) {
+                [self addSeparatorToStack:stack after:nil];
+            }
             const char *item = j2me_ui_get_list_item(i);
             NSString *titleText = item ? @(item) : @"";
             if (j2me_ui_is_list_item_running(i)) {
                 titleText = [titleText stringByAppendingString:@"  ▶"];
             }
-            UIButton *row = [self makeButton:titleText action:@selector(selectListRow:)];
+            UIButton *row = [self makeChoiceRowWithTitle:titleText selected:NO];
             row.tag = i;
-            row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-            [self.stackView addArrangedSubview:row];
+            [row addTarget:self action:@selector(selectListRow:) forControlEvents:UIControlEventTouchUpInside];
+            [stack addArrangedSubview:row];
         }
+        [self.stackView addArrangedSubview:card];
         [self addCommandButtons];
         return;
     }
 
-    // SHOW_FORM (default): title, items, commands.
+    // SHOW_FORM
+    UIView *card = [self makeCard];
+    UIStackView *stack = [self makeCardStack:card];
     const char *title = j2me_ui_get_form_title();
     if (title && title[0]) {
-        [self.stackView addArrangedSubview:[self makeLabel:@(title) bold:YES]];
+        [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
     }
     int count = j2me_ui_get_form_item_count();
     for (int i = 0; i < count; i++) {
+        if (stack.arrangedSubviews.count > 0) {
+            [self addSeparatorToStack:stack after:nil];
+        }
         int type = j2me_ui_get_form_item_type(i);
         const char *label = j2me_ui_get_form_item_label(i);
         const char *text = j2me_ui_get_form_item_text(i);
@@ -156,51 +274,72 @@ static RTFormPanel *g_panel = nil;
 
         if (type == RT_ITEM_TEXTFIELD) {
             if (labelText.length) {
-                [self.stackView addArrangedSubview:[self makeLabel:labelText bold:NO]];
+                [stack addArrangedSubview:[self makeFieldLabel:labelText]];
             }
             UITextField *field = [self makeTextField];
             field.text = valueText;
             field.tag = i;
             int constraints = j2me_ui_get_form_item_param2(i);
-            // MIDP TextField.PASSWORD == 0x10000
             if ((constraints & 0x10000) != 0) {
                 field.secureTextEntry = YES;
             }
-            [self.stackView addArrangedSubview:field];
+            [stack addArrangedSubview:field];
         } else if (type == RT_ITEM_CHOICE) {
-            [self addChoiceGroupForItem:i label:labelText text:valueText];
+            [self addChoiceGroupForItem:i label:labelText text:valueText inStack:stack];
         } else if (type == RT_ITEM_SPACER) {
             UIView *spacer = [[UIView alloc] init];
+            spacer.translatesAutoresizingMaskIntoConstraints = NO;
             [spacer.heightAnchor constraintEqualToConstant:8].active = YES;
-            [self.stackView addArrangedSubview:spacer];
+            [stack addArrangedSubview:spacer];
         } else if (type != RT_ITEM_IMAGE && type != RT_ITEM_GAUGE) {
             NSString *line = labelText.length
                     ? [NSString stringWithFormat:@"%@\n%@", labelText, valueText]
                     : valueText;
-            [self.stackView addArrangedSubview:[self makeLabel:line bold:NO]];
+            [stack addArrangedSubview:[self makeBodyLabel:line]];
         }
     }
+    [self.stackView addArrangedSubview:card];
     [self addCommandButtons];
 }
 
-- (UITextField *)makeTextField {
-    UITextField *field = [[UITextField alloc] init];
-    field.borderStyle = UITextBorderStyleRoundedRect;
-    field.backgroundColor = [UIColor whiteColor];
-    field.textColor = [UIColor blackColor];
-    field.delegate = self;
-    field.returnKeyType = UIReturnKeyDone;
-    [field.heightAnchor constraintEqualToConstant:34].active = YES;
-    return field;
+- (UIButton *)makeChoiceRowWithTitle:(NSString *)title selected:(BOOL)selected {
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [row.heightAnchor constraintEqualToConstant:44].active = YES;
+
+    UIImageView *indicator = [[UIImageView alloc] init];
+    indicator.translatesAutoresizingMaskIntoConstraints = NO;
+    indicator.contentMode = UIViewContentModeScaleAspectFit;
+    indicator.tintColor = selected ? rt_color_accent() : rt_color_text_secondary();
+    indicator.image = [UIImage systemImageNamed:selected ? @"circle.fill" : @"circle"];
+    [row addSubview:indicator];
+
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = title ?: @"";
+    label.textColor = rt_color_text_primary();
+    label.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightRegular]];
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    [row addSubview:label];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [indicator.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+        [indicator.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        [indicator.widthAnchor constraintEqualToConstant:20],
+        [indicator.heightAnchor constraintEqualToConstant:20],
+
+        [label.leadingAnchor constraintEqualToAnchor:indicator.trailingAnchor constant:10],
+        [label.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+        [label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+    ]];
+
+    return row;
 }
 
-// Render a ChoiceGroup as tappable option rows. Java serializes it as
-// "<selectedIndex>\n<choice1>\t<choice2>...\n<flag1>,<flag2>..." (see
-// Form.showNative), so the selection lives in the item text and is read back
-// by Form.syncFromNative when a command fires.
-- (void)addChoiceGroupForItem:(int)itemIndex label:(NSString *)labelText text:(NSString *)valueText {
+- (void)addChoiceGroupForItem:(int)itemIndex label:(NSString *)labelText text:(NSString *)valueText inStack:(UIStackView *)stack {
     if (labelText.length) {
-        [self.stackView addArrangedSubview:[self makeLabel:labelText bold:NO]];
+        [stack addArrangedSubview:[self makeFieldLabel:labelText]];
     }
     NSArray<NSString *> *lines = [valueText componentsSeparatedByString:@"\n"];
     NSString *choicesLine = lines.count > 1 ? lines[1] : @"";
@@ -221,11 +360,13 @@ static RTFormPanel *g_panel = nil;
         } else {
             isOn = ((int) c == selected);
         }
-        NSString *rowTitle = [NSString stringWithFormat:@"%@  %@", isOn ? @"●" : @"○", choices[c]];
-        UIButton *row = [self makeButton:rowTitle action:@selector(selectChoiceRow:)];
+        if (stack.arrangedSubviews.count > 0 && c > 0) {
+            [self addSeparatorToStack:stack after:nil];
+        }
+        UIButton *row = [self makeChoiceRowWithTitle:choices[c] selected:isOn];
         row.tag = itemIndex * 1000 + (int) c;
-        row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-        [self.stackView addArrangedSubview:row];
+        [row addTarget:self action:@selector(selectChoiceRow:) forControlEvents:UIControlEventTouchUpInside];
+        [stack addArrangedSubview:row];
     }
 }
 
@@ -269,13 +410,20 @@ static RTFormPanel *g_panel = nil;
 
 - (void)addCommandButtons {
     int count = j2me_ui_get_command_count();
+    if (count == 0) return;
+    UIView *card = [self makeCard];
+    UIStackView *stack = [self makeCardStack:card];
     for (int i = 0; i < count; i++) {
         const char *label = j2me_ui_get_command_label(i);
-        UIButton *button = [self makeButton:(label ? @(label) : @"OK")
-                                     action:@selector(fireCommand:)];
+        UIButton *button = [self makePrimaryButton:(label ? @(label) : @"OK")
+                                            action:@selector(fireCommand:)];
         button.tag = j2me_ui_get_command_id(i);
-        [self.stackView addArrangedSubview:button];
+        if (i > 0) {
+            [stack setCustomSpacing:10 afterView:stack.arrangedSubviews.lastObject];
+        }
+        [stack addArrangedSubview:button];
     }
+    [self.stackView addArrangedSubview:card];
 }
 
 - (void)fireCommand:(UIButton *)sender {
@@ -288,15 +436,24 @@ static RTFormPanel *g_panel = nil;
 }
 
 - (void)dismissAlert:(UIButton *)sender {
+    (void)sender;
     j2me_input_post_ui_event(J2ME_UI_ALERT_DISMISSED, 0);
 }
 
 - (void)acceptTextBox:(UIButton *)sender {
+    (void)sender;
     for (UIView *view in self.stackView.arrangedSubviews) {
-        if ([view isKindOfClass:[UITextField class]]) {
-            UITextField *field = (UITextField *) view;
-            j2me_ui_set_textbox_text(field.text.length ? [field.text UTF8String] : "");
-            break;
+        if (![view isKindOfClass:[UIView class]]) continue;
+        for (UIView *inner in ((UIView *) view).subviews) {
+            if ([inner isKindOfClass:[UIStackView class]]) {
+                for (UIView *fieldOrOther in ((UIStackView *) inner).arrangedSubviews) {
+                    if ([fieldOrOther isKindOfClass:[UITextField class]]) {
+                        UITextField *field = (UITextField *) fieldOrOther;
+                        j2me_ui_set_textbox_text(field.text.length ? [field.text UTF8String] : "");
+                        break;
+                    }
+                }
+            }
         }
     }
     [self endEditing:YES];
@@ -322,7 +479,6 @@ static RTFormPanel *g_panel = nil;
 
 static void rt_ui_callback(int action, const char *data) {
     (void) data;
-    // Called from the JVM thread; UIKit work belongs on the main queue.
     dispatch_async(dispatch_get_main_queue(), ^{
         rt_form_ui_present(action);
     });
@@ -331,6 +487,10 @@ static void rt_ui_callback(int action, const char *data) {
 void rt_form_ui_attach(void *host_view) {
     g_host_view = (__bridge UIView *) host_view;
     j2me_ui_set_callback(rt_ui_callback);
+}
+
+void rt_form_ui_set_visibility_callback(void (*callback)(int visible)) {
+    g_visibility_callback = callback;
 }
 
 void rt_form_ui_present(int action) {
@@ -344,6 +504,7 @@ void rt_form_ui_present(int action) {
             [g_panel removeFromSuperview];
             g_panel = nil;
         }
+        if (g_visibility_callback) g_visibility_callback(0);
         return;
     }
 
@@ -360,4 +521,5 @@ void rt_form_ui_present(int action) {
     }
     [host bringSubviewToFront:g_panel];
     [g_panel rebuildForAction:action];
+    if (g_visibility_callback) g_visibility_callback(1);
 }

@@ -194,8 +194,8 @@ and per-slot `save_root` gives tab data isolation for free.
    document type make the folder visible in the Files app. Selecting a row
    pushes a `RTViewController` with a `‹ Thư viện` control. Verified with
    Avatar end to end: library → game boot → `startApp` → frames → back.
-   Still missing: a per-game icon, renaming, and a layout that keeps the back
-   control off the canvas corner.
+   The icon from `MIDlet-1`, renaming, sorting and deletion were added later
+   (commit `cf7af85b`).
 8. **Process shutdown — FIXED 2026-11-25.** Ending a session on the iPhone
    logged `[SIGNAL]jvm sig:15` followed by a second dump and a `SIGSEGV`.
    The engine's signal handler kept a static pointer to the last created
@@ -208,6 +208,26 @@ and per-slot `save_root` gives tab data isolation for free.
    `RT_CLOSE_AFTER=…`, then the process killed) and on the iPhone: one dump
    for the live JVM, one line and no dump when no JVM is left, and no second
    signal in either case.
+
+9. **Host chrome redesigned — 2026-11-25.** The UIKit chrome moved to a dark
+   "console" language driven by `iosRuntime/native/host_theme.h`: ink
+   background, surface cards, one amber accent, SF Symbols, 44 pt targets and
+   Dynamic Type. The library uses an inset-grouped list with custom 56 pt icon
+   cells, a `Đang chơi` section, a context menu (rename, resolution/FPS,
+   delete) and an empty state with an import button. The game screen has a
+   single 44 pt back chevron instead of three competing controls, tab pills
+   that scroll to the focused session, FPS hidden behind a speedometer toggle
+   persisted as `RTShowFPS`, a framed canvas that keeps nearest-neighbour
+   scaling, and a rebuilt keypad (arrow SF Symbols, amber OK, haptics). Form,
+   List, Alert and TextBox render as a dimmed bottom sheet and hide the keypad
+   while they are up.
+   Two iOS 26 SDK behaviours shaped this: the system large-title label is
+   never built for that bar (the library draws its own header and the slot
+   stayed blank), and `UIRefreshControl` is docked into the same slot, so the
+   library rescans on appearance instead of using pull-to-refresh. The app
+   declares `UIUserInterfaceStyle` Dark so system sheets and the keyboard
+   match. Verified on SpikePhone with screenshots of the library, a running
+   game, two tabs and the Form/List/Alert/TextBox probe.
 
 ## Reference build flow (for `iosApp/README.md` later)
 
