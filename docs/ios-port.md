@@ -169,6 +169,17 @@ and per-slot `save_root` gives tab data isolation for free.
    `Form.syncFromNative` re-reads it, so a native tap rewrites that text.
    Note: the host starts the MIDlet about four seconds after launch, so
    screenshot timing must account for that offset.
+7. **App shell — VERIFIED on simulator 2026-11-24.** `native/host_shell.m`
+   is the library: all `Documents/games/*.jar` are listed by MIDlet name
+   (read straight from each manifest by `host_jar.c` over the engine's miniz,
+   with no JVM), each with a per-game canvas size and FPS cap stored in
+   `NSUserDefaults` and a per-game save directory. Import goes through
+   `UIDocumentPickerViewController`; `UIFileSharingEnabled` and a `.jar`
+   document type make the folder visible in the Files app. Selecting a row
+   pushes a `RTViewController` with a `‹ Thư viện` control. Verified with
+   Avatar end to end: library → game boot → `startApp` → frames → back.
+   Still missing: a per-game icon, renaming, and a layout that keeps the back
+   control off the canvas corner.
 
 ## Reference build flow (for `iosApp/README.md` later)
 
