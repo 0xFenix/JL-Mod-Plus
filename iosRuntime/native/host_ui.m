@@ -4,9 +4,12 @@
 // only supplies the window that a person actually looks at and touches.
 #import <UIKit/UIKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <ImageIO/ImageIO.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "jvm_bridge.h"
@@ -430,6 +433,44 @@ static int g_shell_mode = 0;
 
 // ------------------------------------------------------------ flush bridge
 
+// Optional frame capture. devicectl has no screenshot command and a script
+// cannot tap the phone, so the only way to see what the device rendered is to
+// have the host write the frames it already receives.
+static int rt_snapshot_interval(void) {
+    static int interval = 0;
+    if (interval == 0) {
+        const char *value = getenv("RT_SNAPSHOT_INTERVAL");
+        interval = value ? atoi(value) : 60;
+        if (interval <= 0) {
+            interval = 60;
+        }
+    }
+    return interval;
+}
+
+static void rt_write_snapshot(CGImageRef image) {
+    const char *dir = getenv("RT_SNAPSHOT_DIR");
+    if (!dir || !dir[0]) {
+        return;
+    }
+    mkdir(dir, 0755);
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/frame_%06d.png", dir, g_frames);
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+            NULL, (const UInt8 *) path, (CFIndex) strlen(path), false);
+    if (!url) {
+        return;
+    }
+    CGImageDestinationRef destination =
+            CGImageDestinationCreateWithURL(url, CFSTR("public.png"), 1, NULL);
+    if (destination) {
+        CGImageDestinationAddImage(destination, image, NULL);
+        CGImageDestinationFinalize(destination);
+        CFRelease(destination);
+    }
+    CFRelease(url);
+}
+
 static void rt_on_flush(void *image, int width, int height) {
     if (!image) return;
     CGImageRef cg = (CGImageRef) image;
@@ -454,6 +495,9 @@ static void rt_on_flush(void *image, int width, int height) {
         controller.gameView.canvasWidth = width;
         controller.gameView.canvasHeight = height;
         controller.gameView.currentImage = cg;
+        if (g_frames % rt_snapshot_interval() == 0) {
+            rt_write_snapshot(cg);
+        }
         CGImageRelease(cg);
     });
 }

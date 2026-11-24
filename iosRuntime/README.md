@@ -78,6 +78,19 @@ The device needs a profile that lists its UDID; let Xcode register the device
 once (any throwaway project with the same bundle id works) before the first
 device build.
 
+`devicectl` cannot screenshot a running app, so the host can dump the frames it
+already renders. Pass the app's `Documents` path (the harness prints its
+`save_root` on launch; `Documents` is its parent) and a frame interval:
+
+```sh
+xcrun devicectl device process launch --device <UDID> --console \
+  -e '{"RT_MIDLET_JAR":"<bundle>/jars/game.jar","RT_SNAPSHOT_DIR":"<Documents>/snaps","RT_SNAPSHOT_INTERVAL":"150"}' \
+  io.github.h3nb.jlmodplus.runtime
+xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer \
+  --domain-identifier io.github.h3nb.jlmodplus.runtime \
+  --source Documents/snaps --destination /tmp/devsnaps
+```
+
 `native/host_main.c` boots one MIDlet through `jvm_bridge_init_slot` /
 `jvm_bridge_run_midlet_slot`. By default it runs `native/host_ui.m`, a UIKit
 host that presents the frame in a `CALayer` and a 12-key touch keypad, and
