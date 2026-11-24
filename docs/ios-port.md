@@ -104,8 +104,27 @@ and per-slot `save_root` gives tab data isolation for free.
    as-is).
 3. **Performance baseline.** miniJVM is an AST/walking interpreter; still
    measure FPS on a real iPhone with one of our 3 acceptance JARs (P1 exit
-   criterion unchanged). Simulator 3b passed (interpreter-only); user will
-   provide the 3 JARs for 3c.
+   criterion unchanged). Simulator 3b passed (interpreter-only).
+   3c interim 2026-11-24 (first user JAR: `Avatar_LAPRO.jar`, TeaMobi,
+   `vn.lapro.GameMidlet`, MIDP-2.0/CLDC-1.0, 519 classes, 44 PNGs, needs
+   socket+http+sms): on host miniJVM the MIDlet **instantiates and enters
+   `startApp`** (Runner via reflection; `Display.getDisplay`/`setCurrent`
+   stubbed). `startApp` then stops at the first real LCDUI class in its
+   path (`vo` → … → `Canvas`). Static scan (`strings` over all classes)
+   gives the exact port backlog, in dependency order: lcdui `Displayable`,
+   `Canvas`, `Graphics`, `Image`, `Command`, `Display`(+`vibrate`,
+   `setCurrent`), `Form`/`List`/`ChoiceGroup`/`StringItem`/`TextField`/
+   `Ticker`/`Alert`/`AlertType`, `Displayable`; media `Manager`/`Player`/
+   `Control`; rms `RecordStore`; io `Connector`/`HttpConnection`/
+   `SocketConnection` (already in `minijvm_rt.jar`); wireless-messaging SMS
+   (promo feature, last). No `lcdui/game/*` usage — plain `Canvas` render
+   loop. Engine quirk found: `Class.getResourceAsStream` with a relative
+   name throws `IncompatibleClassChangeError` inside `String.startsWith`
+   (line 355) — game catches it and continues, but resource loading needs
+   an engine-side look before assets (PNG) can load. FPS cannot be measured
+   until the LCDUI port renders frames (P2); host `test.ExecuteSpeed`
+   baseline was still running at ~98% CPU after 20 min when this was
+   written — number to follow.
 
 ## Reference build flow (for `iosApp/README.md` later)
 
