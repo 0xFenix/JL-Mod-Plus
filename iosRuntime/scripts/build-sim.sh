@@ -58,8 +58,10 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/j2me_input.c" \
     "$ROOT/native/j2me_audio.m" \
     "$ROOT/native/host_main.c" \
+    "$ROOT/native/host_ui.m" \
     -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreText \
     -framework AudioToolbox -framework AVFoundation -framework UIKit -framework CoreHaptics \
+    -framework QuartzCore \
     -lpthread -lm
 
 echo "packaging $APP"

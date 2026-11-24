@@ -50,20 +50,26 @@ MINIJVM_DIR=~/dev/miniJVM MIDLET_JAR=/path/to/game.jar ./scripts/build-sim.sh
 
 `build-sim.sh` writes `build/RuntimeApp.app` with the engine, `j2me_api.jar`,
 the upstream runtime jar, and the game jar in `jars/`. `run-sim.sh` boots a
-simulator (`SPIKE_DEVICE`, default `SpikePhone`), installs, launches, and
-reports `[RT] frames=… fps=…` lines plus PNG snapshots written into the app's
-data container.
+simulator (`SPIKE_DEVICE`, default `SpikePhone`), installs, launches, then
+reports `[RT] frames=… fps=…` lines, saves a screenshot to `build/run.png`,
+and lists PNG snapshots written into the app's data container.
 
-`native/host_main.c` is a headless harness: it boots one MIDlet through
-`jvm_bridge_init_slot` / `jvm_bridge_run_midlet_slot`, receives frames from
-the `j2me_render` flush callback, and writes a snapshot every 60 frames. It
-creates no window, so Canvas games render while native form UI is deferred to
-a later pass.
+`native/host_main.c` boots one MIDlet through `jvm_bridge_init_slot` /
+`jvm_bridge_run_midlet_slot`. By default it runs `native/host_ui.m`, a UIKit
+host that presents the frame in a `CALayer` and a 12-key touch keypad, and
+maps touches to key and pointer events through `j2me_input`. Setting
+`RT_HEADLESS=1` runs the snapshot harness instead: it creates no window,
+writes a PNG every 60 frames, and is what automated runs use.
+
+`test/InputProbe.java` is the synthetic-input probe. With
+`RT_SYNTH_INPUT=1` the host posts a key press/release and a press/drag/release
+sequence a few seconds after launch, and the MIDlet prints every callback it
+receives; `scripts/make-test-jar.sh` builds it into `build/test.jar`.
 
 ## Known gaps
 
-- Frames are delivered through the flush callback only; there is no window,
-  input source, or tab UI yet.
+- Frames are delivered to a single full-screen view; there is no multi-tab
+  UI, and native form UI (Form/List/Alert) is not exercised yet.
 - `j2me_audio.m` natives are silent stubs in the reference project, and its
   bundled SoundFont is a 1-byte placeholder.
 - Native image memory is not counted toward the GC budget: the reference

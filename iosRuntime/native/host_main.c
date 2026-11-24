@@ -13,6 +13,7 @@
 
 #include "jvm_bridge.h"
 #include "j2me_render.h"
+#include "host_ui.h"
 
 // The reference runtime hooks a patched collector (its vendored garbage.c) so
 // native image memory counts toward heap pressure. Upstream miniJVM has no such
@@ -82,6 +83,14 @@ int main(int argc, char **argv) {
     }
     printf("[RT] res_root=%s\n[RT] save_root=%s\n[RT] jar=%s screen=%dx%d fps_limit=%d\n",
            res_root, save_root, midlet_jar, width, height, fps_limit);
+
+    // RT_HEADLESS=1 keeps the snapshot/FPS harness used for automated runs;
+    // the default is a window with on-screen controls, which is the only way
+    // gameplay frame rates can be judged.
+    const char *headless = getenv("RT_HEADLESS");
+    if (!headless || strcmp(headless, "1") != 0) {
+        return rt_run_ui(argc, argv, res_root, save_root, midlet_jar, width, height, fps_limit);
+    }
 
     j2me_render_set_flush_callback(on_flush);
     started = now_seconds();

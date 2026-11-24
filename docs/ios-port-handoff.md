@@ -40,9 +40,16 @@ Reply to the user in Vietnamese; code and identifiers in English.
       next honest data point.
 4. **Runtime decision** — the J2ME runtime layer is inherited from
    J2ME-Decade (iOS) into `iosRuntime/` (Apache-2.0, attribution restored,
-   3D/proxy/OEM-stubs removed); the KMP shell + `PlatformSpi` boundary stays
-   ours. `iosSpike/` is the superseded hand-written A/B reference.
-4. Keep every new platform capability behind `PlatformSpi`
+   3D/proxy removed); the KMP shell + `PlatformSpi` boundary stays ours.
+   `iosSpike/` is the superseded hand-written A/B reference and is still
+   untracked.
+5. **Input + window** — DONE on the simulator. `iosRuntime/native/host_ui.m`
+   presents the frame in a UIKit window with a 3-column virtual keypad and
+   maps touches into `j2me_input`; `test/InputProbe.java` with
+   `RT_SYNTH_INPUT=1` prints every key and pointer callback, and all five
+   arrive (`keyPressed 53`, `keyReleased 53`, pointer press/drag/release).
+   App-life cycle must be scene-based on Xcode 27 SDKs.
+6. Keep every new platform capability behind `PlatformSpi`
    (`core/src/commonMain/.../spi/PlatformSpi.kt`); `commonMain` must stay
    free of `android.*`, `java.*`, Darwin imports.
 

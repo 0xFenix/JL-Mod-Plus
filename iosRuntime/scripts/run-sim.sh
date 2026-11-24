@@ -35,21 +35,29 @@ BUNDLE=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" app)
 mkdir -p "$DATA/save" "$DATA/snap"
 rm -f "$DATA"/snap/*.png 2>/dev/null || true
 
-echo "device=$DEVICE udid=$UDID bundle=$BUNDLE"
+GAME_JAR="$BUNDLE/jars/game.jar"
+if [ -n "$MIDLET_JAR" ]; then
+    # The runtime reads game jars from the bundle; a host path outside the app
+    # container stalls in the zip reader on the simulator.
+    cp "$MIDLET_JAR" "$GAME_JAR"
+fi
+echo "device=$DEVICE udid=$UDID bundle=$BUNDLE jar=$GAME_JAR"
 SIMCTL_CHILD_RT_RES_ROOT="$BUNDLE/jars" \
 SIMCTL_CHILD_RT_SAVE_ROOT="$DATA/save" \
 SIMCTL_CHILD_RT_SNAPSHOT_DIR="$DATA/snap" \
-SIMCTL_CHILD_RT_MIDLET_JAR="$BUNDLE/jars/game.jar" \
+SIMCTL_CHILD_RT_MIDLET_JAR="$GAME_JAR" \
 SIMCTL_CHILD_RT_WIDTH="${RT_WIDTH:-240}" \
 SIMCTL_CHILD_RT_HEIGHT="${RT_HEIGHT:-320}" \
 SIMCTL_CHILD_RT_FPS_LIMIT="${RT_FPS_LIMIT:-0}" \
 xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" > "$LOG" 2>&1 &
 LP=$!
 sleep "$SECS"
+xcrun simctl io "$UDID" screenshot "$ROOT/build/run.png" >/dev/null 2>&1 || true
 kill $LP 2>/dev/null || true
 
 echo "=== log: $LOG ==="
 grep -E '^\[RT\]|JVM Bridge|Display|MIDletRunner|error|Error|crash' "$LOG" | tail -40 || tail -40 "$LOG"
+echo "=== screenshot: $ROOT/build/run.png ==="
 echo "=== snapshots ==="
 ls -la "$DATA/snap" 2>/dev/null | tail -5
 echo "$DATA/snap"
