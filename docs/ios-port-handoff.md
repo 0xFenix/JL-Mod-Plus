@@ -11,9 +11,16 @@ Reply to the user in Vietnamese; code and identifiers in English.
   iosSimulatorArm64, static framework `Core`), 7 platform SPIs in
   `core/.../spi/PlatformSpi.kt`, GitHub workflow `ios.yml` green on macOS
   (`assembleCoreXCFramework` → artifact `Core-XCFramework`).
-- Open decisions (do not guess, ask the user): 3 acceptance JARs not chosen
-  yet; miniJVM license not verified — DO NOT vendor miniJVM C sources until
-  the license is confirmed Apache-2.0-compatible.
+- Open decisions (asked 2026-11-24, user answered):
+  - miniJVM license → VERIFIED NOT Apache-2.0-clean (C code MIT, but
+    `minijvm_rt.jar` is GPL-2.0-only WITH Classpath-exception-2.0). User
+    chose: spike with an EXTERNAL checkout only — DO NOT vendor miniJVM
+    sources or jars into this repo. External checkout lives OUTSIDE the
+    repo (see step 3b).
+  - 3 acceptance JARs → user will provide the actual files. Step 3c waits
+    for them; do not substitute other JARs without asking.
+  - Device run (step 4) → user runs on their own iPhone and reports back
+    (Team ID to be added to the project when they provide it).
 
 ## Do now, in order
 
