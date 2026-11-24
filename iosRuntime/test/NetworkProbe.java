@@ -24,6 +24,7 @@ public class NetworkProbe extends MIDlet {
             public void run() {
                 probeSocket();
                 probeHttp();
+                probePublicSocket();
                 probeHttps();
                 System.out.println("[NET] done");
                 notifyDestroyed();
@@ -73,6 +74,33 @@ public class NetworkProbe extends MIDlet {
             System.out.println("[NET] http FAILED " + t);
         } finally {
             closeQuietly(hc);
+        }
+    }
+
+    /**
+     * Raw socket to a public host, which is what a game server connection looks
+     * like. Proves the socket path works over the internet; the LAN probe above
+     * only works when iOS allows local network access.
+     */
+    private void probePublicSocket() {
+        SocketConnection sc = null;
+        try {
+            sc = (SocketConnection) Connector.open("socket://example.com:80");
+            OutputStream out = sc.openOutputStream();
+            out.write("GET / HTTP/1.0\r\nHost: example.com\r\n\r\n".getBytes());
+            out.flush();
+            DataInputStream in = sc.openDataInputStream();
+            StringBuffer sb = new StringBuffer();
+            int c;
+            while ((c = in.read()) != -1) {
+                if (c == '\n') break;
+                sb.append((char) c);
+            }
+            System.out.println("[NET] public socket status=" + sb.toString().trim());
+        } catch (Throwable t) {
+            System.out.println("[NET] public socket FAILED " + t);
+        } finally {
+            closeQuietly(sc);
         }
     }
 

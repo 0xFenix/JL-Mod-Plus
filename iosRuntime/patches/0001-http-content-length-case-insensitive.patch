@@ -1,0 +1,20 @@
+diff --git a/minijvm/java/src/main/java/org/mini/net/http/Protocol.java b/minijvm/java/src/main/java/org/mini/net/http/Protocol.java
+index ab5d36f..b825a66 100644
+--- a/minijvm/java/src/main/java/org/mini/net/http/Protocol.java
++++ b/minijvm/java/src/main/java/org/mini/net/http/Protocol.java
+@@ -1660,8 +1660,13 @@ public class Protocol extends ConnectionBaseAdapter
+         String filename;
+         int numberOfKeys;
+ 
+-        // HTTP 1.0 requests must contain content length for proxies
+-        if (getRequestProperty("Content-Length") == null) {
++        // HTTP 1.0 requests must contain content length for proxies.
++        // Properties are case sensitive, so a MIDlet that sets
++        // "Content-length" would otherwise get a second, differently cased
++        // Content-Length header; servers reject that with 400 Bad Request.
++        if (getRequestProperty("Content-Length") == null
++                && getRequestProperty("Content-length") == null
++                && getRequestProperty("content-length") == null) {
+             setRequestField("Content-Length", Integer.toString(bytesToWrite));
+         }
+ 

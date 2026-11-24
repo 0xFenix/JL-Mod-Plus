@@ -37,8 +37,17 @@ reference project states its API layer is ported from
 
 The miniJVM engine and its `minijvm_rt.jar` are **not** stored here. The C
 engine is MIT; the runtime jar contains OpenJDK-derived classes under
-GPL-2.0-only WITH Classpath-exception-2.0, so `build-sim.sh` compiles both
+GPL-2.0-only WITH Classpath-exception-2.0, so `build-app.sh` compiles both
 from a local upstream checkout (`MINIJVM_DIR`, default `~/dev/miniJVM`).
+
+Engine fixes live in `patches/` as ordinary diffs against that clean
+checkout: `build-app.sh` applies any patch that is not applied yet and
+rebuilds the runtime jar, so only our changes are versioned here and nothing
+from upstream is redistributed. Patches currently present:
+
+| Patch | Fix |
+| --- | --- |
+| `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
 
 ## Build and run
 
@@ -53,6 +62,21 @@ the upstream runtime jar, and the game jar in `jars/`. `run-sim.sh` boots a
 simulator (`SPIKE_DEVICE`, default `SpikePhone`), installs, launches, then
 reports `[RT] frames=… fps=…` lines, saves a screenshot to `build/run.png`,
 and lists PNG snapshots written into the app's data container.
+
+For a real iPhone, `./scripts/build-device.sh` compiles the same sources for
+`iphoneos` into `build/device/RuntimeApp.app` and signs it with the first
+`Apple Development` identity plus the provisioning profile whose
+`application-identifier` matches the bundle id (`CODE_SIGN_IDENTITY` and
+`TARGET=sim|device` override the wrapper). Install and run it with:
+
+```sh
+xcrun devicectl device install app --device <UDID> build/device/RuntimeApp.app
+xcrun devicectl device process launch --device <UDID> --console io.github.h3nb.jlmodplus.runtime
+```
+
+The device needs a profile that lists its UDID; let Xcode register the device
+once (any throwaway project with the same bundle id works) before the first
+device build.
 
 `native/host_main.c` boots one MIDlet through `jvm_bridge_init_slot` /
 `jvm_bridge_run_midlet_slot`. By default it runs `native/host_ui.m`, a UIKit

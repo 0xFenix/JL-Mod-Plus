@@ -155,6 +155,16 @@ and per-slot `save_root` gives tab data isolation for free.
    a matching `java_native_method` row is an `UnsatisfiedLinkError` that a
    MIDlet cannot catch, which is how the audio table was found registered
    under the wrong class.
+   **Engine patch, device-verified 2026-11-25:** the game's first request
+   returned `400 Bad Request` on iOS while the same JAR works on Android.
+   Trace of the wire bytes showed the engine sending two `Content-Length`
+   headers: the MIDlet set `Content-length` (lowercase) and
+   `sendRequestHeader()` only checked the exact spelling `Content-Length`
+   before adding its own. Servers reject duplicated `Content-Length`, so the
+   POST failed and the game gave up. The guard now checks all three
+   capitalisations. `iosRuntime/patches/` holds this as a patch against a
+   clean miniJVM checkout, applied by `build-app.sh` (which rebuilds the
+   runtime jar after applying it) — the engine is still never vendored.
 6. **Screen UI (Form/List/Alert/TextBox) — VERIFIED on simulator 2026-11-24.**
    The vendored `j2me_ui.m` keeps a per-slot model of the current screen and
    reports it through a callback; the reference app rendered that model in
