@@ -123,8 +123,24 @@ and per-slot `save_root` gives tab data isolation for free.
    (line 355) — game catches it and continues, but resource loading needs
    an engine-side look before assets (PNG) can load. FPS cannot be measured
    until the LCDUI port renders frames (P2); host `test.ExecuteSpeed`
-   baseline was still running at ~98% CPU after 20 min when this was
-   written — number to follow.
+   baseline turned out to be a quadratic `String` stress loop after 2h11m —
+   discarded in favour of purpose-built benchmarks.
+4. **Runtime layer inherited, not rewritten — DECIDED 2026-11-24.**
+   Reference <https://github.com/darkrose00x-ux/j2me-ios> builds on Xcode 27
+   and runs, and its `javax.microedition` + native bridge compile with zero
+   errors against our upstream `minijvm_rt.jar`, so there is no engine-version
+   skew. Vendored into `iosRuntime/` (see its README): 279 Java files plus
+   five native modules, with M3G, micro3D, JBlend/Vodafone J3D, Bluetooth,
+   Location, AMMS, proxy tunnel and server override removed. Licensing holds:
+   the reference is Apache-2.0 and its API layer derives from J2ME-Loader,
+   whose `javax.microedition` sources are Apache-2.0 as well; derivation
+   notices are restored on every adopted file and recorded in
+   `THIRD_PARTY_NOTICES.md`. The Swift app shell is NOT adopted — the iOS
+   product keeps the KMP `core/` + `PlatformSpi` boundary.
+   Result: Avatar LAPRO boots and renders on `iosSimulatorArm64`,
+   `[RT] frames=60 5.2s fps=11.5 240x320`, first real interpreter-only iOS
+   frame rate. Avatar is an online game and self-exits when its data fetch
+   fails, which caps automated observation; device measurement is still owed.
 
 ## Reference build flow (for `iosApp/README.md` later)
 

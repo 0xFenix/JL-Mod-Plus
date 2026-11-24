@@ -26,20 +26,22 @@ Reply to the user in Vietnamese; code and identifiers in English.
 
 1. `git checkout feature/ios-port && git pull`.
    Verify: `./gradlew :core:jvmTest` passes (needs JDK 21, no Xcode needed).
-2. Create the Xcode shell per `iosApp/README.md` (Xcode 16+, personal team
-   signing, run on a real iPhone, confirm AltServer re-sign works).
-   Commit the resulting `.xcodeproj` + any `core/build.gradle.kts` Xcode-sync
-   wiring on this branch and push.
-3. P1 spike — miniJVM, not a new interpreter:
-   a. Find the true miniJVM upstream, record URL + license in
-      `docs/ios-port.md` ("Must verify" section). Stop and ask the user if
-      the license is GPL/copyleft.
-   b. DONE 2026-11-24 (simulator pass, interpreter-only — sljit does not
-      compile for iOS targets; details in `docs/ios-port.md` §Must verify).
-      Reference: `jvm_bridge.{h,c}` and `j2me_api/build.sh` in j2me-ios.
-   c. Simulator `startApp` reached. ops/sec + FPS of one real game WAITS
-      for the user's 3 JARs. If the interpreter is too slow, stop and report
-      before writing any LCDUI port.
+2. **Xcode shell** — DONE on the repo side (`iosApp/` builds for the
+   simulator). Device run (personal team + AltServer re-sign) still owed by
+   the user.
+3. **P1 spike** — DONE, superseded by the inherited runtime:
+   a. Upstream + license recorded (see `docs/ios-port.md` §Must verify).
+      User chose an external checkout; nothing of miniJVM is vendored.
+   b. miniJVM + hello MIDlet reached `startApp` on the simulator
+      (interpreter-only; sljit does not compile for iOS targets).
+   c. FPS: first interpreter-only iOS number = **11.5 fps @ 240x320** on the
+      iPhone 16 Pro simulator, from the vendored runtime (`iosRuntime/`).
+      Avatar is an online game and self-exits, so device measurement is the
+      next honest data point.
+4. **Runtime decision** — the J2ME runtime layer is inherited from
+   J2ME-Decade (iOS) into `iosRuntime/` (Apache-2.0, attribution restored,
+   3D/proxy/OEM-stubs removed); the KMP shell + `PlatformSpi` boundary stays
+   ours. `iosSpike/` is the superseded hand-written A/B reference.
 4. Keep every new platform capability behind `PlatformSpi`
    (`core/src/commonMain/.../spi/PlatformSpi.kt`); `commonMain` must stay
    free of `android.*`, `java.*`, Darwin imports.

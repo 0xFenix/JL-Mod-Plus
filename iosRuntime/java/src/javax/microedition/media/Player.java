@@ -1,0 +1,71 @@
+/*
+ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
+ * licensed under the Apache License, Version 2.0. That project states its J2ME API
+ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
+ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
+ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
+ *
+ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
+ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
+ * outside the iOS runtime scope.
+ */
+/*
+ * Copyright 2012 Kulikov Dmitriy
+ * Copyright 2017 Nikita Shakarun
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package javax.microedition.media;
+
+public interface Player extends Controllable {
+	int CLOSED = 0;
+	int UNREALIZED = 100;
+	int REALIZED = 200;
+	int PREFETCHED = 300;
+	int STARTED = 400;
+
+	long TIME_UNKNOWN = -1;
+
+	void realize() throws MediaException;
+
+	void prefetch() throws MediaException;
+
+	void start() throws MediaException;
+
+	void stop() throws MediaException;
+
+	void deallocate();
+
+	void close();
+
+	long setMediaTime(long now) throws MediaException;
+
+	long getMediaTime();
+
+	TimeBase getTimeBase();
+
+	void setTimeBase(TimeBase master) throws MediaException;
+
+	long getDuration();
+
+	void setLoopCount(int count);
+
+	int getState();
+
+	void addPlayerListener(PlayerListener playerListener);
+
+	void removePlayerListener(PlayerListener playerListener);
+
+	String getContentType();
+}
