@@ -141,6 +141,20 @@ and per-slot `save_root` gives tab data isolation for free.
    `[RT] frames=60 5.2s fps=11.5 240x320`, first real interpreter-only iOS
    frame rate. Avatar is an online game and self-exits when its data fetch
    fails, which caps automated observation; device measurement is still owed.
+5. **Networking — VERIFIED on simulator 2026-11-24.**
+   Games are mostly online and light (no 3D, no audio), so the connection path
+   matters more than offline frame rate. `test/NetworkProbe.java` reports
+   `socket echo=ECHO PING`, `http code=200`, and `https code=200` against host
+   fixtures (`scripts/net-fixtures.sh`). All of it comes from the engine:
+   miniJVM's runtime jar ships `javax.microedition.io` and `org/mini/net/*`
+   handlers over BSD sockets and mbedtls, and bootclasspath classes win over
+   the app classpath — a hand-written `javax.microedition.io` in `java/src` is
+   inert and was deleted. ATS does not apply to BSD sockets, so no Info.plist
+   exception is needed. `file://` remains unsupported (no handler ships).
+   `scripts/audit-natives.sh` guards the seam: a `native` declaration without
+   a matching `java_native_method` row is an `UnsatisfiedLinkError` that a
+   MIDlet cannot catch, which is how the audio table was found registered
+   under the wrong class.
 
 ## Reference build flow (for `iosApp/README.md` later)
 

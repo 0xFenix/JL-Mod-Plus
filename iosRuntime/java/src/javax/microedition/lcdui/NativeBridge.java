@@ -100,11 +100,6 @@ public class NativeBridge {
     // Audio — Tone (convenience, uses MIDI internally)
     public static native void audioPlayTone(int note, int duration, int volume);
 
-    // MascotCapsule micro3D — blit GL framebuffer pixels to CGBitmapContext
-    public static native void mc3dBlitToGraphics(long ctx, long pixelsAddr, int width, int height);
-    // MascotCapsule micro3D — read Canvas CGBitmapContext pixels as RGBA for GL texture upload
-    public static native void mc3dReadCanvasPixels(long ctx, long dstAddr, int width, int height);
-
     // Platform
     public static native void platformRequest(String url);
 

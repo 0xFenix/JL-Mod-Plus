@@ -10,7 +10,7 @@
 #include "jvm_util.h"
 #include <stdio.h>
 
-#define CLS "org/mini/media/MiniAudio"
+#define CLS "javax/microedition/lcdui/NativeBridge"
 
 static s32 n_audioCreatePlayer(Runtime *runtime, JClass *clazz) {
     JniEnv *env = runtime->jnienv;

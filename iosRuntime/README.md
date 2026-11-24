@@ -66,7 +66,34 @@ writes a PNG every 60 frames, and is what automated runs use.
 sequence a few seconds after launch, and the MIDlet prints every callback it
 receives; `scripts/make-test-jar.sh` builds it into `build/test.jar`.
 
+`test/NetworkProbe.java` (`./scripts/make-test-jar.sh test/network-probe.mf`)
+checks the connection path. `scripts/net-fixtures.sh start` runs a TCP echo
+server on 127.0.0.1:9099 and an HTTP server on 127.0.0.1:9098 on the host;
+the probe then prints the socket echo, the HTTP status/body, and an HTTPS
+result. Verified on the simulator: socket echo, `http code=200`, and
+`https code=200`.
+
+Networking comes from the engine, not from this tree: miniJVM's runtime jar
+ships `javax.microedition.io` (Connector, SocketConnection, HttpConnection,
+HttpsConnection) plus `org/mini/net/*` protocol handlers over BSD sockets and
+mbedtls, and bootclasspath classes win over the app classpath. A hand-written
+`javax.microedition.io` under `java/src` is therefore inert; only the
+interfaces the engine lacks (CommConnection, PushRegistry, SecureConnection,
+UDPDatagramConnection) are kept. App Transport Security does not apply to BSD
+sockets, so no `NSAppTransportSecurity` entry is needed.
+
+`scripts/audit-natives.sh` compares every `native` declaration in
+`build/j2me_api.jar` against the `java_native_method` tables in `native/*`.
+A declaration without a matching row is an `UnsatisfiedLinkError`, which a
+MIDlet cannot catch. The table class must equal the declaring Java class
+exactly — `j2me_audio.m` originally registered under `org/mini/media/MiniAudio`
+while the declarations live in `javax.microedition.lcdui.NativeBridge`.
+
 ## Known gaps
+
+- `file://` has no protocol handler: the engine ships no
+  `javax.microedition.io.file` implementation and the interfaces alone cannot
+  open a stream.
 
 - Frames are delivered to a single full-screen view; there is no multi-tab
   UI, and native form UI (Form/List/Alert) is not exercised yet.
