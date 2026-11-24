@@ -633,6 +633,20 @@ static RTViewController *g_controller = nil;
                                             repeats:YES];
         }
     }
+
+    // Automation hook: close the oldest tab after N seconds so a scripted run
+    // covers per-slot teardown while another game keeps running.
+    const char *closeAfter = getenv("RT_CLOSE_AFTER");
+    if (closeAfter && closeAfter[0]) {
+        double seconds = atof(closeAfter);
+        if (seconds > 0.2) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (seconds * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (self.sessions.count < 2) return;
+                [self closeSlot:((RTGameSession *) self.sessions[0]).slot];
+            });
+        }
+    }
 }
 
 - (void)cycleFocus:(NSTimer *)timer {

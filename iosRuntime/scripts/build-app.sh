@@ -58,7 +58,11 @@ for patch in "$ROOT"/patches/*.patch; do
     fi
     echo "applying $(basename "$patch")"
     ( cd "$MINIJVM_DIR" && git apply "$patch" ) || { echo "patch failed: $patch" >&2; exit 1; }
-    REBUILD_RT=1
+    # Only a patch that touches Java sources needs the runtime jar rebuilt; C
+    # engine patches are picked up by the compile below.
+    if grep -q '^+++ b/minijvm/java/' "$patch"; then
+        REBUILD_RT=1
+    fi
 done
 
 if [ "$REBUILD_RT" = 1 ]; then

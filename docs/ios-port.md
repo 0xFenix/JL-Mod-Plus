@@ -196,6 +196,18 @@ and per-slot `save_root` gives tab data isolation for free.
    Avatar end to end: library → game boot → `startApp` → frames → back.
    Still missing: a per-game icon, renaming, and a layout that keeps the back
    control off the canvas corner.
+8. **Process shutdown — FIXED 2026-11-25.** Ending a session on the iPhone
+   logged `[SIGNAL]jvm sig:15` followed by a second dump and a `SIGSEGV`.
+   The engine's signal handler kept a static pointer to the last created
+   JVM; once a slot was destroyed that pointer dangled, so the first `SIGTERM`
+   dumped a freed JVM, faulted inside the dump, re-entered the handler and
+   faulted again. Patch `0002-signal-handler-safe-shutdown.patch` clears the
+   pointer in `jvm_destroy`, makes the handler refuse re-entry, and terminates
+   with `_Exit` instead of running exit handlers while other slots may still
+   own memory. Verified on the simulator (two slots, one closed with
+   `RT_CLOSE_AFTER=…`, then the process killed) and on the iPhone: one dump
+   for the live JVM, one line and no dump when no JVM is left, and no second
+   signal in either case.
 
 ## Reference build flow (for `iosApp/README.md` later)
 

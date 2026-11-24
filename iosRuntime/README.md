@@ -48,6 +48,7 @@ from upstream is redistributed. Patches currently present:
 | Patch | Fix |
 | --- | --- |
 | `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
+| `0002-signal-handler-safe-shutdown.patch` | The engine's signal handler kept a pointer to the last created JVM, so after a slot was destroyed a later `SIGTERM` dereferenced freed memory and dumped threads twice, ending in a second `SIGSEGV`. It now clears that pointer on destroy, refuses to re-enter the dump, and terminates with `_Exit` instead of running exit handlers. |
 
 ## Build and run
 

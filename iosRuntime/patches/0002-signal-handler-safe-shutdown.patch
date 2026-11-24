@@ -1,0 +1,47 @@
+diff --git a/minijvm/c/jvm/jvm.c b/minijvm/c/jvm/jvm.c
+index 28c0fbb..17d6496 100644
+--- a/minijvm/c/jvm/jvm.c
++++ b/minijvm/c/jvm/jvm.c
+@@ -869,6 +869,11 @@ s32 get_jvm_state(MiniJVM *jvm) {
+ 
+ static MiniJVM *g_jvm = NULL;
+ 
++// Set while a signal handler runs. A fault inside the dump (for example while
++// another slot tore the JVM down) would otherwise re-enter the handler and
++// dump forever instead of terminating the process.
++static volatile sig_atomic_t g_jvm_sig_busy = 0;
++
+ void _on_jvm_sig_print(s32 no) {
+     jvm_printf("[SIGNAL]jvm sig:%d  errno: %d , %s\n", no, errno, strerror(errno));
+     if (g_jvm && g_jvm->thread_list) {
+@@ -894,11 +899,17 @@ void _on_jvm_sig_print(s32 no) {
+ }
+ 
+ void _on_jvm_sig(s32 no) {
++    if (g_jvm_sig_busy) {
++        _Exit(128 + no);
++    }
++    g_jvm_sig_busy = 1;
+     _on_jvm_sig_print(no);
+     fflush(stderr);
+     fflush(stdout);
+     jvm_destroy_mem_alloc();
+-    exit(no);
++    // _Exit: run no atexit handlers or static destructors. Other JVM slots may
++    // still own memory the process is about to discard anyway.
++    _Exit(no);
+ }
+ 
+ MiniJVM *jvm_create() {
+@@ -1146,6 +1157,11 @@ void jvm_destroy(MiniJVM *jvm) {
+     if (jvm->startup_dir) {
+         utf8_destroy(jvm->startup_dir);
+     }
++    if (g_jvm == jvm) {
++        // Never leave the signal dump pointing at a freed JVM: hosts that run
++        // several slots keep the process alive after one slot is destroyed.
++        g_jvm = NULL;
++    }
+     jvm_free(jvm);
+ }
+ 
