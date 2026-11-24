@@ -34,11 +34,11 @@ Reply to the user in Vietnamese; code and identifiers in English.
    a. Find the true miniJVM upstream, record URL + license in
       `docs/ios-port.md` ("Must verify" section). Stop and ask the user if
       the license is GPL/copyleft.
-   b. Build miniJVM for `iosSimulatorArm64`, compile a hello-world MIDlet
-      plus a minimal `javax` API surface with `javac --release 8`, run it.
+   b. DONE 2026-11-24 (simulator pass, interpreter-only — sljit does not
+      compile for iOS targets; details in `docs/ios-port.md` §Must verify).
       Reference: `jvm_bridge.{h,c}` and `j2me_api/build.sh` in j2me-ios.
-   c. Success = MIDlet reaches `startApp` on simulator; record ops/sec +
-      FPS of one real game. If the interpreter is too slow, stop and report
+   c. Simulator `startApp` reached. ops/sec + FPS of one real game WAITS
+      for the user's 3 JARs. If the interpreter is too slow, stop and report
       before writing any LCDUI port.
 4. Keep every new platform capability behind `PlatformSpi`
    (`core/src/commonMain/.../spi/PlatformSpi.kt`); `commonMain` must stay

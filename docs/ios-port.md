@@ -63,29 +63,49 @@ and per-slot `save_root` gives tab data isolation for free.
 
 ## Must verify before vendoring (blocking)
 
-1. **miniJVM license — VERIFIED 2026-11-24, DECISION NEEDED.**
+1. **miniJVM license — VERIFIED 2026-11-24, USER CHOSE external-checkout spike.**
    True upstream: <https://github.com/digitalgust/miniJVM> (branch `master`,
    "Cross platform java virtual machine, the minimal jvm").
    Their README links (`niclet/mini_jvm`, `niclet/J2ME-Loader`) are both dead
-   (404); the tree vendored under j2me-ios `J2MEEmulator/minijvm/{jvm,utils}`
-   matches upstream `minijvm/c` + `minijvm/utils` (`class.c`,
-   `interpreter.c`, `jit.c`, `garbage.c`, `jvm.h` with the `MiniJVM` struct).
+   (404); the j2me-ios reference is <https://github.com/darkrose00x-ux/j2me-ios>
+   (its vendored `J2MEEmulator/minijvm/{jvm,utils}` is an OLDER snapshot, not
+   master: no `immix`, no `mimalloc`, no `heapdump_hprof`, many files differ;
+   only `sljit/` is identical).
    Per upstream `LICENSE`: the C code is **MIT** (fine), BUT the Java runtime
    `minijvm_rt.jar` contains OpenJDK-derived files under
    **GPL-2.0-only WITH Classpath-exception-2.0** — distributions of the jar
    must keep its `META-INF/{MIT_LICENSE,LICENSE,CLASSPATH_EXCEPTION,NOTICE}`.
    => The C engine is Apache-2.0-compatible; the *runtime jar is NOT
-   Apache-2.0-clean*. Do NOT vendor miniJVM C sources or ship
-   `minijvm_rt.jar` until the user picks a path. Bonus: miniJVM has a JIT
-   (`jit.c`) on top of the interpreter — still measure the FPS baseline on a
-   real iPhone before any LCDUI port.
+   Apache-2.0-clean*. User decision: spike with an EXTERNAL checkout only
+   (`~/dev/miniJVM`, `~/dev/j2me-ios`, `~/dev/spike`) — NOTHING vendored into
+   this repo.
+2. **miniJVM spike step 3b — PASS on simulator 2026-11-24.**
+   Recipe (all outside this repo): built `minijvm_rt.jar` from upstream
+   `minijvm/java` with `javac --release 8`; wrote minimal `javax` surface
+   (`MIDlet`, `MIDletStateChangeException`, stub `Display`) + `HelloMidlet`
+   reaching `startApp`; compiled engine for `iosSimulatorArm64`
+   (`xcrun -sdk iphonesimulator clang -arch arm64
+   -mios-simulator-version-min=17.0`) + tiny harness (`jvm_create` /
+   `jvm_init` / `call_main`), packaged as ad-hoc-signed `.app`, ran via
+   `simctl install` + `simctl launch --console` on iPhone 16 Pro / iOS 27.0:
+   `[HelloMidlet] startApp reached`, exit ret=0.
+   Findings: (a) host mac-arm64 run also passes (0.5 s incl. JVM boot);
+   (b) upstream `sljit/` does NOT compile for iOS targets (missing
+   `SLJIT_UPDATE_WX_FLAGS` in the non-OSX branch) — spike runs
+   interpreter-only, which `jit.h` already selects via `JIT_ENABLE=0` for
+   `__JVM_OS_IOS__` (same as upstream's own `iosapp.xcodeproj`: `jit.c`
+   without sljit). JIT-on-iOS is therefore a separate work item with its own
+   license/build cost — do NOT assume the "bonus JIT" until measured.
+   First-boot note: this Mac had no simulator runtimes; `xcodebuild
+   -downloadPlatform iOS` (~8 GB) was required before any `simctl` run.
 2. **JNI-style binding mechanism.** `jvm_bridge.c` shows how Java native
    methods bind to C on iOS — read it fully on the Mac before designing our
    `javax` → bridge seam (it decides how much of our `javax` tree is reusable
    as-is).
 3. **Performance baseline.** miniJVM is an AST/walking interpreter; still
    measure FPS on a real iPhone with one of our 3 acceptance JARs (P1 exit
-   criterion unchanged).
+   criterion unchanged). Simulator 3b passed (interpreter-only); user will
+   provide the 3 JARs for 3c.
 
 ## Reference build flow (for `iosApp/README.md` later)
 
