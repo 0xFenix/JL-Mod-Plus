@@ -155,6 +155,20 @@ and per-slot `save_root` gives tab data isolation for free.
    a matching `java_native_method` row is an `UnsatisfiedLinkError` that a
    MIDlet cannot catch, which is how the audio table was found registered
    under the wrong class.
+6. **Screen UI (Form/List/Alert/TextBox) — VERIFIED on simulator 2026-11-24.**
+   The vendored `j2me_ui.m` keeps a per-slot model of the current screen and
+   reports it through a callback; the reference app rendered that model in
+   Swift. `native/host_form.m` does the same in UIKit: it reads the model
+   through the `j2me_ui_get_*` accessors, builds a panel (title, item rows,
+   text fields, tappable option rows, command buttons), and posts the four UI
+   events back through `j2me_input_post_ui_event`. `test/FormProbe.java`
+   covers a login Form with a password field and a two-option `ChoiceGroup`,
+   a `TextBox`, a `List`, and an `Alert`; each was confirmed from simulator
+   screenshots. `ChoiceGroup` state is not a separate native field — Java
+   serializes it into the item text (`<selected>\n<choice>\t…\n<flags>`) and
+   `Form.syncFromNative` re-reads it, so a native tap rewrites that text.
+   Note: the host starts the MIDlet about four seconds after launch, so
+   screenshot timing must account for that offset.
 
 ## Reference build flow (for `iosApp/README.md` later)
 
