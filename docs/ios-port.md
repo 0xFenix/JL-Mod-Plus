@@ -165,6 +165,12 @@ and per-slot `save_root` gives tab data isolation for free.
    capitalisations. `iosRuntime/patches/` holds this as a patch against a
    clean miniJVM checkout, applied by `build-app.sh` (which rebuilds the
    runtime jar after applying it) — the engine is still never vendored.
+   **Socket protocol, user-verified 2026-11-25:** after that fix the game was
+   played on the iPhone and a login completed successfully, so the title's own
+   socket protocol (not only `http://`) works through the engine's
+   `javax.microedition.io` / `org.mini.net.socket` path. Frame dumps from the
+   same session show server content (ticker, announcement dialog) at a steady
+   18.3 fps, 240x320.
 6. **Screen UI (Form/List/Alert/TextBox) — VERIFIED on simulator 2026-11-24.**
    The vendored `j2me_ui.m` keeps a per-slot model of the current screen and
    reports it through a callback; the reference app rendered that model in
