@@ -63,10 +63,22 @@ and per-slot `save_root` gives tab data isolation for free.
 
 ## Must verify before vendoring (blocking)
 
-1. **miniJVM license.** Their README links look wrong (`niclet/mini_jvm`
-   404s; real J2ME-Loader is `nikita36078`). Find the true miniJVM upstream
-   and confirm its license is compatible with our Apache-2.0 + store/sideload
-   distribution. Do not vendor the C sources until this is settled.
+1. **miniJVM license — VERIFIED 2026-11-24, DECISION NEEDED.**
+   True upstream: <https://github.com/digitalgust/miniJVM> (branch `master`,
+   "Cross platform java virtual machine, the minimal jvm").
+   Their README links (`niclet/mini_jvm`, `niclet/J2ME-Loader`) are both dead
+   (404); the tree vendored under j2me-ios `J2MEEmulator/minijvm/{jvm,utils}`
+   matches upstream `minijvm/c` + `minijvm/utils` (`class.c`,
+   `interpreter.c`, `jit.c`, `garbage.c`, `jvm.h` with the `MiniJVM` struct).
+   Per upstream `LICENSE`: the C code is **MIT** (fine), BUT the Java runtime
+   `minijvm_rt.jar` contains OpenJDK-derived files under
+   **GPL-2.0-only WITH Classpath-exception-2.0** — distributions of the jar
+   must keep its `META-INF/{MIT_LICENSE,LICENSE,CLASSPATH_EXCEPTION,NOTICE}`.
+   => The C engine is Apache-2.0-compatible; the *runtime jar is NOT
+   Apache-2.0-clean*. Do NOT vendor miniJVM C sources or ship
+   `minijvm_rt.jar` until the user picks a path. Bonus: miniJVM has a JIT
+   (`jit.c`) on top of the interpreter — still measure the FPS baseline on a
+   real iPhone before any LCDUI port.
 2. **JNI-style binding mechanism.** `jvm_bridge.c` shows how Java native
    methods bind to C on iOS — read it fully on the Mac before designing our
    `javax` → bridge seam (it decides how much of our `javax` tree is reusable

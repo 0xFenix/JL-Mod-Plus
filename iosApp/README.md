@@ -1,26 +1,41 @@
-# iosApp — iOS shell (created on a Mac)
+# iosApp — iOS shell
 
-P0 keeps this folder as Swift sources only. The `.xcodeproj` is generated
-on a Mac with Xcode 16+ (see below) and is intentionally not committed
-until P0 step 4 is done on real hardware.
+`JLModPlus.xcodeproj` is committed on `feature/ios-port` (Xcode 27, iOS 17+,
+Swift 5). Target `JLModPlus` builds the `JLModPlusApp` / `ContentView`
+placeholder; Swift does not import `Core` yet (P4).
 
-## Create the Xcode project (on a Mac)
+## Build
 
-1. Open Xcode → File → New → Project → iOS → App.
-   - Product Name: `JLModPlus`, Interface: SwiftUI, Language: Swift.
-   - Save the project inside this `iosApp/` folder.
-2. Select the app target → Build Phases → + → New Run Script Phase:
-   ```sh
-   cd "$SRCROOT/.."
-   ./gradlew :core:embedAndSignAppleFrameworkForXcode
-   ```
-   (Requires the `kotlin.cocoapods`-free `embedAndSignAppleFrameworkForXcode`
-   task wiring; if missing, add the standard KMP Xcode integration block
-   to `core/build.gradle.kts` on the Mac and re-sync.)
-3. Select your personal team in Signing & Capabilities, connect an iPhone,
-   build & run. Re-sign every 7 days via AltServer running on the same Mac.
+Simulator (no signing needed, verifies the project + Kotlin sync wiring):
+
+```sh
+export JAVA_HOME=<jdk-21+> ANDROID_HOME=~/Library/Android/sdk
+xcodebuild -project iosApp/JLModPlus.xcodeproj -scheme JLModPlus \
+  -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+```
+
+## Xcode wiring
+
+- First build phase is `Sync Kotlin Core framework` (always runs):
+  ```sh
+  cd "$SRCROOT/.."
+  ./gradlew :core:embedAndSignAppleFrameworkForXcode
+  ```
+  The `embedAndSignAppleFrameworkForXcode` task is auto-created by the KMP
+  plugin — no extra wiring in `core/build.gradle.kts` was needed.
+- `FRAMEWORK_SEARCH_PATHS` includes `$(SRCROOT)/../core/build/xcode-frameworks`
+  for when Swift starts importing `Core`.
+- GUI Xcode builds need the same env: launch Xcode from a shell with
+  `JAVA_HOME`/`ANDROID_HOME` exported, or `launchctl setenv` them.
+
+## Still pending (needs your iPhone)
+
+1. Open the project in Xcode → select your personal team in Signing &
+   Capabilities → connect an iPhone → build & run.
+2. Confirm AltServer re-sign works (7-day cycle).
+3. Report back; only then is P0 step 4 fully closed.
 
 ## What lives here
 
-- `JLModPlusApp.swift` — `@main` App entry, shows the spike placeholder view.
+- `JLModPlusApp.swift` — `@main` App entry, spike placeholder view.
 - `ContentView.swift` — placeholder screen; replaced by the real Library UI in P4.
