@@ -150,6 +150,15 @@ title from `META-INF/MANIFEST.MF` with `native/host_jar.c` (the engine's
 miniz, no JVM needed), and pushes `RTViewController` for the tapped game.
 Each game keeps its own resolution/FPS settings and save directory.
 
+The library also shows the game's own icon — the one named in the `MIDlet-1`
+manifest field, extracted from the JAR and scaled with nearest-neighbour
+filtering so small icons stay sharp. The ⓘ button opens per-game options:
+rename (stored in `NSUserDefaults`, the JAR keeps its filename), screen
+resolution and FPS, delete. Deleting removes the JAR, its save directory and
+its stored settings, behind a confirmation. Swipe-to-delete does the same.
+Sorting is by name, last played or file size; the list supports pull-to-refresh
+and the picker accepts several JARs at once.
+
 `Documents/games` is reachable from the Files app because the Info.plist sets
 `UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`; the `+`
 button also imports through `UIDocumentPickerViewController`.
