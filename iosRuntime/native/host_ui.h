@@ -11,6 +11,11 @@ extern "C" {
 int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root,
               const char *midlet_jar, int width, int height, int fps_limit);
 
+/// Build a game screen for a specific JAR and configuration (+1 reference).
+/// The library screen uses this to launch a title without touching globals.
+void *rt_create_game_controller(const char *jar_path, int width, int height,
+                                int fps_limit);
+
 #ifdef __cplusplus
 }
 #endif

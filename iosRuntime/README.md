@@ -105,6 +105,22 @@ MIDlet cannot catch. The table class must equal the declaring Java class
 exactly — `j2me_audio.m` originally registered under `org/mini/media/MiniAudio`
 while the declarations live in `javax.microedition.lcdui.NativeBridge`.
 
+## Game library
+
+The app starts in a library when no game is passed in (`RT_MIDLET_JAR`
+unset): `native/host_shell.m` lists the JARs in `Documents/games`, reads each
+title from `META-INF/MANIFEST.MF` with `native/host_jar.c` (the engine's
+miniz, no JVM needed), and pushes `RTViewController` for the tapped game.
+Each game keeps its own resolution/FPS settings and save directory.
+
+`Documents/games` is reachable from the Files app because the Info.plist sets
+`UIFileSharingEnabled` and `LSSupportsOpeningDocumentsInPlace`; the `+`
+button also imports through `UIDocumentPickerViewController`.
+
+`./scripts/run-sim.sh` drives this from the shell: `RT_SHELL=1` copies the
+jar into `Documents/games` and launches the library, and `RT_AUTOLAUNCH=1`
+opens the first row after 0.3 s because `simctl` cannot tap.
+
 ## Known gaps
 
 - `file://` has no protocol handler: the engine ships no
@@ -112,7 +128,8 @@ while the declarations live in `javax.microedition.lcdui.NativeBridge`.
   open a stream.
 
 - Frames are delivered to a single full-screen view; there is no multi-tab
-  UI, and native form UI (Form/List/Alert) is not exercised yet.
+  UI. The `‹ Thư viện` button overlaps the top-left of the canvas.
+- The library sorts by filename and has no per-game icon or rename.
 - `j2me_audio.m` natives are silent stubs in the reference project, and its
   bundled SoundFont is a 1-byte placeholder.
 - Native image memory is not counted toward the GC budget: the reference

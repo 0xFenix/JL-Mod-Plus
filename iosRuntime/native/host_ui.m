@@ -14,6 +14,7 @@
 #include "j2me_input.h"
 #include "j2me_ui.h"
 #include "host_form.h"
+#include "host_shell.h"
 #include "host_ui.h"
 
 // ---------------------------------------------------------------- MIDP keys
@@ -221,6 +222,13 @@ static double rt_now(void) {
 @property(nonatomic, strong) RTGameView *gameView;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic) BOOL midletStarted;
+// Set by the library before presentation; globals stay as the script-driven
+// defaults so automated runs keep working unchanged.
+@property(nonatomic, copy) NSString *jarPath;
+@property(nonatomic) int canvasWidth;
+@property(nonatomic) int canvasHeight;
+@property(nonatomic) int fpsLimit;
+@property(nonatomic) BOOL showsBackButton;
 @end
 
 @implementation RTViewController
@@ -231,8 +239,10 @@ static double rt_now(void) {
 
     self.gameView = [[RTGameView alloc] init];
     self.gameView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.gameView.canvasWidth = g_width;
-    self.gameView.canvasHeight = g_height;
+    int width = self.canvasWidth > 0 ? self.canvasWidth : g_width;
+    int height = self.canvasHeight > 0 ? self.canvasHeight : g_height;
+    self.gameView.canvasWidth = width;
+    self.gameView.canvasHeight = height;
     [self.view addSubview:self.gameView];
 
     self.statusLabel = [[UILabel alloc] init];
@@ -261,8 +271,27 @@ static double rt_now(void) {
         [keypad.heightAnchor constraintEqualToConstant:230],
     ]];
 
+    if (self.showsBackButton) {
+        UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
+        back.translatesAutoresizingMaskIntoConstraints = NO;
+        [back setTitle:@"‹ Thư viện" forState:UIControlStateNormal];
+        back.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
+        back.contentEdgeInsets = UIEdgeInsetsMake(4, 10, 4, 10);
+        back.layer.cornerRadius = 6;
+        [back addTarget:self action:@selector(closeGame:) forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:back];
+        [NSLayoutConstraint activateConstraints:@[
+            [back.topAnchor constraintEqualToAnchor:safe.topAnchor constant:4],
+            [back.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:6],
+        ]];
+    }
+
     rt_form_ui_attach((__bridge void *) self.view);
     rt_form_ui_present(j2me_ui_get_slot_active_action(0));
+}
+
+- (void)closeGame:(UIButton *)sender {
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)scheduleSyntheticEvents {
@@ -293,24 +322,42 @@ static double rt_now(void) {
     if (self.midletStarted) return;
     self.midletStarted = YES;
 
+    const char *jar = self.jarPath.length ? self.jarPath.UTF8String : g_midlet_jar;
+    int width = self.canvasWidth > 0 ? self.canvasWidth : g_width;
+    int height = self.canvasHeight > 0 ? self.canvasHeight : g_height;
+    int fpsLimit = self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit;
+
+    // Each game keeps its own save directory so record stores and config do
+    // not bleed between titles.
+    NSString *saveRoot = @(g_save_root);
+    if (self.jarPath.length) {
+        NSString *base = self.jarPath.lastPathComponent.stringByDeletingPathExtension;
+        saveRoot = [saveRoot stringByAppendingPathComponent:base];
+        [[NSFileManager defaultManager] createDirectoryAtPath:saveRoot
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:NULL];
+    }
+    NSString *saveRootCopy = saveRoot;
+
     // The MIDlet runs on its own thread; the event loop inside the runtime
     // blocks until the game exits.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         printf("[RT] initializing slot\n");
         fflush(stdout);
-        if (jvm_bridge_init_slot(0, g_res_root, g_save_root, g_midlet_jar,
-                                 g_width, g_height, 1, g_fps_limit) != 0) {
+        if (jvm_bridge_init_slot(0, g_res_root, saveRootCopy.UTF8String, jar,
+                                 width, height, 1, fpsLimit) != 0) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 self.statusLabel.text = @"jvm_bridge_init_slot failed";
             });
             return;
         }
         jvm_bridge_set_focused_slot(0);
-        j2me_input_set_canvas_size(g_width, g_height);
+        j2me_input_set_canvas_size(width, height);
         dispatch_async(dispatch_get_main_queue(), ^{
             self.statusLabel.text = @"running";
         });
-        jvm_bridge_run_midlet_slot(0, g_midlet_jar);
+        jvm_bridge_run_midlet_slot(0, jar);
         printf("[RT] midlet run returned, frames=%d\n", g_frames);
         fflush(stdout);
         j2me_render_stop();
@@ -336,6 +383,7 @@ static double rt_now(void) {
 // The scene-based life cycle is mandatory for apps built with current SDKs;
 // a legacy UIWindow in the app delegate is rejected at launch.
 static RTViewController *g_controller = nil;
+static int g_shell_mode = 0;
 
 @interface RTSceneDelegate : UIResponder <UIWindowSceneDelegate>
 @property(nonatomic, strong) UIWindow *window;
@@ -348,10 +396,16 @@ static RTViewController *g_controller = nil;
         options:(UISceneConnectionOptions *)connectionOptions {
     if (![scene isKindOfClass:[UIWindowScene class]]) return;
     UIWindow *window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *) scene];
-    RTViewController *controller = [[RTViewController alloc] init];
-    window.rootViewController = controller;
+    UIViewController *root = nil;
+    if (g_shell_mode) {
+        root = (__bridge_transfer UIViewController *) rt_shell_root_controller();
+    } else {
+        RTViewController *controller = [[RTViewController alloc] init];
+        g_controller = controller;
+        root = controller;
+    }
+    window.rootViewController = root;
     [window makeKeyAndVisible];
-    g_controller = controller;
     self.window = window;
 }
 
@@ -404,6 +458,19 @@ static void rt_on_flush(void *image, int width, int height) {
     });
 }
 
+void *rt_create_game_controller(const char *jar_path, int width, int height,
+                                int fps_limit) {
+    RTViewController *controller = [[RTViewController alloc] init];
+    controller.jarPath = jar_path ? @(jar_path) : nil;
+    controller.canvasWidth = width;
+    controller.canvasHeight = height;
+    controller.fpsLimit = fps_limit;
+    controller.showsBackButton = YES;
+    // Flush callbacks target whichever game screen is on screen.
+    g_controller = controller;
+    return (__bridge_retained void *) controller;
+}
+
 int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root,
               const char *midlet_jar, int width, int height, int fps_limit) {
     g_res_root = res_root;
@@ -412,6 +479,7 @@ int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root
     g_width = width;
     g_height = height;
     g_fps_limit = fps_limit;
+    g_shell_mode = (midlet_jar == NULL || midlet_jar[0] == '\0');
     g_started = rt_now();
 
     j2me_render_set_flush_callback(rt_on_flush);

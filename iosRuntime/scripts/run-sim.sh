@@ -36,20 +36,31 @@ mkdir -p "$DATA/save" "$DATA/snap"
 rm -f "$DATA"/snap/*.png 2>/dev/null || true
 
 GAME_JAR="$BUNDLE/jars/game.jar"
-if [ -n "$MIDLET_JAR" ]; then
+LAUNCH_JAR_ENV=1
+if [ -n "${RT_SHELL:-}" ]; then
+    # Library mode: install the jar where the app scans for games and launch
+    # without RT_MIDLET_JAR so the library screen is the root.
+    LAUNCH_JAR_ENV=""
+    mkdir -p "$DATA/Documents/games"
+    [ -n "$MIDLET_JAR" ] && cp "$MIDLET_JAR" "$DATA/Documents/games/$(basename "$MIDLET_JAR")"
+fi
+if [ -n "$MIDLET_JAR" ] && [ -z "${RT_SHELL:-}" ]; then
     # The runtime reads game jars from the bundle; a host path outside the app
     # container stalls in the zip reader on the simulator.
     cp "$MIDLET_JAR" "$GAME_JAR"
 fi
-echo "device=$DEVICE udid=$UDID bundle=$BUNDLE jar=$GAME_JAR"
-SIMCTL_CHILD_RT_RES_ROOT="$BUNDLE/jars" \
-SIMCTL_CHILD_RT_SAVE_ROOT="$DATA/save" \
-SIMCTL_CHILD_RT_SNAPSHOT_DIR="$DATA/snap" \
-SIMCTL_CHILD_RT_MIDLET_JAR="$GAME_JAR" \
-SIMCTL_CHILD_RT_WIDTH="${RT_WIDTH:-240}" \
-SIMCTL_CHILD_RT_HEIGHT="${RT_HEIGHT:-320}" \
-SIMCTL_CHILD_RT_FPS_LIMIT="${RT_FPS_LIMIT:-0}" \
-xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" > "$LOG" 2>&1 &
+echo "device=$DEVICE udid=$UDID bundle=$BUNDLE jar=$GAME_JAR shell=${RT_SHELL:-0}"
+LAUNCH_ENV=("SIMCTL_CHILD_RT_RES_ROOT=$BUNDLE/jars"
+            "SIMCTL_CHILD_RT_SAVE_ROOT=$DATA/save"
+            "SIMCTL_CHILD_RT_SNAPSHOT_DIR=$DATA/snap"
+            "SIMCTL_CHILD_RT_WIDTH=${RT_WIDTH:-240}"
+            "SIMCTL_CHILD_RT_HEIGHT=${RT_HEIGHT:-320}"
+            "SIMCTL_CHILD_RT_FPS_LIMIT=${RT_FPS_LIMIT:-0}")
+if [ -n "$LAUNCH_JAR_ENV" ]; then
+    LAUNCH_ENV+=("SIMCTL_CHILD_RT_MIDLET_JAR=$GAME_JAR")
+fi
+[ -n "${RT_AUTOLAUNCH:-}" ] && LAUNCH_ENV+=("SIMCTL_CHILD_RT_AUTOLAUNCH=1")
+env "${LAUNCH_ENV[@]}" xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" > "$LOG" 2>&1 &
 LP=$!
 if [ -n "$RT_SHOTS" ]; then
     # RT_SHOTS="10 18 26": screenshot at each elapsed second, e.g. to verify

@@ -72,9 +72,26 @@ int main(int argc, char **argv) {
     int height = getenv("RT_HEIGHT") ? atoi(getenv("RT_HEIGHT")) : 320;
     int fps_limit = getenv("RT_FPS_LIMIT") ? atoi(getenv("RT_FPS_LIMIT")) : 0;
 
-    if (!res_root || !save_root || !midlet_jar) {
-        printf("[RT] usage: RT_RES_ROOT=<dir with jars> RT_SAVE_ROOT=<dir> "
-               "RT_SNAPSHOT_DIR=<dir> [RT_WIDTH] [RT_HEIGHT] [RT_FPS_LIMIT] <midlet.jar>\n");
+    if (!res_root || !save_root) {
+        // Launched from springboard there are no env vars: fall back to the
+        // bundle's jars and the app container, so the library screen works.
+        static char res_buf[4096];
+        static char save_buf[4096];
+        if (!res_root) {
+            strncpy(res_buf, argv[0], sizeof(res_buf) - 1);
+            char *slash = strrchr(res_buf, '/');
+            if (slash) *slash = '\0';
+            strncat(res_buf, "/jars", sizeof(res_buf) - strlen(res_buf) - 1);
+            res_root = res_buf;
+        }
+        if (!save_root) {
+            const char *home = getenv("HOME");
+            snprintf(save_buf, sizeof(save_buf), "%s/Documents/save", home ? home : ".");
+            save_root = save_buf;
+        }
+    }
+    if (!res_root || !save_root) {
+        printf("[RT] cannot resolve resource/save roots\n");
         return 2;
     }
     if (snap) {
@@ -82,14 +99,18 @@ int main(int argc, char **argv) {
         snapshot_dir_set = 1;
     }
     printf("[RT] res_root=%s\n[RT] save_root=%s\n[RT] jar=%s screen=%dx%d fps_limit=%d\n",
-           res_root, save_root, midlet_jar, width, height, fps_limit);
+           res_root, save_root, midlet_jar ? midlet_jar : "(library)", width, height, fps_limit);
 
     // RT_HEADLESS=1 keeps the snapshot/FPS harness used for automated runs;
     // the default is a window with on-screen controls, which is the only way
     // gameplay frame rates can be judged.
     const char *headless = getenv("RT_HEADLESS");
-    if (!headless || strcmp(headless, "1") != 0) {
+    if ((!headless || strcmp(headless, "1") != 0)) {
         return rt_run_ui(argc, argv, res_root, save_root, midlet_jar, width, height, fps_limit);
+    }
+    if (!midlet_jar) {
+        printf("[RT] headless mode needs RT_MIDLET_JAR\n");
+        return 2;
     }
 
     j2me_render_set_flush_callback(on_flush);

@@ -58,11 +58,13 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/j2me_input.c" \
     "$ROOT/native/j2me_audio.m" \
     "$ROOT/native/host_main.c" \
+    "$ROOT/native/host_jar.c" \
     "$ROOT/native/host_ui.m" \
+    "$ROOT/native/host_shell.m" \
     "$ROOT/native/host_form.m" \
     -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreText \
     -framework AudioToolbox -framework AVFoundation -framework UIKit -framework CoreHaptics \
-    -framework QuartzCore \
+    -framework QuartzCore -framework UniformTypeIdentifiers \
     -lpthread -lm
 
 echo "packaging $APP"
@@ -85,6 +87,14 @@ cat > "$APP/Info.plist" <<PLIST
   <key>MinimumOSVersion</key><string>17.0</string>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
   <key>UILaunchScreen</key><dict/>
+  <key>UIFileSharingEnabled</key><true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+  <key>CFBundleDocumentTypes</key><array><dict>
+    <key>CFBundleTypeName</key><string>JAR</string>
+    <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key><array><string>com.pkware.zip-archive</string></array>
+  </dict></array>
 </dict></plist>
 PLIST
 codesign -f -s - --timestamp=none "$APP" >/dev/null 2>&1 || true
