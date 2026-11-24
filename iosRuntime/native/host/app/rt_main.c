@@ -13,7 +13,7 @@
 
 #include "jvm_bridge.h"
 #include "j2me_render.h"
-#include "host_ui.h"
+#include "rt_host.h"
 
 // The reference runtime hooks a patched collector (its vendored garbage.c) so
 // native image memory counts toward heap pressure. Upstream miniJVM has no such

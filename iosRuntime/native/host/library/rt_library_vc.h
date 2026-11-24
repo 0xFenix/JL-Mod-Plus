@@ -1,5 +1,5 @@
-#ifndef HOST_SHELL_H
-#define HOST_SHELL_H
+#ifndef RT_LIBRARY_VC_H
+#define RT_LIBRARY_VC_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -9,11 +9,8 @@ extern "C" {
 /// is the library screen). Returns a +1 reference; the caller owns it.
 void *rt_shell_root_controller(void);
 
-/// Directory holding installed game JARs (created on demand). Caller frees.
-char *rt_games_directory(void);
-
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* HOST_SHELL_H */
+#endif /* RT_LIBRARY_VC_H */

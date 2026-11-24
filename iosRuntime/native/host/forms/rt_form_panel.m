@@ -7,8 +7,8 @@
 
 #import <UIKit/UIKit.h>
 
-#include "host_form.h"
-#include "host_theme.h"
+#include "rt_form_panel.h"
+#include "rt_theme.h"
 #include "j2me_ui.h"
 #include "j2me_input.h"
 

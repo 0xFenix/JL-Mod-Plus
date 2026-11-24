@@ -1,7 +1,7 @@
 // Minimal JAR metadata reader for the game library. The engine already links
 // miniz, so this reuses it instead of adding a second zip implementation.
 
-#include "host_jar.h"
+#include "rt_jar_manifest.h"
 
 #include <stdio.h>
 #include <stdlib.h>

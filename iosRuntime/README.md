@@ -15,9 +15,12 @@ separately; this runtime is the layer it will call into.
 - `java/src` — `javax.microedition` (lcdui, game, media, rms, messaging,
   midlet, io), OEM extension packages, and `javax.microedition.shell`
   MIDlet runner. 279 files.
-- `native/` — `jvm_bridge` (slot lifecycle, JVM bootstrap), `j2me_render`
-  (CoreGraphics raster + ImageIO decode + haptics), `j2me_ui`, `j2me_input`,
-  `j2me_audio`. Eight of the ten files are byte-identical to the reference.
+- `native/bridge/` — vendored `jvm_bridge` (slot lifecycle, JVM bootstrap),
+  `j2me_render` (CoreGraphics raster + ImageIO decode + haptics), `j2me_ui`,
+  `j2me_input`, `j2me_audio`. Eight of the ten files are byte-identical to the
+  reference.
+- `native/host/` — our UIKit host, split by layer; see
+  [`ARCHITECTURE.md`](ARCHITECTURE.md) for the module map and the rules.
 
 ## What was removed
 
@@ -28,7 +31,7 @@ OpenGL ES and socket-interception surface.
 
 ## Licensing
 
-`java/src` and `native/` are Apache-2.0 and carry a derivation notice. The
+`java/src` and `native/bridge/` are Apache-2.0 and carry a derivation notice. The
 reference project states its API layer is ported from
 [J2ME-Loader](https://github.com/nikita36078/J2ME-Loader), whose
 `javax.microedition` sources are Apache-2.0 as well
@@ -92,9 +95,10 @@ xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer 
   --source Documents/snaps --destination /tmp/devsnaps
 ```
 
-`native/host_main.c` boots one MIDlet through `jvm_bridge_init_slot` /
-`jvm_bridge_run_midlet_slot`. By default it runs `native/host_ui.m`, a UIKit
-host that presents the frame in a `CALayer` and a 12-key touch keypad, and
+`native/host/app/rt_main.c` boots one MIDlet through `jvm_bridge_init_slot` /
+`jvm_bridge_run_midlet_slot`. By default it runs the UIKit host
+(`native/host/game/rt_game_controller.m` drives the sessions, `rt_game_view.m`
+presents the frame in a `CALayer` with the touch keypad), which
 maps touches to key and pointer events through `j2me_input`. Setting
 `RT_HEADLESS=1` runs the snapshot harness instead: it creates no window,
 writes a PNG every 60 frames, and is what automated runs use.
@@ -120,7 +124,7 @@ interfaces the engine lacks (CommConnection, PushRegistry, SecureConnection,
 UDPDatagramConnection) are kept. App Transport Security does not apply to BSD
 sockets, so no `NSAppTransportSecurity` entry is needed.
 
-`native/host_form.m` renders the non-Canvas screens. `j2me_lcdui`'s
+`native/host/forms/rt_form_panel.m` renders the non-Canvas screens. `j2me_lcdui`'s
 `Form`, `List`, `Alert` and `TextBox` each publish their model to
 `j2me_ui.m` and then call `formShow()`; the host installs a
 `j2me_ui_set_callback` handler, reads the model through the
@@ -137,7 +141,7 @@ TextBox, the List, and the Alert all render, and the same run covers the
 Canvas screen with `Avatar_LAPRO`.
 
 `scripts/audit-natives.sh` compares every `native` declaration in
-`build/j2me_api.jar` against the `java_native_method` tables in `native/*`.
+`build/j2me_api.jar` against the `java_native_method` tables in `native/bridge/*`.
 A declaration without a matching row is an `UnsatisfiedLinkError`, which a
 MIDlet cannot catch. The table class must equal the declaring Java class
 exactly — `j2me_audio.m` originally registered under `org/mini/media/MiniAudio`
@@ -146,9 +150,11 @@ while the declarations live in `javax.microedition.lcdui.NativeBridge`.
 ## Game library
 
 The app starts in a library when no game is passed in (`RT_MIDLET_JAR`
-unset): `native/host_shell.m` lists the JARs in `Documents/games`, reads each
-title from `META-INF/MANIFEST.MF` with `native/host_jar.c` (the engine's
-miniz, no JVM needed), and adds the tapped game to the running host.
+unset): `native/host/library/rt_library_vc.m` lists the JARs in
+`Documents/games`, reads each title from `META-INF/MANIFEST.MF` with
+`rt_jar_manifest.c` (the engine's miniz, no JVM needed), and adds the tapped
+game to the running host. `rt_game_store.m` owns the settings, names and
+save-directory bookkeeping.
 Each game keeps its own resolution/FPS settings and save directory.
 
 The host keeps several games running at once, one engine slot each. They are
@@ -181,8 +187,8 @@ opens the first row after 0.3 s because `simctl` cannot tap.
 
 The host chrome is a dark console around the frame: near-black ink, quiet
 surfaces, one warm amber accent, SF Symbols, 44 pt touch targets and Dynamic
-Type where the text is user-facing. Tokens live in `native/host_theme.h` and
-are shared by `host_shell.m`, `host_ui.m` and `host_form.m`. The app declares
+Type where the text is user-facing. Tokens live in `native/host/theme/rt_theme.h`
+and are shared by the library, game and form modules. The app declares
 `UIUserInterfaceStyle` Dark in its Info.plist so system sheets, alerts and the
 keyboard match the screens instead of rendering light chrome over ink.
 

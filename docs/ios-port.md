@@ -229,6 +229,21 @@ and per-slot `save_root` gives tab data isolation for free.
    match. Verified on SpikePhone with screenshots of the library, a running
    game, two tabs and the Form/List/Alert/TextBox probe.
 
+### 10. Host layout split by layer — 2026-11-25
+
+`iosRuntime/native/` mixed vendored runtime code with our UIKit host. It now
+has an explicit boundary: `native/bridge/` holds the five vendored modules
+(read-only), and `native/host/` is ours split into `app` (entry point), `api`
+(the `rt_host.h` C surface), `library` (`rt_game_store` data model,
+`rt_library_vc` list UI, `rt_jar_manifest` miniz manifest/icon reader),
+`game` (`rt_game_view` canvas and keypad, `rt_game_controller` sessions, tabs
+and delegates), `forms` (`rt_form_panel`) and `theme` (`rt_theme.h`). No host
+file reaches the JVM except through the bridge headers, and the library never
+links a JVM symbol. `ARCHITECTURE.md` documents the module map plus a
+"where to add code" table; `java/README.md` marks the vendored API tree
+read-only. Behaviour is unchanged: the simulator still runs Avatar at ~18.7
+fps and two-game tabs still switch with focus cycling.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →

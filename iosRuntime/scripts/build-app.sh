@@ -77,7 +77,7 @@ find "$ROOT/java/src" -name '*.java' > "$BUILD/sources.txt"
 javac --release 8 -nowarn -cp "$RT_JAR" -d "$BUILD/classes" @"$BUILD/sources.txt"
 jar cf "$BUILD/j2me_api.jar" -C "$BUILD/classes" .
 
-INCS="-I$CSRC -I$CSRC/jvm -I$CSRC/utils -I$CSRC/utils/https -I$CSRC/utils/https/mbedtls/include -I$CSRC/utils/mimalloc/include -I$ROOT/native"
+INCS="-I$CSRC -I$CSRC/jvm -I$CSRC/utils -I$CSRC/utils/https -I$CSRC/utils/https/mbedtls/include -I$CSRC/utils/mimalloc/include -I$ROOT/native/bridge -I$ROOT/native/host/api -I$ROOT/native/host/theme -I$ROOT/native/host/library -I$ROOT/native/host/game -I$ROOT/native/host/forms"
 
 echo "compiling runtime app ($TARGET)"
 CC="xcrun -sdk $SDK clang $ARCH_FLAGS -O2 -fobjc-arc -Wno-everything"
@@ -92,16 +92,18 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
         -not -path "$CSRC/utils/mimalloc/src/*" \
         -not -path "$CSRC/cmake-*" -not -path "$CSRC/.*") \
     "$CSRC/utils/mimalloc/src/static.c" \
-    "$ROOT/native/jvm_bridge.c" \
-    "$ROOT/native/j2me_render.m" \
-    "$ROOT/native/j2me_ui.m" \
-    "$ROOT/native/j2me_input.c" \
-    "$ROOT/native/j2me_audio.m" \
-    "$ROOT/native/host_main.c" \
-    "$ROOT/native/host_jar.c" \
-    "$ROOT/native/host_ui.m" \
-    "$ROOT/native/host_shell.m" \
-    "$ROOT/native/host_form.m" \
+    "$ROOT/native/bridge/jvm_bridge.c" \
+    "$ROOT/native/bridge/j2me_render.m" \
+    "$ROOT/native/bridge/j2me_ui.m" \
+    "$ROOT/native/bridge/j2me_input.c" \
+    "$ROOT/native/bridge/j2me_audio.m" \
+    "$ROOT/native/host/app/rt_main.c" \
+    "$ROOT/native/host/library/rt_jar_manifest.c" \
+    "$ROOT/native/host/library/rt_game_store.m" \
+    "$ROOT/native/host/library/rt_library_vc.m" \
+    "$ROOT/native/host/game/rt_game_view.m" \
+    "$ROOT/native/host/game/rt_game_controller.m" \
+    "$ROOT/native/host/forms/rt_form_panel.m" \
     -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreText \
     -framework AudioToolbox -framework AVFoundation -framework UIKit -framework CoreHaptics \
     -framework QuartzCore -framework UniformTypeIdentifiers \
