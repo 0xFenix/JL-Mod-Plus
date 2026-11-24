@@ -194,9 +194,23 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
     static BOOL autoLaunched = NO;
     if (!autoLaunched && getenv("RT_AUTOLAUNCH") && self.games.count > 0) {
         autoLaunched = YES;
+        BOOL openAll = getenv("RT_AUTOLAUNCH_ALL") != NULL;
+        NSArray<RTGameEntry *> *games = self.games.copy;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                         (int64_t) (0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self launchGame:self.games[0]];
+            [self launchGame:games[0]];
+            if (openAll) {
+                // Second and later tabs open one after another so each JVM gets
+                // its own slot while the previous one is already running.
+                for (NSUInteger i = 1; i < games.count; i++) {
+                    RTGameEntry *entry = games[i];
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                    (int64_t) (1.0 * NSEC_PER_SEC * (double) i)),
+                                    dispatch_get_main_queue(), ^{
+                        [self launchGame:entry];
+                    });
+                }
+            }
         });
     }
 }
@@ -319,7 +333,18 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 #pragma mark - Table
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.games.count;
+    // The running-sessions row only exists while games are open, and it stays
+    // first so returning to a running game is one tap from the library.
+    return self.games.count + (rt_host_running_count() > 0 ? 1 : 0);
+}
+
+- (BOOL)isRunningRow:(NSIndexPath *)indexPath {
+    return indexPath.row == 0 && rt_host_running_count() > 0;
+}
+
+- (RTGameEntry *)gameAtIndexPath:(NSIndexPath *)indexPath {
+    NSInteger offset = rt_host_running_count() > 0 ? 1 : 0;
+    return self.games[(NSUInteger) (indexPath.row - offset)];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -331,7 +356,18 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
         cell.accessoryType = UITableViewCellAccessoryDetailButton;
         cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
     }
-    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
+    if ([self isRunningRow:indexPath]) {
+        int running = rt_host_running_count();
+        cell.textLabel.text = [NSString stringWithFormat:@"Đang chơi (%d)", running];
+        cell.detailTextLabel.text = @"Quay lại phiên đang chạy";
+        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+        cell.detailTextLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+        cell.imageView.image = [UIImage systemImageNamed:@"rectangle.stack.fill"];
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        return cell;
+    }
+    cell.accessoryType = UITableViewCellAccessoryDetailButton;
+    RTGameEntry *entry = [self gameAtIndexPath:indexPath];
     cell.textLabel.text = entry.title;
     cell.detailTextLabel.text = entry.detail;
     cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
@@ -342,14 +378,20 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
-    [self launchGame:entry];
+    if ([self isRunningRow:indexPath]) {
+        UIViewController *host = (__bridge UIViewController *) rt_host_controller();
+        [self.navigationController pushViewController:host animated:YES];
+        return;
+    }
+    [self launchGame:[self gameAtIndexPath:indexPath]];
 }
 
 - (void)tableView:(UITableView *)tableView
         accessoryButtonTappedForRowWithIndexPath:(NSIndexPath *)indexPath {
-    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
-    [self showOptionsForGame:entry];
+    if ([self isRunningRow:indexPath]) {
+        return;
+    }
+    [self showOptionsForGame:[self gameAtIndexPath:indexPath]];
 }
 
 - (void)tableView:(UITableView *)tableView
@@ -358,8 +400,10 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
     if (editingStyle != UITableViewCellEditingStyleDelete) {
         return;
     }
-    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
-    [self confirmDeleteOfGame:entry];
+    if ([self isRunningRow:indexPath]) {
+        return;
+    }
+    [self confirmDeleteOfGame:[self gameAtIndexPath:indexPath]];
 }
 
 #pragma mark - Launch
@@ -367,12 +411,13 @@ static UIImage *rt_game_icon(NSString *jarPath, const char *midlet) {
 - (void)launchGame:(RTGameEntry *)entry {
     NSDictionary *config = rt_game_config(entry.file);
     rt_mark_played(entry.file);
-    void *controller = rt_create_game_controller(entry.path.UTF8String,
-                                                 [config[@"w"] intValue],
-                                                 [config[@"h"] intValue],
-                                                 [config[@"fps"] intValue]);
-    UIViewController *game = (__bridge_transfer UIViewController *) controller;
-    [self.navigationController pushViewController:game animated:YES];
+    // The host owns one controller for every running game; adding a session
+    // there is what makes the tab strip possible.
+    rt_present_game(entry.path.UTF8String,
+                    [config[@"w"] intValue],
+                    [config[@"h"] intValue],
+                    [config[@"fps"] intValue],
+                    entry.title.UTF8String);
 }
 
 #pragma mark - Options

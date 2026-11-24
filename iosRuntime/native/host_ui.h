@@ -16,6 +16,19 @@ int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root
 void *rt_create_game_controller(const char *jar_path, int width, int height,
                                 int fps_limit);
 
+/// The shared game host (unretained; it lives as long as the process). Every
+/// launched title becomes a tab in this one controller so games keep running
+/// while another is focused.
+void *rt_host_controller(void);
+
+/// Number of sessions the host currently holds, running or finished.
+int rt_host_running_count(void);
+
+/// Launch a title as a new tab: adds it to the shared host and pushes that host
+/// onto the library's navigation stack.
+void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
+                     const char *title);
+
 #ifdef __cplusplus
 }
 #endif

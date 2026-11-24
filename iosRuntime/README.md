@@ -147,8 +147,17 @@ while the declarations live in `javax.microedition.lcdui.NativeBridge`.
 The app starts in a library when no game is passed in (`RT_MIDLET_JAR`
 unset): `native/host_shell.m` lists the JARs in `Documents/games`, reads each
 title from `META-INF/MANIFEST.MF` with `native/host_jar.c` (the engine's
-miniz, no JVM needed), and pushes `RTViewController` for the tapped game.
+miniz, no JVM needed), and adds the tapped game to the running host.
 Each game keeps its own resolution/FPS settings and save directory.
+
+The host keeps several games running at once, one engine slot each. They are
+shown as tabs above the canvas; tapping a tab switches which slot receives
+input and renders to the screen, so a game keeps its state while another is
+played. `✕` stops and destroys that slot; when the last tab closes the host
+returns to the library, which then shows an `Đang chơi (n)` row to get back to
+running games. Only the focused slot is rendered to the screen, but every slot
+reports its frames (`[RT] slot N frames=…`), and each tab holds its latest
+frame so switching is instant.
 
 The library also shows the game's own icon — the one named in the `MIDlet-1`
 manifest field, extracted from the JAR and scaled with nearest-neighbour

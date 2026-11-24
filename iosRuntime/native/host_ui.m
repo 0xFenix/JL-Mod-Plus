@@ -216,11 +216,50 @@ static double rt_now(void) {
 
 @end
 
-// ------------------------------------------------------------- view control
+// ------------------------------------------------------------ game sessions
+
+// One running MIDlet. A slot is the engine's tab index: every slot owns a JVM,
+// a save directory and a render context, and only the focused slot receives
+// input, so switching tabs changes focus instead of restarting the game.
+@interface RTGameSession : NSObject
+@property(nonatomic) int slot;
+@property(nonatomic, copy) NSString *jarPath;
+@property(nonatomic, copy) NSString *title;
+@property(nonatomic) int width;
+@property(nonatomic) int height;
+@property(nonatomic) int fpsLimit;
+@property(nonatomic) BOOL running;
+/// Latest frame for this slot; the setter takes ownership of one reference.
+@property(nonatomic) CGImageRef lastImage;
+@end
+
+@implementation RTGameSession
+
+- (void)setLastImage:(CGImageRef)image {
+    if (_lastImage) {
+        CGImageRelease(_lastImage);
+    }
+    _lastImage = image;
+}
+
+- (void)dealloc {
+    if (_lastImage) {
+        CGImageRelease(_lastImage);
+    }
+}
+
+@end
 
 @interface RTViewController : UIViewController
 @property(nonatomic, strong) RTGameView *gameView;
 @property(nonatomic, strong) UILabel *statusLabel;
+@property(nonatomic, strong) UIView *topBar;
+@property(nonatomic, strong) NSLayoutConstraint *topBarHeight;
+@property(nonatomic, strong) UIButton *libraryButton;
+@property(nonatomic, strong) UIScrollView *tabScroll;
+@property(nonatomic, strong) UIStackView *tabStack;
+@property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
+@property(nonatomic) int focusedSlot;
 @property(nonatomic) BOOL midletStarted;
 // Set by the library before presentation; globals stay as the script-driven
 // defaults so automated runs keep working unchanged.
@@ -231,11 +270,57 @@ static double rt_now(void) {
 @property(nonatomic) BOOL showsBackButton;
 @end
 
+static RTViewController *g_controller = nil;
+
 @implementation RTViewController
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _sessions = [NSMutableArray array];
+        _focusedSlot = -1;
+    }
+    return self;
+}
+
+- (RTGameSession *)sessionForSlot:(int)slot {
+    for (RTGameSession *session in self.sessions) {
+        if (session.slot == slot) {
+            return session;
+        }
+    }
+    return nil;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor blackColor];
+
+    self.topBar = [[UIView alloc] init];
+    self.topBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.topBar.backgroundColor = [UIColor colorWithWhite:0.10 alpha:1.0];
+    self.topBar.clipsToBounds = YES;
+    [self.view addSubview:self.topBar];
+
+    self.libraryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.libraryButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.libraryButton setTitle:@"‹ Thư viện" forState:UIControlStateNormal];
+    self.libraryButton.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    [self.libraryButton addTarget:self
+                           action:@selector(closeGame:)
+                 forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.libraryButton];
+
+    self.tabScroll = [[UIScrollView alloc] init];
+    self.tabScroll.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tabScroll.showsHorizontalScrollIndicator = NO;
+    [self.topBar addSubview:self.tabScroll];
+
+    self.tabStack = [[UIStackView alloc] init];
+    self.tabStack.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tabStack.axis = UILayoutConstraintAxisHorizontal;
+    self.tabStack.spacing = 6;
+    [self.tabScroll addSubview:self.tabStack];
 
     self.gameView = [[RTGameView alloc] init];
     self.gameView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -257,8 +342,29 @@ static double rt_now(void) {
     [self.view addSubview:keypad];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
+    self.topBarHeight = [self.topBar.heightAnchor constraintEqualToConstant:0];
     [NSLayoutConstraint activateConstraints:@[
-        [self.gameView.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.topBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [self.topBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [self.topBar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        self.topBarHeight,
+
+        [self.libraryButton.leadingAnchor constraintEqualToAnchor:self.topBar.leadingAnchor constant:6],
+        [self.libraryButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.libraryButton.widthAnchor constraintLessThanOrEqualToConstant:100],
+
+        [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.libraryButton.trailingAnchor constant:6],
+        [self.tabScroll.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor constant:-6],
+        [self.tabScroll.topAnchor constraintEqualToAnchor:self.topBar.topAnchor constant:3],
+        [self.tabScroll.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:-3],
+
+        [self.tabStack.leadingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.leadingAnchor],
+        [self.tabStack.trailingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.trailingAnchor],
+        [self.tabStack.topAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.topAnchor],
+        [self.tabStack.bottomAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.bottomAnchor],
+        [self.tabStack.heightAnchor constraintEqualToAnchor:self.tabScroll.frameLayoutGuide.heightAnchor],
+
+        [self.gameView.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor],
         [self.gameView.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.gameView.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.gameView.bottomAnchor constant:2],
@@ -271,23 +377,197 @@ static double rt_now(void) {
         [keypad.heightAnchor constraintEqualToConstant:150],
     ]];
 
-    if (self.showsBackButton) {
-        UIButton *back = [UIButton buttonWithType:UIButtonTypeSystem];
-        back.translatesAutoresizingMaskIntoConstraints = NO;
-        [back setTitle:@"‹ Thư viện" forState:UIControlStateNormal];
-        back.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
-        back.contentEdgeInsets = UIEdgeInsetsMake(4, 10, 4, 10);
-        back.layer.cornerRadius = 6;
-        [back addTarget:self action:@selector(closeGame:) forControlEvents:UIControlEventTouchUpInside];
-        [self.view addSubview:back];
+    rt_form_ui_attach((__bridge void *) self.view);
+    rt_form_ui_present(j2me_ui_get_slot_active_action(self.focusedSlot >= 0 ? self.focusedSlot : 0));
+    [self rebuildTabs];
+}
+
+/// Tab strip: one entry per running game with a close control, plus the way
+/// back to the library. Hidden while a single game runs full screen.
+- (void)rebuildTabs {
+    for (UIView *view in self.tabStack.arrangedSubviews) {
+        [self.tabStack removeArrangedSubview:view];
+        [view removeFromSuperview];
+    }
+    for (RTGameSession *session in self.sessions) {
+        UIView *tab = [[UIView alloc] init];
+        tab.backgroundColor = session.slot == self.focusedSlot
+                ? [UIColor colorWithWhite:1.0 alpha:0.18]
+                : [UIColor colorWithWhite:1.0 alpha:0.06];
+        tab.layer.cornerRadius = 6;
+
+        UIButton *title = [UIButton buttonWithType:UIButtonTypeSystem];
+        title.translatesAutoresizingMaskIntoConstraints = NO;
+        [title setTitle:session.running ? session.title : [session.title stringByAppendingString:@" (x)"]
+               forState:UIControlStateNormal];
+        title.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        title.contentEdgeInsets = UIEdgeInsetsMake(2, 8, 2, 4);
+        title.tag = session.slot;
+        [title addTarget:self action:@selector(selectTab:) forControlEvents:UIControlEventTouchUpInside];
+        [tab addSubview:title];
+
+        UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+        close.translatesAutoresizingMaskIntoConstraints = NO;
+        [close setTitle:@"✕" forState:UIControlStateNormal];
+        close.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+        close.tag = session.slot;
+        [close addTarget:self action:@selector(closeTab:) forControlEvents:UIControlEventTouchUpInside];
+        [tab addSubview:close];
+
         [NSLayoutConstraint activateConstraints:@[
-            [back.topAnchor constraintEqualToAnchor:safe.topAnchor constant:4],
-            [back.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:6],
+            [title.leadingAnchor constraintEqualToAnchor:tab.leadingAnchor],
+            [title.topAnchor constraintEqualToAnchor:tab.topAnchor],
+            [title.bottomAnchor constraintEqualToAnchor:tab.bottomAnchor],
+            [close.leadingAnchor constraintEqualToAnchor:title.trailingAnchor],
+            [close.trailingAnchor constraintEqualToAnchor:tab.trailingAnchor constant:-4],
+            [close.centerYAnchor constraintEqualToAnchor:tab.centerYAnchor],
         ]];
+        [self.tabStack addArrangedSubview:tab];
+    }
+    BOOL showBar = self.sessions.count > 1 || self.showsBackButton;
+    self.topBar.hidden = !showBar;
+    self.topBarHeight.constant = showBar ? 36 : 0;
+    [self.view layoutIfNeeded];
+}
+
+- (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
+           fps:(int)fpsLimit title:(NSString *)title {
+    int slot = -1;
+    for (int candidate = 0; candidate < JVM_BRIDGE_MAX_SLOTS; candidate++) {
+        if (![self sessionForSlot:candidate]) {
+            slot = candidate;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return -1;
     }
 
-    rt_form_ui_attach((__bridge void *) self.view);
-    rt_form_ui_present(j2me_ui_get_slot_active_action(0));
+    RTGameSession *session = [[RTGameSession alloc] init];
+    session.slot = slot;
+    session.jarPath = jarPath;
+    session.title = title.length ? title : jarPath.lastPathComponent;
+    session.width = width > 0 ? width : g_width;
+    session.height = height > 0 ? height : g_height;
+    session.fpsLimit = fpsLimit;
+    session.running = YES;
+    [self.sessions addObject:session];
+    [self focusSlot:slot];
+    [self startSession:session];
+    return slot;
+}
+
+- (void)startSession:(RTGameSession *)session {
+    // Each game keeps its own save directory so record stores and config do
+    // not bleed between titles.
+    NSString *saveRoot = @(g_save_root);
+    NSString *base = session.jarPath.lastPathComponent.stringByDeletingPathExtension;
+    saveRoot = [saveRoot stringByAppendingPathComponent:base];
+    [[NSFileManager defaultManager] createDirectoryAtPath:saveRoot
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:NULL];
+
+    NSString *jar = session.jarPath;
+    int slot = session.slot;
+    int width = session.width;
+    int height = session.height;
+    int fpsLimit = session.fpsLimit;
+
+    // The MIDlet runs on its own thread; the event loop inside the runtime
+    // blocks until that game exits.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        printf("[RT] slot %d initializing %s\n", slot, jar.UTF8String);
+        fflush(stdout);
+        if (jvm_bridge_init_slot(slot, g_res_root, saveRoot.UTF8String, jar.UTF8String,
+                                 width, height, 1, fpsLimit) != 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                session.running = NO;
+                if (slot == self.focusedSlot) {
+                    self.statusLabel.text = @"jvm_bridge_init_slot failed";
+                }
+                [self rebuildTabs];
+            });
+            return;
+        }
+        printf("[RT] slot %d running\n", slot);
+        fflush(stdout);
+        jvm_bridge_run_midlet_slot(slot, jar.UTF8String);
+        printf("[RT] slot %d midlet run returned\n", slot);
+        fflush(stdout);
+        jvm_bridge_destroy_slot(slot);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            session.running = NO;
+            if (slot == self.focusedSlot) {
+                self.statusLabel.text = @"MIDlet finished";
+            }
+            [self rebuildTabs];
+            // Render contexts are process wide, so they may only be torn down
+            // once no slot is left to draw into them.
+            if (self.sessions.count == 0) {
+                j2me_render_stop();
+                j2me_render_cleanup();
+            }
+        });
+    });
+}
+
+- (void)focusSlot:(int)slot {
+    RTGameSession *session = [self sessionForSlot:slot];
+    if (!session) {
+        return;
+    }
+    self.focusedSlot = slot;
+    jvm_bridge_set_focused_slot(slot);
+    j2me_input_set_canvas_size(session.width, session.height);
+    self.gameView.canvasWidth = session.width;
+    self.gameView.canvasHeight = session.height;
+    self.gameView.currentImage = session.lastImage;
+    self.statusLabel.text = session.running ? @"running" : @"MIDlet finished";
+    rt_form_ui_present(j2me_ui_get_slot_active_action(slot));
+    [self rebuildTabs];
+}
+
+- (void)selectTab:(UIButton *)sender {
+    RTGameSession *session = [self sessionForSlot:(int) sender.tag];
+    if (session) {
+        [self focusSlot:session.slot];
+    }
+}
+
+- (void)closeTab:(UIButton *)sender {
+    RTGameSession *session = [self sessionForSlot:(int) sender.tag];
+    if (session) {
+        [self closeSlot:session.slot];
+    }
+}
+
+- (void)closeSlot:(int)slot {
+    RTGameSession *session = [self sessionForSlot:slot];
+    if (!session) {
+        return;
+    }
+    [self.sessions removeObject:session];
+    // The run thread owns teardown: it returns from the game loop, destroys the
+    // slot and then reports completion.
+    jvm_bridge_request_stop_slot(slot);
+
+    if (self.focusedSlot == slot) {
+        self.focusedSlot = -1;
+        RTGameSession *next = self.sessions.firstObject;
+        if (next) {
+            [self focusSlot:next.slot];
+        } else {
+            self.gameView.currentImage = NULL;
+            self.statusLabel.text = @"no game";
+            [self rebuildTabs];
+            if (self.navigationController) {
+                [self.navigationController popViewControllerAnimated:YES];
+            }
+        }
+    } else {
+        [self rebuildTabs];
+    }
 }
 
 - (void)closeGame:(UIButton *)sender {
@@ -322,51 +602,16 @@ static double rt_now(void) {
     if (self.midletStarted) return;
     self.midletStarted = YES;
 
-    const char *jar = self.jarPath.length ? self.jarPath.UTF8String : g_midlet_jar;
-    int width = self.canvasWidth > 0 ? self.canvasWidth : g_width;
-    int height = self.canvasHeight > 0 ? self.canvasHeight : g_height;
-    int fpsLimit = self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit;
-
-    // Each game keeps its own save directory so record stores and config do
-    // not bleed between titles.
-    NSString *saveRoot = @(g_save_root);
-    if (self.jarPath.length) {
-        NSString *base = self.jarPath.lastPathComponent.stringByDeletingPathExtension;
-        saveRoot = [saveRoot stringByAppendingPathComponent:base];
-        [[NSFileManager defaultManager] createDirectoryAtPath:saveRoot
-                                  withIntermediateDirectories:YES
-                                                   attributes:nil
-                                                        error:NULL];
+    // Script-driven runs pass the game in the environment; the library adds
+    // sessions through -addGame:width:height:fps:title: instead.
+    if (self.sessions.count == 0 && (self.jarPath.length || (g_midlet_jar && g_midlet_jar[0]))) {
+        NSString *jar = self.jarPath.length ? self.jarPath : @(g_midlet_jar);
+        [self addGame:jar
+                width:self.canvasWidth > 0 ? self.canvasWidth : g_width
+               height:self.canvasHeight > 0 ? self.canvasHeight : g_height
+                  fps:self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit
+                title:nil];
     }
-    NSString *saveRootCopy = saveRoot;
-
-    // The MIDlet runs on its own thread; the event loop inside the runtime
-    // blocks until the game exits.
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        printf("[RT] initializing slot\n");
-        fflush(stdout);
-        if (jvm_bridge_init_slot(0, g_res_root, saveRootCopy.UTF8String, jar,
-                                 width, height, 1, fpsLimit) != 0) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                self.statusLabel.text = @"jvm_bridge_init_slot failed";
-            });
-            return;
-        }
-        jvm_bridge_set_focused_slot(0);
-        j2me_input_set_canvas_size(width, height);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.statusLabel.text = @"running";
-        });
-        jvm_bridge_run_midlet_slot(0, jar);
-        printf("[RT] midlet run returned, frames=%d\n", g_frames);
-        fflush(stdout);
-        j2me_render_stop();
-        j2me_render_cleanup();
-        jvm_bridge_destroy_slot(0);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.statusLabel.text = @"MIDlet finished";
-        });
-    });
 
     // Synthetic events for automated input verification: prove the ring buffer,
     // the runner's dispatch, and the Canvas callbacks agree. Real touches still
@@ -374,6 +619,33 @@ static double rt_now(void) {
     if (getenv("RT_SYNTH_INPUT")) {
         [self scheduleSyntheticEvents];
     }
+
+    // Automation hook: cycle focus between tabs so a scripted run can prove
+    // that switching tabs restores the other game's frame.
+    const char *cycle = getenv("RT_FOCUS_CYCLE");
+    if (cycle && cycle[0]) {
+        double seconds = atof(cycle);
+        if (seconds > 0.2) {
+            [NSTimer scheduledTimerWithTimeInterval:seconds
+                                             target:self
+                                           selector:@selector(cycleFocus:)
+                                           userInfo:nil
+                                            repeats:YES];
+        }
+    }
+}
+
+- (void)cycleFocus:(NSTimer *)timer {
+    if (self.sessions.count < 2) return;
+    NSUInteger index = 0;
+    for (NSUInteger i = 0; i < self.sessions.count; i++) {
+        if (((RTGameSession *) self.sessions[i]).slot == self.focusedSlot) {
+            index = i;
+            break;
+        }
+    }
+    RTGameSession *next = self.sessions[(index + 1) % self.sessions.count];
+    [self focusSlot:next.slot];
 }
 
 @end
@@ -382,7 +654,6 @@ static double rt_now(void) {
 
 // The scene-based life cycle is mandatory for apps built with current SDKs;
 // a legacy UIWindow in the app delegate is rejected at launch.
-static RTViewController *g_controller = nil;
 static int g_shell_mode = 0;
 
 @interface RTSceneDelegate : UIResponder <UIWindowSceneDelegate>
@@ -468,20 +739,47 @@ static void rt_write_snapshot(CGImageRef image) {
     CFRelease(url);
 }
 
+// Per-slot frame accounting: fps has to be measured per game, not for the
+// process, and the focused log line keeps the old "[RT] ... frames=" shape that
+// the run scripts grep for.
+static int g_slot_frames[JVM_BRIDGE_MAX_SLOTS];
+static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
+
+/// Every slot reports its frames here; the image reference belongs to this
+/// callback. Only the latest frame is kept, for instant redraw on tab switch.
+static void rt_on_slot_flush(int slot, void *image, int width, int height) {
+    if (!image) return;
+    CGImageRef cg = (CGImageRef) image;
+    if (slot < 0 || slot >= JVM_BRIDGE_MAX_SLOTS) {
+        CGImageRelease(cg);
+        return;
+    }
+    if (g_slot_started[slot] == 0) {
+        g_slot_started[slot] = rt_now();
+    }
+    g_slot_frames[slot]++;
+    if (g_slot_frames[slot] % 30 == 0) {
+        double elapsed = rt_now() - g_slot_started[slot];
+        double fps = elapsed > 0 ? (double) g_slot_frames[slot] / elapsed : 0;
+        printf("[RT] slot %d frames=%d %.1fs fps=%.1f %dx%d\n",
+               slot, g_slot_frames[slot], elapsed, fps, width, height);
+        fflush(stdout);
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        RTGameSession *session = [g_controller sessionForSlot:slot];
+        if (!session) {
+            CGImageRelease(cg);
+            return;
+        }
+        session.lastImage = cg;
+    });
+}
+
 static void rt_on_flush(void *image, int width, int height) {
     if (!image) return;
     CGImageRef cg = (CGImageRef) image;
+    int slot = jvm_bridge_get_focused_slot();
     g_frames++;
-    if (g_frames % 30 == 0) {
-        double elapsed = rt_now() - g_started;
-        double fps = elapsed > 0 ? (double) g_frames / elapsed : 0;
-        printf("[RT] frames=%d %.1fs fps=%.1f %dx%d\n", g_frames, elapsed, fps, width, height);
-        fflush(stdout);
-        NSString *status = [NSString stringWithFormat:@"%dx%d  %.1f fps", width, height, fps];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            g_controller.statusLabel.text = status;
-        });
-    }
     // The layer retains the image, so the callback's reference is ours to drop.
     dispatch_async(dispatch_get_main_queue(), ^{
         RTViewController *controller = g_controller;
@@ -492,11 +790,34 @@ static void rt_on_flush(void *image, int width, int height) {
         controller.gameView.canvasWidth = width;
         controller.gameView.canvasHeight = height;
         controller.gameView.currentImage = cg;
+        if (slot >= 0 && slot < JVM_BRIDGE_MAX_SLOTS && g_slot_frames[slot] > 0) {
+            double elapsed = rt_now() - g_slot_started[slot];
+            double fps = elapsed > 0 ? (double) g_slot_frames[slot] / elapsed : 0;
+            controller.statusLabel.text =
+                    [NSString stringWithFormat:@"%dx%d  %.1f fps", width, height, fps];
+        }
         if (g_frames % rt_snapshot_interval() == 0) {
             rt_write_snapshot(cg);
         }
         CGImageRelease(cg);
     });
+}
+
+/// The library's navigation controller, so a game session can be pushed from
+/// code without the library owning host-controller details.
+static UINavigationController *rt_active_navigation_controller(void) {
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindow *window = ((UIWindowScene *) scene).keyWindow;
+        UIViewController *root = window.rootViewController;
+        if ([root isKindOfClass:[UINavigationController class]]) {
+            return (UINavigationController *) root;
+        }
+        if (root.navigationController) {
+            return root.navigationController;
+        }
+    }
+    return nil;
 }
 
 void *rt_create_game_controller(const char *jar_path, int width, int height,
@@ -512,6 +833,39 @@ void *rt_create_game_controller(const char *jar_path, int width, int height,
     return (__bridge_retained void *) controller;
 }
 
+void *rt_host_controller(void) {
+    if (!g_controller) {
+        RTViewController *controller = [[RTViewController alloc] init];
+        controller.showsBackButton = YES;
+        g_controller = controller;
+    }
+    return (__bridge void *) g_controller;
+}
+
+int rt_host_running_count(void) {
+    return (int) g_controller.sessions.count;
+}
+
+void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
+                     const char *title) {
+    if (!jar_path || !jar_path[0]) return;
+    NSString *jar = @(jar_path);
+    NSString *name = (title && title[0]) ? @(title) : jar.lastPathComponent;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        RTViewController *host = g_controller;
+        if (!host) {
+            host = [[RTViewController alloc] init];
+            host.showsBackButton = YES;
+            g_controller = host;
+        }
+        [host addGame:jar width:width height:height fps:fps_limit title:name];
+        UINavigationController *nav = rt_active_navigation_controller();
+        if (nav && ![nav.viewControllers containsObject:host]) {
+            [nav pushViewController:host animated:YES];
+        }
+    });
+}
+
 int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root,
               const char *midlet_jar, int width, int height, int fps_limit) {
     g_res_root = res_root;
@@ -524,6 +878,7 @@ int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root
     g_started = rt_now();
 
     j2me_render_set_flush_callback(rt_on_flush);
+    j2me_render_set_slot_flush_callback(rt_on_slot_flush);
 
     @autoreleasepool {
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([RTAppDelegate class]));

@@ -43,6 +43,8 @@ if [ -n "${RT_SHELL:-}" ]; then
     LAUNCH_JAR_ENV=""
     mkdir -p "$DATA/Documents/games"
     [ -n "$MIDLET_JAR" ] && cp "$MIDLET_JAR" "$DATA/Documents/games/$(basename "$MIDLET_JAR")"
+    # Optional second title, to drive the multi-tab host in automation.
+    [ -n "${RT_EXTRA_JAR:-}" ] && cp "$RT_EXTRA_JAR" "$DATA/Documents/games/$(basename "$RT_EXTRA_JAR")"
 fi
 if [ -n "$MIDLET_JAR" ] && [ -z "${RT_SHELL:-}" ]; then
     # The runtime reads game jars from the bundle; a host path outside the app
@@ -60,6 +62,9 @@ if [ -n "$LAUNCH_JAR_ENV" ]; then
     LAUNCH_ENV+=("SIMCTL_CHILD_RT_MIDLET_JAR=$GAME_JAR")
 fi
 [ -n "${RT_AUTOLAUNCH:-}" ] && LAUNCH_ENV+=("SIMCTL_CHILD_RT_AUTOLAUNCH=1")
+[ -n "${RT_AUTOLAUNCH_ALL:-}" ] && LAUNCH_ENV+=("SIMCTL_CHILD_RT_AUTOLAUNCH_ALL=1")
+[ -n "${RT_FOCUS_CYCLE:-}" ] && LAUNCH_ENV+=("SIMCTL_CHILD_RT_FOCUS_CYCLE=$RT_FOCUS_CYCLE")
+[ -n "${RT_SNAPSHOT_INTERVAL:-}" ] && LAUNCH_ENV+=("SIMCTL_CHILD_RT_SNAPSHOT_INTERVAL=$RT_SNAPSHOT_INTERVAL")
 env "${LAUNCH_ENV[@]}" xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" > "$LOG" 2>&1 &
 LP=$!
 if [ -n "$RT_SHOTS" ]; then
