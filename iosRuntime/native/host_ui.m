@@ -12,6 +12,8 @@
 #include "jvm_bridge.h"
 #include "j2me_render.h"
 #include "j2me_input.h"
+#include "j2me_ui.h"
+#include "host_form.h"
 #include "host_ui.h"
 
 // ---------------------------------------------------------------- MIDP keys
@@ -258,6 +260,9 @@ static double rt_now(void) {
         [keypad.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
         [keypad.heightAnchor constraintEqualToConstant:230],
     ]];
+
+    rt_form_ui_attach((__bridge void *) self.view);
+    rt_form_ui_present(j2me_ui_get_slot_active_action(0));
 }
 
 - (void)scheduleSyntheticEvents {

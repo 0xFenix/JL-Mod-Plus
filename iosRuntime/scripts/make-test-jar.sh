@@ -12,6 +12,7 @@ MANIFEST="${1:-$ROOT/test/manifest.mf}"
 [ -f "$MANIFEST" ] || { echo "missing manifest $MANIFEST" >&2; exit 1; }
 case "$MANIFEST" in
     *network-probe.mf) OUT="$ROOT/build/network-probe.jar" ;;
+    *form-probe.mf) OUT="$ROOT/build/form-probe.jar" ;;
     *) OUT="$ROOT/build/test.jar" ;;
 esac
 

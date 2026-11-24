@@ -82,6 +82,22 @@ interfaces the engine lacks (CommConnection, PushRegistry, SecureConnection,
 UDPDatagramConnection) are kept. App Transport Security does not apply to BSD
 sockets, so no `NSAppTransportSecurity` entry is needed.
 
+`native/host_form.m` renders the non-Canvas screens. `j2me_lcdui`'s
+`Form`, `List`, `Alert` and `TextBox` each publish their model to
+`j2me_ui.m` and then call `formShow()`; the host installs a
+`j2me_ui_set_callback` handler, reads the model through the
+`j2me_ui_get_*` accessors, and builds a UIKit panel (labels, text fields,
+option rows, command buttons). Choices are tappable: the option list is
+serialized into the item text by `Form.showNative`, so a tap rewrites that
+text through `j2me_ui_set_form_item_text` and `Form.syncFromNative` picks up
+the selection when a command fires. UI events travel back through
+`j2me_input_post_ui_event` (command action, list select, alert dismissed,
+list set index). Verified on the simulator with
+`test/FormProbe.java` (`./scripts/make-test-jar.sh test/form-probe.mf`):
+the login Form with a password field and a two-option ChoiceGroup, the
+TextBox, the List, and the Alert all render, and the same run covers the
+Canvas screen with `Avatar_LAPRO`.
+
 `scripts/audit-natives.sh` compares every `native` declaration in
 `build/j2me_api.jar` against the `java_native_method` tables in `native/*`.
 A declaration without a matching row is an `UnsatisfiedLinkError`, which a

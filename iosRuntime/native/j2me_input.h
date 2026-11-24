@@ -29,6 +29,12 @@ void j2me_input_post_touch(int type, int x, int y);
 /// @param keyCode J2ME key code
 void j2me_input_post_key(int type, int keyCode);
 
+/// Post a screen-UI event from the native form/list/alert view.
+/// @param type  J2ME_UI_COMMAND_ACTION / J2ME_UI_LIST_SELECT /
+///              J2ME_UI_ALERT_DISMISSED / J2ME_UI_LIST_SET_INDEX
+/// @param value Command id or list index, per the event type
+void j2me_input_post_ui_event(int type, int value);
+
 /// Set virtual canvas size for coordinate conversion.
 void j2me_input_set_canvas_size(int width, int height);
 

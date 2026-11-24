@@ -40,7 +40,7 @@ jar cf "$BUILD/j2me_api.jar" -C "$BUILD/classes" .
 INCS="-I$CSRC -I$CSRC/jvm -I$CSRC/utils -I$CSRC/utils/https -I$CSRC/utils/https/mbedtls/include -I$CSRC/utils/mimalloc/include -I$ROOT/native"
 
 echo "compiling runtime app (iosSimulatorArm64)"
-CC="xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -O2 -Wno-everything"
+CC="xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -O2 -fobjc-arc -Wno-everything"
 
 # Engine: everything except the desktop entry point and the JIT backend
 # (sljit does not compile for iOS targets; jit.h selects the interpreter).
@@ -59,6 +59,7 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/j2me_audio.m" \
     "$ROOT/native/host_main.c" \
     "$ROOT/native/host_ui.m" \
+    "$ROOT/native/host_form.m" \
     -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreText \
     -framework AudioToolbox -framework AVFoundation -framework UIKit -framework CoreHaptics \
     -framework QuartzCore \

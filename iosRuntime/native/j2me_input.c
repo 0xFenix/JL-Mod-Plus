@@ -80,6 +80,10 @@ void j2me_input_post_key(int type, int keyCode) {
     enqueue_event(type, 0, 0, keyCode);
 }
 
+void j2me_input_post_ui_event(int type, int value) {
+    enqueue_event(type, 0, 0, value);
+}
+
 // ============================================================
 // Native method: NativeBridge.pollInputEvent() → int[] or null
 // Returns int[4]: {type, x, y, keyCode}

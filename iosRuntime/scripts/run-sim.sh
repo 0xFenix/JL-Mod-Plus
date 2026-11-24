@@ -51,8 +51,19 @@ SIMCTL_CHILD_RT_HEIGHT="${RT_HEIGHT:-320}" \
 SIMCTL_CHILD_RT_FPS_LIMIT="${RT_FPS_LIMIT:-0}" \
 xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" > "$LOG" 2>&1 &
 LP=$!
-sleep "$SECS"
-xcrun simctl io "$UDID" screenshot "$ROOT/build/run.png" >/dev/null 2>&1 || true
+if [ -n "$RT_SHOTS" ]; then
+    # RT_SHOTS="10 18 26": screenshot at each elapsed second, e.g. to verify
+    # successive Displayable screens in one run.
+    PREV=0
+    for T in $RT_SHOTS; do
+        sleep $((T - PREV))
+        PREV=$T
+        xcrun simctl io "$UDID" screenshot "$ROOT/build/shot-$T.png" >/dev/null 2>&1 || true
+    done
+else
+    sleep "$SECS"
+    xcrun simctl io "$UDID" screenshot "$ROOT/build/run.png" >/dev/null 2>&1 || true
+fi
 kill $LP 2>/dev/null || true
 
 echo "=== log: $LOG ==="
