@@ -83,6 +83,10 @@ static double rt_now(void) {
     if (self) {
         self.backgroundColor = [UIColor blackColor];
         self.layer.contentsGravity = kCAGravityResizeAspect;
+        // Keep pixel art crisp: Core Animation smooths scaled layer contents by
+        // default, which blurs a 240x320 framebuffer up to the screen size.
+        self.layer.magnificationFilter = kCAFilterNearest;
+        self.layer.minificationFilter = kCAFilterNearest;
         self.multipleTouchEnabled = NO;
         _canvasWidth = 240;
         _canvasHeight = 320;
