@@ -33,19 +33,12 @@
 static const int rt_keypad_keys[] = {
     RT_KEY_SOFT1, RT_KEY_UP, RT_KEY_SOFT2,
     RT_KEY_LEFT, RT_KEY_FIRE, RT_KEY_RIGHT,
-    RT_KEY_DOWN, '1', '2',
-    '3', '4', '5',
-    '6', '7', '8',
-    '9', '*', '0',
+    '*', RT_KEY_DOWN, '#',
 };
 static NSString *const rt_keypad_labels[] = {
     @"LSK", @"▲", @"RSK",
     @"◀", @"OK", @"▶",
-    @"▼", @"1", @"2",
-    @"3", @"4", @"5",
-    @"6", @"7", @"8",
-    @"9", @"*", @"0",
-    @"#", @"", @"",
+    @"*", @"▼", @"#",
 };
 
 static const int rt_keypad_cols = 3;
@@ -275,7 +268,7 @@ static double rt_now(void) {
         [keypad.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [keypad.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [keypad.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [keypad.heightAnchor constraintEqualToConstant:230],
+        [keypad.heightAnchor constraintEqualToConstant:150],
     ]];
 
     if (self.showsBackButton) {
