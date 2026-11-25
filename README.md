@@ -1,113 +1,62 @@
-# JL-Mod Plus
+# JL-Next
 
-[![Latest Release](https://img.shields.io/github/v/release/H3nb/JL-Mod-Plus?include_prereleases&label=release)](https://github.com/H3nb/JL-Mod-Plus/releases)
-[![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/H3nb/JL-Mod-Plus/releases)
-[![Architecture](https://img.shields.io/badge/ABI-ARM%20%7C%20x86-blue)](https://github.com/H3nb/JL-Mod-Plus/releases)
-[![License](https://img.shields.io/github/license/H3nb/JL-Mod-Plus)](LICENSE)
+A J2ME (MIDP 2.0 / CLDC 1.1) emulator for iPhone and iPad. You add `.jar`
+files, the app runs them: virtual keypad, per-game layouts, multiple games at
+once with tabs, Form/List/Alert/TextBox screens, RecordStore persistence,
+sockets, HTTP and HTTPS, background keep-alive and per-tab save data.
 
-JL-Mod Plus is a fork of [JL-Mod](https://github.com/woesss/JL-Mod), an Android emulator for running Java ME (J2ME) applications and games.
+The runtime layer is inherited from J2ME-Decade (iOS edition, Apache-2.0) and
+the JVM is [miniJVM](https://github.com/digitalgust/miniJVM), which the build
+compiles from a local checkout. See `THIRD_PARTY_NOTICES.md`.
 
-It builds on JL-Mod with new features, UI changes, input improvements, and better support for modern Android versions.
+## Layout
 
-## Download
+```
+iosRuntime/           the app: runtime layer, host UI, scripts, engine patches
+  java/src/           MIDP/CLDC API layer (vendored, read-only)
+  native/bridge/      JVM <-> host bridge (vendored, read-only)
+  native/host/        our UIKit host: library, game view, forms, keypad editor
+  patches/            engine fixes applied at build time
+  scripts/            build-app.sh, build-sim.sh, build-device.sh, run-sim.sh
+  ARCHITECTURE.md     layers, rules and where to add code
+docs/                 iOS port notes and handoff
+```
 
-**[Download JL-Mod Plus from GitHub Releases](https://github.com/H3nb/JL-Mod-Plus/releases)**
+## Requirements
 
-Open a release and download the APK from the **Assets** section.
+- Xcode 27 or newer with an iOS simulator runtime.
+- A JDK: `export JAVA_HOME=...` (Temurin 21 or newer).
+- A miniJVM checkout outside this repo, default `~/dev/miniJVM`
+  (override with `MINIJVM_DIR`). Its runtime jar is built locally at build
+  time and is never stored here.
 
-Choose the APK that matches your device's architecture:
+## Build and run
 
-| APK | Architecture |
-| --- | --- |
-| `arm64-v8a` | 64-bit ARM |
-| `armeabi-v7a` | 32-bit ARM |
-| `x86` | 32-bit x86 |
-| `x86_64` | 64-bit x86 |
-| `universal` | All supported architectures |
+```sh
+export JAVA_HOME=...                      # JDK for javac
+cd iosRuntime
+./scripts/build-sim.sh                    # -> build/RuntimeApp.app
+./scripts/run-sim.sh 40                   # boots a simulator, installs, runs
+```
 
-**Not sure which APK to download?** Choose the `universal` APK. It supports all listed architectures, although the file is larger.
+On a device, first register the phone with an Xcode project using the same
+bundle id once, then:
 
-The app's **More → Updates** screen can check GitHub Releases manually or at Library startup.
-Choose **Stable** for stable versions only or **Preview** to include pre-releases.
-It opens the release page for manual APK installation; it does not install APKs silently.
+```sh
+./scripts/build-device.sh                 # -> build/device/RuntimeApp.app
+xcrun devicectl device install app --device <UDID> build/device/RuntimeApp.app
+xcrun devicectl device process launch --device <UDID> io.github.0xfenix.jlmodplus
+```
 
-> JL-Mod Plus is still under active development. Releases may be marked as pre-release and may contain unfinished or experimental changes.
+## Adding games
 
-### Requirements
+Use **+** in the library, share a `.jar` to JL-Next from the Files app, or drop
+files into the app's `Documents/games` folder. Long-press a game for rename,
+screen size and FPS, keypad layout, turbo fire, or delete.
 
-- Android 6.0 or newer
-- ARM (`arm64-v8a`, `armeabi-v7a`) or x86 (`x86`, `x86_64`) device
+## Documentation
 
-## Features
-
-JL-Mod Plus adds game management, flexible controls, and runtime tools to the original JL-Mod.
-
-**Install and organize**
-- [Single and batch installation](docs/guide/installing-midlets.md) from JAR, JAD, KJX, ZIP, or folders, with review before replacing apps
-- [Import and export app bundles](docs/guide/installing-midlets.md#jl-mod-plus-app-bundles-are-different-from-game-collections) for transferring supported settings and saved data
-
-**Library and organization**
-- [Grid and list layouts](docs/guide/library.md#list-or-grid), including 1:1 and 3:4 icon presentations
-- [Collections and metadata editing](docs/guide/library.md), with custom icons and localized descriptions
-- [Reusable profiles](docs/guide/profiles.md) for MIDlet settings and virtual-control layouts
-
-**Controls and appearance**
-- [Screen and virtual-control skins](docs/guide/customization.md), including supported SVG artwork
-- [Create screen skins](docs/guide/creating-screen-skins.md) or [virtual-control skin sets](docs/guide/creating-control-skins.md) with your own artwork
-- Customizable on-screen controls and external gamepad support
-
-**Gameplay and media**
-- [Emulation Speed](docs/guide/emulation-speed.md) from 0.25× to 16× for compatible MIDlets
-- [Memory Editor](docs/guide/memory-editor.md) for finding and changing supported values
-- Performance overlay for selected runtime metrics
-- [MIDI soundbanks, camera, and recording](docs/guide/media.md)
-- Batch MIDlet installation and compatibility improvements for modern Android
-
-## User guide
-
-The [User guide](docs/guide/README.md) explains how features work, what they support, and how to troubleshoot common problems. Guides describe the source branch being viewed; the feature set in a published APK may differ.
-
-## Getting Started
-
-1. Download and install JL-Mod Plus from [GitHub Releases](https://github.com/H3nb/JL-Mod-Plus/releases).
-2. Open the app and import a Java ME application or game (`.jar`, `.jad`, or `.kjx`).
-3. Select the installed application from your library to launch it.
-
-You can customize controls, display settings, and other options for individual games. For installation details, see [Installing MIDlets](docs/guide/installing-midlets.md); for a first-time setup, see [Getting started](docs/guide/getting-started.md).
-
-JL-Mod Plus does not include Java ME games. You will need to provide your own application files.
-
-## Community & Support
-
-Have an idea, a question, or a problem to report? You're welcome to join the community!
-
-- **[Ideas](https://github.com/H3nb/JL-Mod-Plus/discussions/categories/ideas)** — Suggest new features and improvements.
-- **[Q&A](https://github.com/H3nb/JL-Mod-Plus/discussions/categories/q-a)** — Ask questions or get help.
-- **[General Discussions](https://github.com/H3nb/JL-Mod-Plus/discussions/categories/general)** — Join general conversations about JL-Mod Plus.
-- **[Bug Reports](https://github.com/H3nb/JL-Mod-Plus/issues/new/choose)** — Report bugs and compatibility issues.
-
-For bug reports, please include your JL-Mod Plus version, device information, Android version, and steps to reproduce the issue. Logs or diagnostic reports are helpful when available.
-
-## Contributing
-
-Contributions are welcome, including those made with the assistance of AI tools.
-
-Whether you write code manually or use AI, please review your changes, follow the project's existing conventions, and perform relevant validation before submitting a pull request.
-
-AI-assisted contributions are held to the same quality standards as any other contribution.
-
-For test design and quality principles, see [Testing strategy](docs/testing.md); for development setup and test commands, see [Build and validation](docs/development.md). For topic-specific guidance and historical records, see the [Documentation map](docs/README.md).
-
-**Using an AI coding agent?** Have it follow [AGENTS.md](AGENTS.md), which contains project-specific instructions for coding agents.
-
-## Credits
-
-JL-Mod Plus is based on [JL-Mod](https://github.com/woesss/JL-Mod).
-
-Thanks to the original project and its contributors.
-
-## License
-
-JL-Mod Plus is licensed under the [Apache License 2.0](LICENSE).
-
-See [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for additional attribution and third-party licensing information.
+- `iosRuntime/ARCHITECTURE.md` - layers and where code belongs.
+- `iosRuntime/README.md` - runtime details, flags and known gaps.
+- `docs/ios-port.md` - what was verified and how.
+- `docs/ios-port-handoff.md` - short status handoff.

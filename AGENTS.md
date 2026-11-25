@@ -1,86 +1,39 @@
-# JL-Mod Plus Agent Guidelines
+# Agent guidelines - JL-Next (iOS only)
 
-This file contains guidance every agent needs. Keep task-specific instructions and transient project state in dedicated documents; read only those relevant to the current task.
+This branch ships only the iOS emulator (`iosRuntime/`). The Android app lives
+on `stable` and `feature/ios-port`.
 
-## Core priorities
+## Build and check
 
-- Prioritize correctness, simplicity, readability, reliability, efficiency, testability, security, and consistency. Choose the clearest complete solution, not necessarily the shortest code; do not sacrifice required behavior, performance, or maintainability for brevity.
+```sh
+export JAVA_HOME=...                      # JDK with javac, e.g. Temurin
+cd iosRuntime
+./scripts/build-sim.sh                    # compiles + packages build/RuntimeApp.app
+./scripts/run-sim.sh 30                   # installs and runs on a simulator
+./scripts/build-device.sh                 # signed iphoneos build
+./scripts/audit-natives.sh                # every declared native has a table row
+```
 
-- Follow the user's explicit task and constraints first. Infer routine implementation details from current evidence, carry forward authorization already given, and carry the requested work to completion. Ask only when a missing decision materially affects correctness, compatibility, user-visible behavior, scope, or authority and cannot be resolved from available evidence.
-- Keep enduring repository guidance model- and provider-agnostic. State goals, evidence, constraints, authority, and success criteria; keep transient model names, reasoning settings, and tool-routing choices in task handoffs unless a repository contract genuinely depends on them.
-- Preserve required behavior and emulator compatibility, not accidental implementation structure. Within the requested scope, refactor or replace flawed structure when that produces a simpler, more coherent model while meeting correctness, compatibility, data-safety, and relevant performance requirements.
-- Do not treat the current architecture as a product requirement. If a materially better architecture lies beyond the implementation strategy reasonably implied by the request, first prepare a concrete, reviewable proposal with the problem evidence and material compatibility or migration impact, then obtain user approval before adopting it. Routine restructuring needed to complete the authorized task does not require renewed approval, and an explicit redesign or replacement request already supplies that authorization.
-- User requirements and explicit project contracts define intended behavior. Applicable specifications define the default compatibility contract except where JL-Mod Plus deliberately preserves verified compatibility behavior. Current source, configuration, workflows, and tests describe the current implementation and provide evidence; they are not requirements merely because they exist. Treat history as context unless the task specifically requires it.
-- Keep changes focused on the problem. Do not mix unrelated cleanup, dependency or toolchain churn, or speculative architecture into a scoped change.
-- Maintain documentation as technical guidance: update the owning contract when behavior changes; distinguish active decisions from plans, superseded proposals, and dated evidence. Preserve useful provenance without turning contracts into chronological agent activity logs.
-- When scoped work reveals a separate code, test, architecture, or documentation quality concern, report its location, evidence, and plausible impact. Fix it proportionally if it is in scope; otherwise report it without expanding the task. Label hypotheses as such; no findings or refactoring are required when the evidence does not justify them.
-- Work CLI-first; Android Studio is not required unless the user asks for it.
+`build-app.sh` applies `iosRuntime/patches/*.patch` to the miniJVM checkout
+(`MINIJVM_DIR`, default `~/dev/miniJVM`) and rebuilds the runtime jar when a
+patch touches its Java sources. Never vendor miniJVM sources or jars: the C
+engine is MIT, but its runtime jar carries GPL-2.0-with-Classpath files.
 
-## Engineering approach
+## Rules
 
-Before writing or modifying code, understand the requirements, existing implementation, affected contracts, and credible risks. Ground decisions in current evidence. Treat proposed mechanisms, inherited patterns, and agent recommendations as hypotheses rather than requirements; question unverified assumptions while respecting explicit goals and constraints. Use bounded, reversible experiments when needed, and remove temporary diagnostics before handoff unless they serve an ongoing requirement.
+- `java/src/` and `native/bridge/` are vendored and read-only; keep their
+  attribution headers. Fix behavior in the host or, for engine bugs, in
+  `patches/`.
+- The host reaches the JVM only through `native/bridge/*.h`; new protocol
+  handlers that need the boot class loader must be patches.
+- A native's Java declaration and its `java_native_method` table row must match
+  exactly in class, name and descriptor, or the MIDlet dies with an
+  `UnsatisfiedLinkError` it cannot catch.
+- Be device-lenient: never throw where a real handset did not.
+- Live-verify UI work with a simulator screenshot; do not rely on builds.
+- Keep the smallest complete change; no Android code, no new dependencies
+  without asking.
 
-- Solve the observed problem and realistic failure modes implied by actual system boundaries. Do not add machinery for hypothetical scenarios without evidence unless the mitigation is simple, natural to the design, and materially reduces credible risk.
-- Understand the relevant invariants, state and behavior owners, lifecycle and concurrency boundaries, persistence/data ownership, compatibility contracts, and affected behavior from current evidence.
-- Write cohesive, self-explanatory code with clear naming, structure, control flow, and predictable failure handling. Make intent, ownership, and data flow easy to follow. For complex or compatibility-sensitive behavior, establish preconditions, postconditions, and invariants; where practical, represent valid states explicitly instead of scattering checks around an ambiguous model.
-- Compare plausible approaches only to the depth the change warrants; routine changes do not need formal plans or decision matrices. Choose the simplest design that meets the required contracts and operating constraints; explain material tradeoffs rather than seeking superiority on every dimension.
-- Optimize for total conceptual complexity across the affected system, not diff size or line count. Prefer fewer state owners, sources of truth, synchronization points, translation layers, special cases, duplicate logic, unnecessary coupling, abstractions, fallback paths, and moving parts. A larger local refactor can be the simpler solution when it removes those concepts while preserving the required contracts.
-- Consider current platform, language, and library capabilities when they can eliminate project-owned machinery or a fragile boundary. Adopt them when evidence shows lower total complexity or materially better correctness, maintainability, or efficiency; novelty by itself is not a reason to migrate.
-- Simplicity is the result of resolving complexity, not omitting necessary behavior. Preserve required lifecycle, concurrency, persistence, failure, compatibility, and recovery paths; do not narrow an authorized outcome or skip difficult work merely to make the implementation smaller.
-- Fix the underlying model or invariant rather than layering workarounds over symptoms. Restructure flawed code when necessary; do not preserve a bad boundary merely to minimize line count or diff size. A workaround or compatibility shim should protect a named current requirement; when evidence shows that requirement is gone, prefer deleting the shim and obsolete supporting tests/documentation rather than retaining it defensively.
-- Proceed when evidence supports the approach and no unresolved question is likely to change the design or its correctness. Further investigation or review should resolve a concrete uncertainty, not satisfy a quota of alternatives or review passes.
-- Before adding state, caches, synchronization, abstractions, fallback paths, or dependencies, identify the requirement or credible failure mode that justifies each. Prefer resolving ownership or data-flow problems and removing obsolete machinery to layering additional safeguards on a flawed model.
-- Treat code quality as cumulative: improve directly affected code when doing so strengthens correctness, coherence, reliability, or maintainability; keep unrelated improvements out of scope. Do not require a refactor for its own sake. Stop iterating when the behavior is correct, relevant checks provide sufficient evidence, and remaining alternatives do not offer a material benefit.
-- After substantial design revisions, review the affected implementation as one coherent system. Before handing off or merging a nontrivial change, inspect the final effective diff against the integration branch for superseded approaches, duplicated responsibilities, ambiguous state ownership, obsolete fallbacks, and unnecessary layers introduced during iteration. Consolidate within scope when a concrete improvement is justified, then validate the affected contracts. Do not refactor solely because of commit count, file size, or review cadence.
-- When resuming substantial work or accepting another agent's handoff, distinguish verified findings, explicit requirements, unresolved hypotheses, and superseded decisions. Reconstruct the relevant design from current source, specifications, and observable evidence rather than treating previous agent reasoning or implementation choices as authority.
-- Review the result as if reviewing someone else's PR. Check correctness, failure paths, scope, unnecessary complexity, and whether a reasonable simpler approach meets the same contracts. Distinguish verified findings from hypotheses; do not manufacture issues or repeat reviews without new evidence. For nontrivial changes, briefly report the cause, design rationale, and validation evidence.
+## References
 
-## Comments and documentation
-
-Prefer self-explanatory code through clear names, types, and structure over comments that narrate implementation.
-
-- Comment when the code alone cannot clearly convey intent, rationale, invariants, lifecycle or concurrency constraints, compatibility requirements, or non-obvious contracts and failure modes. Explain why a constraint exists rather than repeating what each statement does.
-- Keep necessary comments concise and close to the relevant code. Simplify confusing code when that genuinely reduces complexity; do not add abstractions solely to eliminate useful comments.
-- Use language-appropriate API documentation (such as KDoc or Javadoc) when usage, preconditions, side effects, or limitations are not apparent from a public contract. Avoid boilerplate documentation for obvious code.
-- Treat existing comments as claims to verify against current implementation and applicable contracts, not as proof of behavior. Update or remove inaccurate comments when changing the affected behavior.
-- Use TODO comments only for actionable, unresolved work with enough context to investigate. Do not create speculative placeholders.
-- During implementation and review, judge comments by accuracy and information value, not quantity. Avoid comment-coverage targets and unrelated bulk comment rewrites.
-
-## Working in this repository
-
-- For analysis, review, or planning requests, inspect and report; implement only when requested. For change, build, or fix requests, complete the scoped work and relevant non-destructive validation without pausing for routine local decisions. Reading/searching source, editing in-scope files, running relevant builds/tests, and reversible diagnostics are routine local actions and do not require separate approval.
-- Before an action needing additional authorization, prepare the concrete, reviewable result. Do not infer permission for destructive operations, publishing, or merging from a request for local edits.
-- Use the current integration branch as the base for unrelated work, develop on a dedicated branch, and integrate through a PR unless the user explicitly requests otherwise. Preserve unrelated work in the checkout.
-- Use validation proportional to the change. When designing, changing, or removing tests, follow [Testing strategy and quality standards](docs/testing.md); use [Build and validation](docs/development.md) for commands and CI evidence. Once relevant checks pass, broaden or repeat validation only when new changes, failures, or unresolved risks justify it. Inspect the final diff and report what passed and what remains unverified. Do not run `clean` routinely.
-- Give commits and PRs short, specific, human-readable titles that state the actual change; keep the final PR title suitable for a changelog. See [Git, PR, and CI workflow](docs/agent-workflow.md#git-pr-and-ci-workflow).
-- Before committing, identify executable and otherwise validated inputs. Never use `[skip ci]` for source, tests, assets/resources, build/dependency configuration, workflows, or validation scripts. For documentation/policy-only changes, check the whole PR diff, workflow filters, and required checks before considering skip; a documentation-only commit on a code-changing PR is not an automatically safe skip. Prefer batching coherent changes and validating meaningful checkpoints over repeated pushes. Never skip to conceal failures or leave the final executable state unverified; see [CI discipline](docs/agent-workflow.md#ci-discipline).
-- For screenshot failures and baseline updates, follow [Visual verification and screenshot references](docs/development.md#visual-verification-and-screenshot-references). Inspect renderer evidence before accepting a reference change; a mismatch alone is not authorization to replace the expected image. When local binary editing is unavailable but the task has GitHub PR/workflow access, use the [GitHub-only reviewed screenshot promotion](docs/development.md#github-only-reviewed-screenshot-promotion) path instead of reconstructing or redrawing reference PNGs.
-- Preserve inherited rights and attribution notices. Do not make ownership or licensing assumptions.
-- Preserve the surrounding Markdown wrapping style and avoid reflow-only changes.
-- Route only task-relevant external Android skills through [Android skills](docs/android-skills.md). Do not assume skills are installed or force upstream recipes onto project-specific contracts. Project policy, user scope, and verified compatibility boundaries take precedence over generic examples.
-
-## Read when relevant
-
-| Task | Guidance |
-| --- | --- |
-| Repository history or provenance investigation; source-language choice; performance-sensitive code; licensing; Git, PR, CI, or versioning | Read only the matching section of [Agent development workflow](docs/agent-workflow.md) |
-| Documentation status, historical investigations, or finding the owning contract | [Documentation map](docs/README.md); follow only task-relevant links |
-| User-facing feature guides, setup instructions, or troubleshooting | [User guide](docs/guide/README.md); verify each behavior against current UI/source and owning contracts, and write concise, natural prose without promotional filler or speculative claims |
-| Test design, screenshot references, test quality, or test-suite cleanup | [Testing strategy and quality standards](docs/testing.md) |
-| Build and test commands | [Build and validation](docs/development.md) |
-| Android tooling skills, upstream skill lookup or skill conflicts | [Android skills](docs/android-skills.md) |
-| App-owned UI architecture, adaptation, or navigation | [App-owned UI development](docs/app-ui-development.md) |
-| View/Compose/Java ME ownership boundary or UI migration | [UI ownership](docs/ui-ownership-map.md) |
-| Localization, semantic UI copy quality, translation, or locale/resource identity | [Localization contract](docs/localization.md) |
-| Translation batches, cross-language matrix, locale QA, or bulk translation workflow | [Localization workflow](docs/localization-workflow.md) |
-| UI copy styling, capitalization, typography, color, iconography, or popup/dialog presentation | [UI copy and presentation style](docs/ui-copy-style.md) |
-| Runtime host UI, Java ME Screen soft keys, or host/LCDUI boundary | [Runtime UI](docs/runtime-ui.md) |
-| Java ME APIs, JSRs, vendor APIs, or guest compatibility | [Java ME compatibility](docs/java-me-compatibility.md) |
-| Audio synthesis, MMAPI playback, native media, file video, or audio focus | [Audio runtime and qualification](docs/audio-runtime.md) |
-| Emulation speed, guest timing, or frame pacing | [Emulation speed](docs/emulation-speed.md) |
-| FPS and performance overlay metrics or their lifecycle | [Performance overlay](docs/performance-overlay.md) |
-| Managed Memory Editor candidate identity, Inspector provenance, or target invalidation | [Memory Editor candidate identity](docs/memory-editor-identity.md) |
-| Diagnostic records, crash reports, exported bundles, or privacy redaction | [Diagnostic bundles](docs/diagnostic-bundles.md) |
-| Preset/config ownership, installed identity, cross-process preset access, or runtime storage identity | [Preset, configuration, and installed-identity contracts](docs/preset-config-contract.md) |
-| Library Room schema or Library-owned data changes | [Library data and schema contracts](docs/library-data-contract.md) |
-| Third-party provenance or notices | [Third-party notices](THIRD_PARTY_NOTICES.md) and [NOTICE](NOTICE) |
+`iosRuntime/ARCHITECTURE.md`, `iosRuntime/README.md`, `docs/ios-port.md`.
