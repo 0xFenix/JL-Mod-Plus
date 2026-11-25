@@ -84,6 +84,22 @@ void rt_set_game_proxy(NSString *file, NSString *proxyId) {
     rt_store_game_config(file, config);
 }
 
+NSArray<NSString *> *rt_game_slot_proxies(NSString *file) {
+    id slots = rt_game_config(file)[@"slots"];
+    return [slots isKindOfClass:[NSArray class]] ? slots : @[];
+}
+
+void rt_set_game_slot_proxy(NSString *file, NSUInteger index, NSString *proxyId) {
+    NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
+    NSMutableArray<NSString *> *slots = [(config[@"slots"] ?: @[]) mutableCopy];
+    while (slots.count <= index) {
+        [slots addObject:@""];
+    }
+    slots[index] = proxyId ?: @"";
+    config[@"slots"] = slots;
+    rt_store_game_config(file, config);
+}
+
 NSString *rt_custom_name(NSString *file) {
     return [[[NSUserDefaults standardUserDefaults] dictionaryForKey:RTNamesDefaultsKey] objectForKey:file];
 }

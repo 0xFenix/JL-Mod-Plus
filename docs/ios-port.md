@@ -627,3 +627,14 @@ pointed at our request rather than the proxy. Verified from a clean engine
 checkout: patches 0002/0004/0005 applied in order, `[HTTP] code=200` through
 `113.160.166.35:35944`, Avatar still at ~18 fps.
 
+### 33. Proxy is remembered per launch slot of a game — 2026-11-26
+
+Closing the app lost the per-tab proxy because only one value was stored per
+game. Each tab of a game is now numbered by the order it is opened, and the
+picker writes the id to `RTGameConfig[slots][n]` for that game (`-tabIndexForSession:`
+counts sibling sessions sharing the jar). `addGame:` reads that entry first and
+falls back to the game's single proxy. Verified on the simulator: run 1 opened
+the same JAR twice and picked 1080 for tab 1 and 1081 for tab 2; run 2 launched
+a fresh process with no picks and logged `proxy=127.0.0.1:1080:` for slot 0 and
+`proxy=127.0.0.1:1081:game` for slot 1.
+

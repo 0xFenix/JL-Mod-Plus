@@ -20,6 +20,7 @@
 #include "rt_background.h"
 #include "rt_keys.h"
 #include "rt_proxy_store.h"
+#include "rt_game_store.h"
 #include "rt_library_vc.h"
 #include "rt_theme.h"
 #include "rt_host.h"
@@ -580,6 +581,21 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self presentViewController:grid animated:YES completion:nil];
 }
 
+// Tabs of one game are numbered by launch order and each keeps its own proxy,
+// so reopening the same game twice after a restart lands on the same exits.
+- (NSUInteger)tabIndexForSession:(RTGameSession *)session {
+    NSUInteger index = 0;
+    for (RTGameSession *other in self.sessions) {
+        if (other == session) {
+            break;
+        }
+        if ([other.jarPath.lastPathComponent isEqualToString:session.jarPath.lastPathComponent]) {
+            index++;
+        }
+    }
+    return index;
+}
+
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
            fps:(int)fpsLimit title:(NSString *)title
   fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo
@@ -606,9 +622,16 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.fullKeyboard = fullKeyboard;
     session.turbo = turbo;
     session.keyCodes = keyCodes;
-    // Slots keep their own proxy, and sharing one between slots is fine; the
-    // value comes from the game's last pick, so a second tab starts the same.
-    session.proxyId = proxyId ?: @"";
+    // Slots keep their own proxy, and sharing one between slots is fine.
+    NSArray<NSString *> *slotProxies = rt_game_slot_proxies(jarPath.lastPathComponent);
+    NSUInteger tabIndex = 0;
+    for (RTGameSession *other in self.sessions) {
+        if ([other.jarPath.lastPathComponent isEqualToString:jarPath.lastPathComponent]) {
+            tabIndex++;
+        }
+    }
+    NSString *slotProxy = tabIndex < slotProxies.count ? slotProxies[tabIndex] : @"";
+    session.proxyId = slotProxy.length > 0 ? slotProxy : (proxyId ?: @"");
     session.running = YES;
     [self.sessions addObject:session];
     [self focusSlot:slot];
@@ -778,7 +801,9 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                               proxy ? [proxy[@"port"] intValue] : 0,
                               proxy ? [proxy[@"user"] UTF8String] : "",
                               proxy ? [proxy[@"pass"] UTF8String] : "");
-    rt_set_game_proxy(session.jarPath.lastPathComponent, session.proxyId);
+    NSString *file = session.jarPath.lastPathComponent;
+    rt_set_game_slot_proxy(file, [self tabIndexForSession:session], session.proxyId);
+    rt_set_game_proxy(file, session.proxyId);
     if (session.slot == self.focusedSlot) {
         [self applySessionControls:session];
     }

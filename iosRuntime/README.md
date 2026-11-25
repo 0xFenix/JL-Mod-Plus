@@ -243,12 +243,13 @@ removed for anything below `SHOW_FORM`; earlier that state built an empty card
 that showed up as a stray dark strip across the top of a freshly opened tab.
 
 Each running tab holds its own proxy, and two tabs may share one when you want
-that. A new tab starts with the game's saved proxy; change it from the picker
-and that tab runs on the new one while the others keep theirs. The picker
-stores the choice both in the tab and in the game config
-(`RTGameConfig[proxy]`, written to disk immediately), so the next tab — and the
-next launch of that game — starts with it, and the library row shows it as `qua
-host:port`. Tabs themselves are not restored after a restart.
+that. Tabs of the same game are numbered by the order you open them, and the
+picker stores the choice per game and per that number (`RTGameConfig[slots]`,
+written to disk immediately). Open the same game twice after a restart and tab
+1 and tab 2 come back on the proxies you gave them; a number without a stored
+proxy falls back to the game's last pick, which the library row shows as `qua
+host:port`. Tabs themselves are not restored after a restart — only which proxy
+each launch slot of a game uses.
 
 ## Screen forms
 
