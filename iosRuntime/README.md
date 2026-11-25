@@ -242,15 +242,13 @@ An untouched engine slot reports no screen action yet (0), so the panel is
 removed for anything below `SHOW_FORM`; earlier that state built an empty card
 that showed up as a stray dark strip across the top of a freshly opened tab.
 
-Each running tab owns its proxy. A new tab never inherits one that another
-running tab already holds: it takes the proxy asked for (the game's saved one)
-when free, otherwise the first saved proxy nobody is using, otherwise it goes
-direct — so opening the same game three times lands on three IPs as long as
-three proxies are saved. Picking a proxy by hand overrides that and may be
-shared. The picker also stores the choice per game (`RTGameConfig[proxy]`,
-written to disk immediately); that value only seeds the first tab of the next
-launch and is what the library row shows as `qua host:port`. Tabs themselves
-are not restored after a restart.
+Each running tab holds its own proxy, and two tabs may share one when you want
+that. A new tab starts with the game's saved proxy; change it from the picker
+and that tab runs on the new one while the others keep theirs. The picker
+stores the choice both in the tab and in the game config
+(`RTGameConfig[proxy]`, written to disk immediately), so the next tab — and the
+next launch of that game — starts with it, and the library row shows it as `qua
+host:port`. Tabs themselves are not restored after a restart.
 
 ## Screen forms
 
