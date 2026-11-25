@@ -491,49 +491,121 @@ static void (*g_visibility_callback)(int visible) = NULL;
 // stays a plain button; two or more collapse into one menu button that lists
 // them all, the way J2ME Loader does it, so the panel never grows a wall of
 // buttons.
+// Commands a handset always keeps on screen: OK, Back, Cancel and Exit. Anything
+// else (screen/item/help commands) is a menu entry once there is more than one.
+static BOOL rt_command_is_primary_type(int type) {
+    return type == 2 || type == 3 || type == 4 || type == 7; // Back, Cancel, OK, Exit
+}
+
 - (void)addCommandButtons {
     int count = j2me_ui_get_command_count();
     if (count == 0) return;
+
+    NSMutableArray<NSNumber *> *outside = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *inside = [NSMutableArray array];
+    for (int i = 0; i < count; i++) {
+        if (rt_command_is_primary_type(j2me_ui_get_command_type(i))) {
+            [outside addObject:@(i)];
+        } else {
+            [inside addObject:@(i)];
+        }
+    }
+
+    // A screen whose commands are all ordinary keeps the old behaviour: one
+    // command is a button, several collapse into the menu.
+    if (outside.count == 0) {
+        UIView *card = [self makeCard];
+        UIStackView *stack = [self makeCardStack:card];
+        if (count == 1) {
+            const char *label = j2me_ui_get_command_label(0);
+            UIButton *primary = [self makePrimaryButton:(label ? @(label) : @"OK")
+                                                 action:@selector(fireCommand:)];
+            primary.tag = j2me_ui_get_command_id(0);
+            [stack addArrangedSubview:primary];
+        } else {
+            UIButton *menu = [self makePrimaryButton:
+                    [NSString stringWithFormat:@"Menu (%d)", count]
+                                              action:@selector(showCommandMenu:)];
+            [stack addArrangedSubview:menu];
+        }
+        [self.stackView addArrangedSubview:card];
+        return;
+    }
+
+    // OK is the natural primary; otherwise the first soft command takes the
+    // full-width slot.
+    NSUInteger primaryPosition = 0;
+    for (NSUInteger i = 0; i < outside.count; i++) {
+        if (j2me_ui_get_command_type(outside[i].intValue) == 4) { // Command.OK
+            primaryPosition = i;
+            break;
+        }
+    }
+    int primaryIndex = outside[primaryPosition].intValue;
+    [outside removeObjectAtIndex:primaryPosition];
+
     UIView *card = [self makeCard];
     UIStackView *stack = [self makeCardStack:card];
 
-    if (count == 1) {
-        const char *label = j2me_ui_get_command_label(0);
-        UIButton *primary = [self makePrimaryButton:(label ? @(label) : @"OK")
-                                             action:@selector(fireCommand:)];
-        primary.tag = j2me_ui_get_command_id(0);
-        [stack addArrangedSubview:primary];
-    } else {
-        UIButton *menu = [self makePrimaryButton:
-                [NSString stringWithFormat:@"Menu (%d)", count]
-                                          action:@selector(showCommandMenu:)];
+    const char *primaryLabel = j2me_ui_get_command_label(primaryIndex);
+    UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
+                                         action:@selector(fireCommand:)];
+    primary.tag = j2me_ui_get_command_id(primaryIndex);
+    [stack addArrangedSubview:primary];
+
+    if (outside.count > 0) {
+        UIStackView *row = [[UIStackView alloc] init];
+        row.axis = UILayoutConstraintAxisHorizontal;
+        row.distribution = UIStackViewDistributionFillEqually;
+        row.spacing = 10;
+        for (NSNumber *boxed in outside) {
+            int index = boxed.intValue;
+            const char *label = j2me_ui_get_command_label(index);
+            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"")
+                                                  action:@selector(fireCommand:)];
+            button.tag = j2me_ui_get_command_id(index);
+            [row addArrangedSubview:button];
+        }
+        [stack addArrangedSubview:row];
+    }
+
+    if (inside.count > 0) {
+        UIButton *menu = [self makeSecondaryButton:
+                [NSString stringWithFormat:@"Tùy chọn (%lu)", (unsigned long) inside.count]
+                                            action:@selector(showCommandMenu:)];
         [stack addArrangedSubview:menu];
     }
+
     [self.stackView addArrangedSubview:card];
 }
 
 - (void)showCommandMenu:(UIView *)sender {
-    [self presentCommandMenuFrom:sender firstCommand:0];
+    // Only the commands that did not get a button of their own.
+    [self presentCommandMenuFrom:sender includePrimary:NO];
 }
 
 - (void)holdListRow:(UILongPressGestureRecognizer *)hold {
     if (hold.state != UIGestureRecognizerStateBegan) return;
     UIView *row = hold.view;
     j2me_input_post_ui_event(J2ME_UI_LIST_SET_INDEX, (int) row.tag);
-    [self presentCommandMenuFrom:row firstCommand:0];
+    // Holding a row is a context menu, so it offers every command.
+    [self presentCommandMenuFrom:row includePrimary:YES];
 }
 
-- (void)presentCommandMenuFrom:(UIView *)anchor firstCommand:(int)first {
+- (void)presentCommandMenuFrom:(UIView *)anchor includePrimary:(BOOL)includePrimary {
     int count = j2me_ui_get_command_count();
-    if (count <= first) return;
+    if (count == 0) return;
     UIViewController *host = self.window.rootViewController;
     while (host.presentedViewController) {
         host = host.presentedViewController;
     }
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Menu"
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Tùy chọn"
                                                                   message:nil
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    for (int i = first; i < count; i++) {
+    for (int i = 0; i < count; i++) {
+        if (!includePrimary && rt_command_is_primary_type(j2me_ui_get_command_type(i))) {
+            continue;
+        }
         const char *label = j2me_ui_get_command_label(i);
         int commandId = j2me_ui_get_command_id(i);
         [sheet addAction:[UIAlertAction actionWithTitle:(label ? @(label) : @"OK")

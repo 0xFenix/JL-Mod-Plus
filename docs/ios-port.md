@@ -456,20 +456,22 @@ the visible area instead of covering the field.
 Verified on the simulator with FormProbe: the login form renders title, fields,
 choice rows and the OK button from the top of the panel.
 
-### 23. Commands behind one menu — 2026-11-26
+### 23. Commands: soft types stay out, the rest fold into a menu — 2026-11-26
 
-MIDlets attach commands without any limit, and showing each as its own button
-hid the content. The panel now renders a single amber `Menu (n)` button listing
-every command in an action sheet; a screen with exactly one command keeps it as
-a plain button. Long-pressing a list row first sets that row as the selected
-index (`J2ME_UI_LIST_SET_INDEX`) and then opens the same menu, so commands act
-on the item the user held — the behaviour of J2ME Loader and of handset context
-menus. Form, List and Alert share `fireCommandId:`.
+A MIDlet can attach any number of commands. The types a handset keeps on
+screen — `Command.OK`, `BACK`, `CANCEL`, `EXIT` — are rendered as buttons: OK
+(or the first of them when there is no OK) takes the amber full-width slot and
+the remaining soft commands share one fill-equally row. Every other type
+(`SCREEN`, `ITEM`, `HELP`, `STOP`) folds into a `Tùy chọn (n)` button that
+opens an action sheet, matching J2ME Loader. A screen with only ordinary
+commands keeps the previous behaviour: one command is a plain button, several
+collapse into a single menu. Long-pressing a list row sets that row as the
+selected index (`J2ME_UI_LIST_SET_INDEX`) and then opens a menu with every
+command, so commands act on the held item.
 
-Verified on the simulator with `test/CommandProbe.java` (six commands ->
-`Menu (6)`) and `test/ListProbe.java` (-> `Menu (2)`). An earlier revision used
-a primary button plus two secondary buttons with the rest behind "Tuỳ chọn";
-that layout was replaced.
+Verified on the simulator with `test/CommandProbe.java` (OK, Back, Cancel,
+Exit, Help, Save): the panel showed `Chọn` full width, `Quay lại` / `Huỷ` /
+`Thoát` in one row and `Tùy chọn (2)`.
 
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 
