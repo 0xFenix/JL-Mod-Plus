@@ -229,6 +229,13 @@ to stop; each run thread then destroys its own JVM (and patch 0004 closes the
 game's sockets). Swiping a game row still offers **Xoá**, with the usual
 confirmation. Full-swipe is disabled so a stray gesture cannot close a session.
 
+## Screen forms
+
+Form, List, Alert and TextBox render as a dark panel over the canvas. Content is
+pinned to the top of the panel and scrolls when it overflows; the scroll view
+ends at the keyboard guide, so opening the system keyboard shrinks the visible
+area instead of covering the field being edited.
+
 ## Save data per tab
 
 RMS data belongs to a tab, not to a JAR. The first tab of a game writes to

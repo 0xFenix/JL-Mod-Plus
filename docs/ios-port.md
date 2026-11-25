@@ -443,3 +443,15 @@ for both so a stray gesture cannot destroy state.
 Verified on the simulator with two running tabs: the close-all path logged
 `[RT] closing all sessions`, then a stop request per slot and one
 `Destroying slot N JVM` per slot, with no crash.
+
+### 22. Screen forms start at the top — 2026-11-26
+
+The Form/List/Alert/TextBox panel used to bottom-anchor its stack like a sheet,
+so a form with text fields slid under the keyboard as soon as one was focused.
+The panel now pins the stack to the top of a full-height container inside the
+scroll view and ends the scroll view at `keyboardLayoutGuide.topAnchor`; short
+forms read from the top down, long ones scroll, and the keyboard only shrinks
+the visible area instead of covering the field.
+
+Verified on the simulator with FormProbe: the login form renders title, fields,
+choice rows and the OK button from the top of the panel.
