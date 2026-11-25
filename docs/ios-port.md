@@ -592,3 +592,14 @@ was left in the stack. The guard is now `action < J2ME_UI_ACTION_SHOW_FORM`,
 which clears the panel for 0 and for Canvas alike. Verified on the simulator by
 opening two tabs and reading the screenshot: normal chrome, no strip.
 
+### 30. Proxy choice is remembered per game — 2026-11-26
+
+The in-tab picker already wrote `RTGameConfig[proxy]`, but nothing proved it
+survived a restart and the library gave no sign of it. Verified with a
+temporary picker hook (removed): picking `127.0.0.1:1080` logged `proxy=…` on
+the next launch with no proxy environment variable. `rt_store_game_config` now
+calls `-synchronize` so a pick cannot be lost when the app is closed right
+after, and the library subtitle shows `qua host:port` ahead of the last-played
+phrase, so truncation cuts the date first. `test/ListProbe`/`NetworkProbe` rows
+are unaffected.
+
