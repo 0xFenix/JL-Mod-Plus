@@ -218,9 +218,6 @@ public class Display {
                         } finally {
                             isHandlingCommandAction = false;
                         }
-                    } else if (type == 12 && current instanceof Alert) {
-                        Alert alert = (Alert) current;
-                        if (alert.nextDisplayable != null) setCurrent(alert.nextDisplayable);
                     } else if (type == 13 && current instanceof List) {
                         ((List) current).setSelectedIndex(nativeEvent[3], true);
                     }

@@ -53,6 +53,7 @@ from upstream is redistributed. Patches currently present:
 | `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
 | `0002-signal-handler-safe-shutdown.patch` | The engine's signal handler kept a pointer to the last created JVM, so after a slot was destroyed a later `SIGTERM` dereferenced freed memory and dumped threads twice, ending in a second `SIGSEGV`. It now clears that pointer on destroy, refuses to re-enter the dump, and terminates with `_Exit` instead of running exit handlers. |
 | `0004-close-sockets-on-jvm-destroy.patch` | Close TCP sockets a MIDlet left open when its JVM is destroyed, so closing a tab really disconnects the character. |
+| `0005-socks5-proxy-per-jvm.patch` | Adds an optional per-JVM SOCKS5 proxy in `connect0`, so an online game can reach a server through a proxy without the MIDlet knowing. The host sets it per slot; an empty host disables it. |
 | `0003-file-protocol.patch` | Adds the JSR-75 `file://` protocol and `FileConnection` implementation to the runtime jar. `Connector` resolves protocol classes with the boot class loader, so a classpath copy is never found; `file:///root/` maps to `<Documents>/files`, traversal is rejected, and unimplementable size queries return 0. |
 
 ## Build and run
@@ -149,11 +150,19 @@ option rows, command buttons). Choices are tappable: the option list is
 serialized into the item text by `Form.showNative`, so a tap rewrites that
 text through `j2me_ui_set_form_item_text` and `Form.syncFromNative` picks up
 the selection when a command fires. UI events travel back through
-`j2me_input_post_ui_event` (command action, list select, alert dismissed,
-list set index). Verified on the simulator with
+`j2me_input_post_ui_event` (command action, list select, list set index).
+Alerts follow MIDP the way J2ME Loader does it: `Alert` keeps the implicit
+`DISMISS_COMMAND` while it has no commands of its own, a command tap fires
+`commandAction` on the guest's `CommandListener` exactly like a form button,
+and an alert whose listener was never replaced dismisses itself to the
+displayable passed to `Display.setCurrent(alert, next)`. Verified on the
+simulator with
 `test/FormProbe.java` (`./scripts/make-test-jar.sh test/form-probe.mf`):
 the login Form with a password field and a two-option ChoiceGroup, the
-TextBox, the List, and the Alert all render, and the same run covers the
+TextBox, the List, and the Alert all render, and `test/AlertProbe.java`
+(`./scripts/make-test-jar.sh test/alert-probe.mf`) prints the fired command
+labels and shows the implicit dismiss returning to its next displayable. The
+same run covers the
 Canvas screen with `Avatar_LAPRO`.
 
 `scripts/audit-natives.sh` compares every `native` declaration in
@@ -229,12 +238,66 @@ to stop; each run thread then destroys its own JVM (and patch 0004 closes the
 game's sockets). Swiping a game row still offers **Xoá**, with the usual
 confirmation. Full-swipe is disabled so a stray gesture cannot close a session.
 
+An untouched engine slot reports no screen action yet (0), so the panel is
+removed for anything below `SHOW_FORM`; earlier that state built an empty card
+that showed up as a stray dark strip across the top of a freshly opened tab.
+
+Each running tab holds its own proxy, and two tabs may share one when you want
+that. Tabs of the same game are numbered by the order you open them, and the
+picker stores the choice against that number (`RTGameConfig[slots]`, written to
+disk immediately). Open the same game twice after a restart and tab 1 and tab 2
+come back on the proxies you gave them. A slot with no saved proxy goes direct —
+it never inherits a proxy another slot used. Tabs themselves are not restored
+after a restart; only which proxy each launch slot of a game uses.
+
 ## Screen forms
 
 Form, List, Alert and TextBox render as a dark panel over the canvas. Content is
 pinned to the top of the panel and scrolls when it overflows; the scroll view
 ends at the keyboard guide, so opening the system keyboard shrinks the visible
 area instead of covering the field being edited.
+
+The engine hands the tunnel a NUL-terminated host array, so the CONNECT
+request used to announce one byte too many and the proxy dropped it; the patch
+trims trailing zero bytes before building the request, which is what made plain
+`http://` work through a proxy again while sockets already did.
+
+## SOCKS5 proxy for online games
+
+Some titles only reach their server from a proxy in the server's region, and a
+MIDlet has no API to configure one. The library therefore keeps a list of saved
+SOCKS5 proxies behind the globe button in its navigation bar: **+** adds one,
+either through four fields (address, port, optional user and password) or by
+pasting `ip:port:user:pass` lines, and rows swipe away to delete. Only SOCKS5 is
+supported because an online game's own protocol never goes through an HTTP
+proxy.
+
+Each tab then picks its proxy from the same list: the network button left of
+About opens a sheet where the proxy in use is marked with ✓, and "Không dùng
+proxy" returns to a direct connection. The choice is stored per JAR, so the next
+launch of that game reuses it, and switching it while a tab runs applies to its
+next connection.
+
+An amber **Kiểm tra tất cả** card above the list probes every saved proxy at
+once: it opens a TCP connection to the proxy, runs the same greeting/authentication
+handshake the engine uses, asks the proxy to CONNECT to `1.1.1.1:80`, and puts the
+verdict under each row — `Sống · 48ms` in green or `Chết · <reason>` in red — while
+the card summarises `N sống · M chết`. Probes run on background queues, so a dead
+host cannot freeze the list; a proxy that filters `1.1.1.1` reads as dead even when
+it would still reach the game's own server.
+
+`native/bridge/jvm_bridge.c` keeps the choice per slot and hands it to
+`jni_io_set_proxy_for_jvm`; `patches/0005-socks5-proxy-per-jvm.patch` performs
+the RFC 1928 handshake (with RFC 1929 user/password when configured) inside
+`connect0`, right after the TCP connect to the proxy. Domain names are sent to
+the proxy so it resolves them in its own region. TLS opened by
+`sslc_connect` builds its own connection and is not proxied.
+
+Saved credentials live in the app's `NSUserDefaults`, i.e. in the app sandbox,
+and are not encrypted. For scripted runs `RT_PROXY_SEED="host:port:user:pass"`
+adds entries on launch and `RT_PROXY=<id>` preselects one; `scripts/socks-fixture.sh
+start` runs two local proxies (1080 anonymous, 1081 `game`/`secret`) that print
+every CONNECT.
 
 ## Save data per tab
 
@@ -254,13 +317,23 @@ the rows scroll. `test/ListProbe.java` (30 items) is the fixture
 
 ### Commands on a screen
 
-A MIDlet may attach any number of commands to a form or list, more than a phone
-would show as buttons. The panel keeps the first command as the amber primary
-button, the next two as side-by-side secondary buttons, and groups everything
-else behind one `Tùy chọn (n)` button that opens an action sheet, the way
-feature phones filed extra commands under "Tuỳ chọn". Commands still fire as
-`J2ME_UI_COMMAND_ACTION` with their original id, so the MIDlet cannot tell the
-difference. `test/CommandProbe.java` (six commands) is the fixture.
+A MIDlet may attach any number of commands to a form or list. The types a
+handset always keeps on screen — OK, Back, Cancel, Exit — stay as buttons: OK
+(or the first of them) takes the amber full-width slot, the rest sit two per
+row at half width with 10 pt gaps (a lone button stays half width). Everything
+else hides behind a `Tùy chọn (n)` half-width button that shares the last row
+and opens
+an action sheet, the way J2ME Loader does it. A screen with only ordinary
+commands keeps the earlier rule (one command = a button, several = a menu).
+List rows are separate 44 pt targets with a 6 pt gap, and the selected row is
+tinted amber so it stands apart from the rest. The index comes from the guest
+(`NativeBridge.setListSelectedIndex`, sent by `List.showNative`,
+`setSelectedIndex` and `handleListSelect`) so a game that preselects an entry
+shows it; taps and long-presses update it immediately.
+Long-pressing a list row selects that row and offers every command. Commands
+still fire as `J2ME_UI_COMMAND_ACTION` with their original id, so the MIDlet
+cannot tell the difference. `test/CommandProbe.java` (OK/Back/Cancel/Exit plus
+two screen commands) is the fixture.
 
 ## Opening JARs from Files
 

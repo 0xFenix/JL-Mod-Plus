@@ -36,6 +36,10 @@ NSDictionary *rt_game_config(NSString *file);
 void rt_store_game_config(NSString *file, NSDictionary *config);
 /// Stores only the custom keypad layout, leaving the rest of the config alone.
 void rt_set_game_keys(NSString *file, NSString *keys);
+/// Proxy per tab of one game in launch order, so accounts keep their own exit
+/// after a restart; a missing entry falls back to the game's proxy.
+NSArray<NSString *> *rt_game_slot_proxies(NSString *file);
+void rt_set_game_slot_proxy(NSString *file, NSUInteger index, NSString *proxyId);
 NSString *rt_custom_name(NSString *file);
 void rt_set_custom_name(NSString *file, NSString *name);
 NSTimeInterval rt_last_played(NSString *file);

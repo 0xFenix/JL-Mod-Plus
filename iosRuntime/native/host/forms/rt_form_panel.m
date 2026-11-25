@@ -25,6 +25,8 @@ enum {
 @interface RTFormPanel : UIView <UITextFieldDelegate>
 @property(nonatomic, strong) UIScrollView *scrollView;
 @property(nonatomic, strong) UIStackView *stackView;
+@property(nonatomic, strong) NSMutableArray<UIButton *> *listRows;
+@property(nonatomic) NSInteger listSelectedIndex;
 - (void)rebuildForAction:(int)action;
 @end
 
@@ -40,10 +42,18 @@ static void (*g_visibility_callback)(int visible) = NULL;
         // A MIDP screen replaces the canvas, so the panel dims rather than
         // hides what is behind it and reads as a sheet over the game.
         self.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+        _listRows = [NSMutableArray array];
+        _listSelectedIndex = 0;
 
         _scrollView = [[UIScrollView alloc] initWithFrame:self.bounds];
         _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
         _scrollView.alwaysBounceVertical = YES;
+        // iOS 26 draws a floating glass strip along a scroll view's edge; over
+        // the game chrome it reads as a stray dark bar across the top.
+        if (@available(iOS 26.0, *)) {
+            _scrollView.topEdgeEffect.hidden = YES;
+            _scrollView.bottomEdgeEffect.hidden = YES;
+        }
         [self addSubview:_scrollView];
 
         // The stack needs a container: the container always fills at least the
@@ -209,12 +219,20 @@ static void (*g_visibility_callback)(int visible) = NULL;
     if (action == J2ME_UI_ACTION_SHOW_ALERT) {
         UIView *card = [self makeCard];
         UIStackView *stack = [self makeCardStack:card];
+        const char *title = j2me_ui_get_form_title();
+        if (title && title[0]) {
+            [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
+        }
         const char *text = j2me_ui_get_alert_text();
         [stack addArrangedSubview:[self makeBodyLabel:(text ? @(text) : @"")]];
-        UIButton *ok = [self makePrimaryButton:@"OK" action:@selector(dismissAlert:)];
-        [stack addArrangedSubview:ok];
-        [stack setCustomSpacing:16 afterView:stack.arrangedSubviews[0]];
+        if (stack.arrangedSubviews.count > 1) {
+            [stack setCustomSpacing:14 afterView:stack.arrangedSubviews[stack.arrangedSubviews.count - 2]];
+        }
         [self.stackView addArrangedSubview:card];
+        // Commands go through the same buttons as forms and lists, so a tap
+        // posts J2ME_UI_COMMAND_ACTION with the command's real id instead of a
+        // hardcoded dismiss.
+        [self addCommandButtons];
         return;
     }
 
@@ -255,6 +273,7 @@ static void (*g_visibility_callback)(int visible) = NULL;
         UIStackView *listStack = [[UIStackView alloc] init];
         listStack.translatesAutoresizingMaskIntoConstraints = NO;
         listStack.axis = UILayoutConstraintAxisVertical;
+        listStack.spacing = 6;
         [listScroll addSubview:listStack];
         [NSLayoutConstraint activateConstraints:@[
             [listStack.leadingAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.leadingAnchor],
@@ -271,18 +290,31 @@ static void (*g_visibility_callback)(int visible) = NULL;
         fit.active = YES;
 
         int count = j2me_ui_get_list_item_count();
+        // The guest owns the selection; the local index only fills the gap
+        // between a tap and the next rebuild.
+        self.listSelectedIndex = j2me_ui_get_list_selected_index();
+        if (self.listSelectedIndex < 0 || self.listSelectedIndex >= count) {
+            self.listSelectedIndex = 0;
+        }
+        [self.listRows removeAllObjects];
         for (int i = 0; i < count; i++) {
-            if (listStack.arrangedSubviews.count > 0) {
-                [self addSeparatorToStack:listStack after:nil];
-            }
             const char *item = j2me_ui_get_list_item(i);
             NSString *titleText = item ? @(item) : @"";
             if (j2me_ui_is_list_item_running(i)) {
                 titleText = [titleText stringByAppendingString:@"  ▶"];
             }
-            UIButton *row = [self makeChoiceRowWithTitle:titleText selected:NO];
+            UIButton *row = [self makeListRowWithTitle:titleText
+                                              selected:(i == self.listSelectedIndex)];
             row.tag = i;
+            [self.listRows addObject:row];
             [row addTarget:self action:@selector(selectListRow:) forControlEvents:UIControlEventTouchUpInside];
+            // Long-pressing an item opens the command menu, like a handset's
+            // context menu; the tapped row becomes the selected one first.
+            UILongPressGestureRecognizer *hold =
+                    [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                                  action:@selector(holdListRow:)];
+            hold.minimumPressDuration = 0.35;
+            [row addGestureRecognizer:hold];
             [listStack addArrangedSubview:row];
         }
         [stack addArrangedSubview:listScroll];
@@ -372,6 +404,33 @@ static void (*g_visibility_callback)(int visible) = NULL;
     ]];
 
     return row;
+}
+
+- (UIButton *)makeListRowWithTitle:(NSString *)title selected:(BOOL)selected {
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeSystem];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [row setTitle:title ?: @"" forState:UIControlStateNormal];
+    row.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    row.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
+    row.layer.cornerRadius = 10.0;
+    row.layer.cornerCurve = kCACornerCurveContinuous;
+    [row.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    [self styleListRow:row selected:selected];
+    return row;
+}
+
+// The selected row keeps the accent so it stands out from the rest of the
+// list, the way a handset highlights the current item.
+- (void)styleListRow:(UIButton *)row selected:(BOOL)selected {
+    [row setTitleColor:(selected ? rt_color_accent() : rt_color_text_primary())
+              forState:UIControlStateNormal];
+    row.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:16
+                                               weight:(selected ? UIFontWeightSemibold
+                                                                : UIFontWeightRegular)]];
+    row.backgroundColor = selected
+            ? [rt_color_accent() colorWithAlphaComponent:0.16] : [UIColor clearColor];
 }
 
 - (void)addChoiceGroupForItem:(int)itemIndex label:(NSString *)labelText text:(NSString *)valueText inStack:(UIStackView *)stack {
@@ -466,50 +525,137 @@ static void (*g_visibility_callback)(int visible) = NULL;
     return button;
 }
 
-// A MIDlet can attach any number of commands to a screen, far more than a
-// handset could show as buttons. Keep the first three (primary plus two) and
-// group the rest behind one menu, the way feature phones put them under
-// "Tuỳ chọn".
+// A MIDlet can attach any number of commands to a screen. A single command
+// stays a plain button; two or more collapse into one menu button that lists
+// them all, the way J2ME Loader does it, so the panel never grows a wall of
+// buttons.
+// Commands a handset always keeps on screen: OK, Back, Cancel and Exit. Anything
+// else (screen/item/help commands) is a menu entry once there is more than one.
+static BOOL rt_command_is_primary_type(int type) {
+    return type == 2 || type == 3 || type == 4 || type == 7; // Back, Cancel, OK, Exit
+}
+
 - (void)addCommandButtons {
     int count = j2me_ui_get_command_count();
     if (count == 0) return;
+
+    NSMutableArray<NSNumber *> *outside = [NSMutableArray array];
+    NSMutableArray<NSNumber *> *inside = [NSMutableArray array];
+    for (int i = 0; i < count; i++) {
+        if (rt_command_is_primary_type(j2me_ui_get_command_type(i))) {
+            [outside addObject:@(i)];
+        } else {
+            [inside addObject:@(i)];
+        }
+    }
+
+    // A screen whose commands are all ordinary keeps the old behaviour: one
+    // command is a button, several collapse into the menu.
+    if (outside.count == 0) {
+        UIView *card = [self makeCard];
+        UIStackView *stack = [self makeCardStack:card];
+        if (count == 1) {
+            const char *label = j2me_ui_get_command_label(0);
+            UIButton *primary = [self makePrimaryButton:(label ? @(label) : @"OK")
+                                                 action:@selector(fireCommand:)];
+            primary.tag = j2me_ui_get_command_id(0);
+            [stack addArrangedSubview:primary];
+        } else {
+            UIButton *menu = [self makePrimaryButton:
+                    [NSString stringWithFormat:@"Menu (%d)", count]
+                                              action:@selector(showCommandMenu:)];
+            [stack addArrangedSubview:menu];
+        }
+        [self.stackView addArrangedSubview:card];
+        return;
+    }
+
+    // OK is the natural primary; otherwise the first soft command takes the
+    // full-width slot.
+    NSUInteger primaryPosition = 0;
+    for (NSUInteger i = 0; i < outside.count; i++) {
+        if (j2me_ui_get_command_type(outside[i].intValue) == 4) { // Command.OK
+            primaryPosition = i;
+            break;
+        }
+    }
+    int primaryIndex = outside[primaryPosition].intValue;
+    [outside removeObjectAtIndex:primaryPosition];
+
     UIView *card = [self makeCard];
     UIStackView *stack = [self makeCardStack:card];
+    stack.spacing = 10;
 
-    const char *firstLabel = j2me_ui_get_command_label(0);
-    UIButton *primary = [self makePrimaryButton:(firstLabel ? @(firstLabel) : @"OK")
-                                         action:@selector(fireCommand:)];
-    primary.tag = j2me_ui_get_command_id(0);
-    [stack addArrangedSubview:primary];
+    const char *primaryLabel = j2me_ui_get_command_label(primaryIndex);
+    NSUInteger slots = outside.count + (inside.count > 0 ? 1 : 0);
+    // An odd number of half-width buttons would leave a gap, so the primary
+    // drops to half width and pairs up with them into even rows.
+    BOOL primaryHalf = (slots % 2) == 1;
 
-    int secondaryCount = MIN(count - 1, 2);
-    if (secondaryCount > 0) {
+    NSMutableArray<UIButton *> *halves = [NSMutableArray array];
+    if (primaryHalf) {
+        UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
+                                             action:@selector(fireCommand:)];
+        primary.tag = j2me_ui_get_command_id(primaryIndex);
+        [halves addObject:primary];
+    } else {
+        UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
+                                             action:@selector(fireCommand:)];
+        primary.tag = j2me_ui_get_command_id(primaryIndex);
+        [stack addArrangedSubview:primary];
+    }
+
+    // Soft commands and the options menu share the same two-column flow, so a
+    // lone button keeps half the width instead of stretching across the card.
+    for (NSUInteger i = 0; i < slots; i++) {
+        if (i < outside.count) {
+            int index = outside[i].intValue;
+            const char *label = j2me_ui_get_command_label(index);
+            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"")
+                                                  action:@selector(fireCommand:)];
+            button.tag = j2me_ui_get_command_id(index);
+            [halves addObject:button];
+        } else {
+            UIButton *menu = [self makeSecondaryButton:
+                    [NSString stringWithFormat:@"Tùy chọn (%lu)", (unsigned long) inside.count]
+                                                action:@selector(showCommandMenu:)];
+            [halves addObject:menu];
+        }
+    }
+
+    for (NSUInteger i = 0; i < halves.count; i += 2) {
         UIStackView *row = [[UIStackView alloc] init];
         row.axis = UILayoutConstraintAxisHorizontal;
         row.distribution = UIStackViewDistributionFillEqually;
         row.spacing = 10;
-        for (int i = 1; i <= secondaryCount; i++) {
-            const char *label = j2me_ui_get_command_label(i);
-            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"OK")
-                                                  action:@selector(fireCommand:)];
-            button.tag = j2me_ui_get_command_id(i);
-            [row addArrangedSubview:button];
+        [row addArrangedSubview:halves[i]];
+        if (i + 1 < halves.count) {
+            [row addArrangedSubview:halves[i + 1]];
+        } else {
+            [row addArrangedSubview:[[UIView alloc] init]];
         }
-        [stack setCustomSpacing:10 afterView:primary];
         [stack addArrangedSubview:row];
     }
 
-    if (count > 3) {
-        UIButton *more = [self makeSecondaryButton:
-                [NSString stringWithFormat:@"Tùy chọn (%d)", count - 3]
-                                            action:@selector(showCommandMenu:)];
-        [stack setCustomSpacing:10 afterView:stack.arrangedSubviews.lastObject];
-        [stack addArrangedSubview:more];
-    }
     [self.stackView addArrangedSubview:card];
 }
 
-- (void)showCommandMenu:(UIButton *)sender {
+- (void)showCommandMenu:(UIView *)sender {
+    // Only the commands that did not get a button of their own.
+    [self presentCommandMenuFrom:sender includePrimary:NO];
+}
+
+- (void)holdListRow:(UILongPressGestureRecognizer *)hold {
+    if (hold.state != UIGestureRecognizerStateBegan) return;
+    UIView *row = hold.view;
+    j2me_input_post_ui_event(J2ME_UI_LIST_SET_INDEX, (int) row.tag);
+    // Holding a row is a context menu, so it offers every command.
+    [self presentCommandMenuFrom:row includePrimary:YES];
+}
+
+- (void)presentCommandMenuFrom:(UIView *)anchor includePrimary:(BOOL)includePrimary {
+    int count = j2me_ui_get_command_count();
+    if (count == 0) return;
     UIViewController *host = self.window.rootViewController;
     while (host.presentedViewController) {
         host = host.presentedViewController;
@@ -517,8 +663,10 @@ static void (*g_visibility_callback)(int visible) = NULL;
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Tùy chọn"
                                                                   message:nil
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    int count = j2me_ui_get_command_count();
-    for (int i = 3; i < count; i++) {
+    for (int i = 0; i < count; i++) {
+        if (!includePrimary && rt_command_is_primary_type(j2me_ui_get_command_type(i))) {
+            continue;
+        }
         const char *label = j2me_ui_get_command_label(i);
         int commandId = j2me_ui_get_command_id(i);
         [sheet addAction:[UIAlertAction actionWithTitle:(label ? @(label) : @"OK")
@@ -530,8 +678,8 @@ static void (*g_visibility_callback)(int visible) = NULL;
     [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ"
                                              style:UIAlertActionStyleCancel
                                            handler:nil]];
-    sheet.popoverPresentationController.sourceView = sender;
-    sheet.popoverPresentationController.sourceRect = sender.bounds;
+    sheet.popoverPresentationController.sourceView = anchor;
+    sheet.popoverPresentationController.sourceRect = anchor.bounds;
     [host presentViewController:sheet animated:YES completion:nil];
 }
 
@@ -544,13 +692,16 @@ static void (*g_visibility_callback)(int visible) = NULL;
     [self fireCommandId:(int) sender.tag];
 }
 
-- (void)selectListRow:(UIButton *)sender {
-    j2me_input_post_ui_event(J2ME_UI_LIST_SELECT, (int) sender.tag);
+- (void)setListSelection:(NSInteger)index {
+    self.listSelectedIndex = index;
+    for (UIButton *row in self.listRows) {
+        [self styleListRow:row selected:(row.tag == index)];
+    }
 }
 
-- (void)dismissAlert:(UIButton *)sender {
-    (void)sender;
-    j2me_input_post_ui_event(J2ME_UI_ALERT_DISMISSED, 0);
+- (void)selectListRow:(UIButton *)sender {
+    [self setListSelection:sender.tag];
+    j2me_input_post_ui_event(J2ME_UI_LIST_SELECT, (int) sender.tag);
 }
 
 - (void)acceptTextBox:(UIButton *)sender {
@@ -612,7 +763,9 @@ void rt_form_ui_present(int action) {
         return;
     }
 
-    if (action == J2ME_UI_ACTION_SHOW_CANVAS) {
+    // A slot that has not shown a screen yet reports action 0; treating that
+    // as a form left an empty card drawn over a fresh tab's canvas.
+    if (action < J2ME_UI_ACTION_SHOW_FORM) {
         if (g_panel) {
             [g_panel removeFromSuperview];
             g_panel = nil;
@@ -635,4 +788,5 @@ void rt_form_ui_present(int action) {
     [host bringSubviewToFront:g_panel];
     [g_panel rebuildForAction:action];
     if (g_visibility_callback) g_visibility_callback(1);
+
 }

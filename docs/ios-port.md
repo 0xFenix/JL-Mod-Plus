@@ -456,17 +456,70 @@ the visible area instead of covering the field.
 Verified on the simulator with FormProbe: the login form renders title, fields,
 choice rows and the OK button from the top of the panel.
 
-### 23. Commands grouped when there are many — 2026-11-26
+### 23. Commands: soft types stay out, the rest fold into a menu — 2026-11-26
 
-A MIDlet can attach more commands to a screen than the panel could show as
-buttons. `addCommandButtons` in `rt_form_panel.m` now renders the first command
-as the amber primary, the next two as a secondary row, and hides the remainder
-behind a `Tùy chọn (n)` button that presents an action sheet. Every entry posts
-the original `J2ME_UI_COMMAND_ACTION` id, so MIDlets are unaffected.
+A MIDlet can attach any number of commands. The types a handset keeps on
+screen — `Command.OK`, `BACK`, `CANCEL`, `EXIT` — are rendered as buttons: OK
+(or the first of them when there is no OK) takes the amber full-width slot and
+the remaining soft commands sit two per fill-equally row at half width, with a
+blank slot when the count is odd so a lone button does not stretch. Every other type
+(`SCREEN`, `ITEM`, `HELP`, `STOP`) folds into a `Tùy chọn (n)` button that
+opens an action sheet, matching J2ME Loader. A screen with only ordinary
+commands keeps the previous behaviour: one command is a plain button, several
+collapse into a single menu. Whenever the half-width buttons would come out odd
+— a two-command screen, or OK plus three soft commands — the primary shrinks to
+half width and takes the free slot, so every row is full instead of ending in a
+lonely button. Long-pressing a list row sets that row as the
+selected index (`J2ME_UI_LIST_SET_INDEX`) and then opens a menu with every
+command, so commands act on the held item.
 
-Verified on the simulator with `test/CommandProbe.java` (six commands): the
-screen shows 'Chọn' as primary, 'Quay lại' / 'Lưu' side by side and
-'Tùy chọn (3)'.
+Verified on the simulator with `test/CommandProbe.java` (OK, Back, Cancel,
+Exit, Help, Save): the panel showed `Chọn` full width, `Quay lại` / `Huỷ` at
+half width, `Thoát` at half width and `Tùy chọn (2)` sharing the last row. Commands are
+separated by 10 pt gaps.
+
+### 25. Selected list row and row spacing — 2026-11-26
+
+List rows used to run together as one continuous block. They are now separate
+44 pt targets with a 6 pt gap, and the selected row is filled with the accent
+at 16% alpha with an amber semibold title, so the current item is obvious. The
+The bridge model had no selection at all, so the host guessed index 0 and every
+list looked like its first row was current. `List` now reports its
+`selectedIndex` through `NativeBridge.setListSelectedIndex` from
+`showNative()`, `setSelectedIndex()` and `handleListSelect()`, and the panel
+renders whatever the guest says while still updating immediately on taps and
+long-presses (clamped when the list shrinks). Verified on the simulator with
+`test/ListProbe.java`, which preselects index 3: `Mục 4` highlighted, rows
+separated, commands visible below.
+
+One vendored accessor was added for this (`List`, `NativeBridge.java`,
+`j2me_ui.m/.h`), because a host-only guess cannot know the guest's selection.
+
+### 26. Alert commands behave like a phone — 2026-11-26
+
+`Alert` used to be a dead end: the host drew its text with one hardcoded `OK`
+button that posted `J2ME_UI_ALERT_DISMISSED`, so a MIDlet's own alert commands
+were never rendered and its `CommandListener.commandAction` never ran.
+
+Now the Java side follows J2ME-Loader's `Alert`: the implicit
+`DISMISS_COMMAND` is present from construction, `addCommand` drops it as soon
+as the MIDlet adds a real command and `removeCommand` puts it back when the
+list empties, and `setCommandListener(null)` installs a default listener that
+dismisses to the displayable given to `Display.setCurrent(alert, next)`.
+
+The host renders the alert title and text, then reuses the normal command
+buttons, so a tap posts `J2ME_UI_COMMAND_ACTION` with the alert's real command
+id and `Display` fires `commandAction` on the alert like any other
+`Displayable`. The old `J2ME_UI_ALERT_DISMISSED` branch and the
+`dismissAlert:` button are gone.
+
+Verified on the simulator with `test/AlertProbe.java`: log shows
+`[ALERT] confirm commands=2`, `[ALERT] silent commands=1`,
+`[ALERT] commandAction label=Đồng ý on=javax.microedition.lcdui.Alert`, then
+the implicit-dismiss alert closes silently and
+`[ALERT] commandAction label=Đóng on=javax.microedition.lcdui.Form`; the
+screenshot shows the title, body, amber `Đồng ý` at full width and `Để sau` at
+half width. Alert timeouts and the indicator gauge are still not implemented.
 
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 
@@ -479,3 +532,121 @@ scrolls.
 Verified on the simulator with `test/ListProbe.java` (30 items): the panel
 showed the title, rows 1–8 inside the bounded card and both commands right
 below it.
+
+### 27. Per-tab SOCKS5 proxy — 2026-11-26
+
+The target titles are online and some only accept connections from their
+region, while a MIDlet has no proxy API. The engine now offers a SOCKS5 tunnel
+per JVM: `patches/0005-socks5-proxy-per-jvm.patch` stores one proxy per
+`MiniJVM`, and `connect0` connects to the proxy instead of the target, performs
+the RFC 1928 handshake (RFC 1929 when user/password are set), then returns the
+socket to the guest. Domain targets are sent as domains so the proxy resolves
+them. `sslc_connect` (https) builds its own connection and stays direct.
+
+The host keeps proxies in `NSUserDefaults` (`RTProxies`) with a stable
+`host:port:user` id and offers two add flows in the library: a four-field form
+and a bulk paste of `ip:port:user:pass` lines (blank user/password allowed).
+Each tab picks from that list with the network button next to About; the active
+one is marked ✓ and the choice is saved per JAR in `RTGameConfig`, so it is
+reapplied on the next launch. Changing it on a running tab calls
+`jvm_bridge_set_slot_proxy`, which applies immediately for new connections.
+
+Verified on the simulator against `scripts/socks-fixture.sh` (anonymous 1080 and
+authenticated 1081): with a proxy selected the fixture logged
+`CONNECT 127.0.0.1:9099 via 1080` / `via 1081` and the network probe still got
+`[NET] socket echo=ECHO PING` and `[NET] http code=200`; Avatar LAPRO logged
+`CONNECT upxu.net:80 via 1080` and kept rendering at ~18.6 fps, i.e. its own
+online traffic went through the tunnel. The patch was validated from a clean
+engine checkout (0002, 0004 and 0005 applied in order).
+
+### 28. Proxy liveness test — 2026-11-26
+
+The proxy list gained an amber **Kiểm tra tất cả** card above the rows that probes
+every saved proxy. The host opens a TCP connection with a 4 s connect deadline, sends the
+RFC 1928 greeting (offering no-auth and, when a user is set, username/password),
+answers RFC 1929 when the proxy asks for it, then asks the proxy to CONNECT to
+`1.1.1.1:80`; the reply code decides the verdict. Each row shows `Sống · <ms>` in
+green or `Chết · <reason>` in red, and the card summarises `N sống · M chết`. Probes run concurrently on a global queue so a black-holed host cannot
+stall the list, and both socket timeouts are 5 s.
+
+Verified on the simulator with `socks-fixture.sh` (anonymous 127.0.0.1:1080,
+user/password 127.0.0.1:1081) plus a closed port 127.0.0.1:1099: the log printed
+`[PROXY] test 127.0.0.1:1080 -> Sống · 48ms`, `…1081 -> Sống · 49ms`,
+`…1099 -> Chết · không kết nối được`, and the screenshot showed the two green
+verdicts, the red failure and the amber action card reading `2 sống · 1 chết`.
+
+The probe target is a compromise: a proxy that filters `1.1.1.1` reports dead
+even though it can still carry the game's traffic.
+
+`RT_PROXY_TEST=1` opens the list and runs the probe automatically for scripted
+runs (simctl cannot tap).
+
+### 29. No empty card on a fresh tab — 2026-11-26
+
+Opening a second tab drew a stray rounded dark strip across the top of the game
+chrome until the MIDlet painted. `-focusSlot:` asks the bridge for that slot's
+active screen action, and a slot that has not shown anything yet reports 0;
+`rt_form_ui_present` only removed the panel for `SHOW_CANVAS` (1), so 0 fell
+through to `rebuildForAction:` where no branch matched and an empty surface card
+was left in the stack. The guard is now `action < J2ME_UI_ACTION_SHOW_FORM`,
+which clears the panel for 0 and for Canvas alike. Verified on the simulator by
+opening two tabs and reading the screenshot: normal chrome, no strip.
+
+### 30. Proxy choice is remembered per game — 2026-11-26
+
+The in-tab picker already wrote `RTGameConfig[proxy]`, but nothing proved it
+survived a restart and the library gave no sign of it. Verified with a
+temporary picker hook (removed): picking `127.0.0.1:1080` logged `proxy=…` on
+the next launch with no proxy environment variable. `rt_store_game_config` now
+calls `-synchronize` so a pick cannot be lost when the app is closed right
+after, and the library subtitle shows `qua host:port` ahead of the last-played
+phrase, so truncation cuts the date first. `test/ListProbe`/`NetworkProbe` rows
+are unaffected.
+
+### 31. Proxy is remembered per slot and per game — 2026-11-26
+
+A tab keeps its own proxy while it runs, and the pick is also written to the
+game's config, so a new tab of that game starts on the same proxy and the
+library row shows `qua host:port`. Sharing one proxy between two tabs is
+allowed on purpose: a player may run two accounts behind the same exit while
+another tab uses a different one. An earlier rule that rotated a fresh tab onto
+an unused proxy was removed — it made a plain second tab diverge from the game's
+saved proxy. Verified on the simulator by opening the same JAR twice: both slots
+logged the game's saved proxy.
+
+### 32. HTTP through a proxy works again — 2026-11-26
+
+With a proxy selected, games logged in over their socket but every `http://`
+request failed with `Socket connect error` (reproduced on the iPhone and on the
+simulator with a real proxy). The tunnel was sending the CONNECT request with
+`host_len` counting the NUL the engine appends to the host byte array, so the
+proxy saw a domain one byte too long and closed the connection — no reply code,
+hence the silent failure. `socks5_tunnel` now trims trailing zero bytes before
+building the request. curl through the same proxy always worked, which is what
+pointed at our request rather than the proxy. Verified from a clean engine
+checkout: patches 0002/0004/0005 applied in order, `[HTTP] code=200` through
+`113.160.166.35:35944`, Avatar still at ~18 fps.
+
+### 33. Proxy is remembered per launch slot of a game — 2026-11-26
+
+Closing the app lost the per-tab proxy because only one value was stored per
+game. Each tab of a game is now numbered by the order it is opened, and the
+picker writes the id to `RTGameConfig[slots][n]` for that game (`-tabIndexForSession:`
+counts sibling sessions sharing the jar). `addGame:` reads that entry first and
+falls back to the game's single proxy. Verified on the simulator: run 1 opened
+the same JAR twice and picked 1080 for tab 1 and 1081 for tab 2; run 2 launched
+a fresh process with no picks and logged `proxy=127.0.0.1:1080:` for slot 0 and
+`proxy=127.0.0.1:1081:game` for slot 1.
+
+### 34. A slot without a proxy goes direct — 2026-11-26
+
+Launching a tab used to fall back to the game's last picked proxy, so a fresh
+slot silently reused an IP another slot had chosen. `launchGame:` now passes an
+empty proxy and `addGame:` only adopts the value saved for its own tab number;
+everything else connects directly. The per-game `proxy` key and the `qua
+host:port` library hint were dropped with it — a row no longer claims a proxy
+the game may not use. Environment runs still select one through `RT_PROXY`.
+Verified on the simulator: `test.jar` has no saved slot proxy and logged
+`proxy=-` with no `[SOCKS]` line, while an earlier tab of another game kept its
+saved `127.0.0.1:1080:`.
+

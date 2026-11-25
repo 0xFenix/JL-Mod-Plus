@@ -12,6 +12,7 @@ public class ListProbe extends MIDlet implements CommandListener {
         for (int i = 1; i <= 30; i++) {
             list.append("Mục " + i, null);
         }
+        list.setSelectedIndex(3, true); // Mục 4 must show as selected
         list.addCommand(new Command("Chọn", Command.OK, 1));
         list.addCommand(new Command("Quay lại", Command.BACK, 2));
         list.setCommandListener(this);

@@ -33,6 +33,11 @@ void jvm_bridge_destroy_all(void);
 // ============================================================
 
 /// Set the currently focused slot (which receives input and renders to main screen).
+/// SOCKS5 proxy for one slot's JVM. Pass an empty host to disable. Safe to
+/// call before init_slot; the settings are applied when the JVM is created.
+void jvm_bridge_set_slot_proxy(int slot, const char *host, int port,
+                               const char *user, const char *pass);
+
 void jvm_bridge_set_focused_slot(int slot);
 
 /// Get the currently focused slot index.

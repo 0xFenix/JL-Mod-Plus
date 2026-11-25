@@ -1,0 +1,6 @@
+MIDlet-Name: AlertProbe
+MIDlet-Version: 1.0
+MIDlet-Vendor: JL
+MIDlet-1: AlertProbe, /icon.png, AlertProbe
+MicroEdition-Profile: MIDP-2.0
+MicroEdition-Configuration: CLDC-1.1

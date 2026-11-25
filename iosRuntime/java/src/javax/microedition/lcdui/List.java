@@ -83,7 +83,10 @@ public class List extends Screen implements Choice {
         if (elementNum < 0 || elementNum >= selected.size()) return;
         if (listType == EXCLUSIVE) { for (int i = 0; i < selected.size(); i++) selected.set(i, Boolean.FALSE); }
         selected.set(elementNum, sel);
-        if (sel) selectedIndex = elementNum;
+        if (sel) {
+            selectedIndex = elementNum;
+            NativeBridge.setListSelectedIndex(getSelectedIndex());
+        }
     }
     public int size() { return strings.size(); }
     public int getSelectedFlags(boolean[] a) { for (int i = 0; i < a.length && i < selected.size(); i++) a[i] = selected.get(i); return selected.size(); }
@@ -102,6 +105,7 @@ public class List extends Screen implements Choice {
     public void showNative() {
         NativeBridge.formBegin(getTitle(), 1); // type 1 = list
         NativeBridge.setListType(listType);
+        NativeBridge.setListSelectedIndex(getSelectedIndex());
         for (int i = 0; i < strings.size(); i++) {
             String s = strings.get(i);
             Image img = (i < images.size()) ? images.get(i) : null;
@@ -119,6 +123,7 @@ public class List extends Screen implements Choice {
     public void handleListSelect(int index) {
         if (index >= 0 && index < strings.size()) {
             selectedIndex = index;
+            NativeBridge.setListSelectedIndex(index);
             if (listType == IMPLICIT && getCommandListener() != null && selectCommand != null) {
                 getCommandListener().commandAction(selectCommand, this);
             }

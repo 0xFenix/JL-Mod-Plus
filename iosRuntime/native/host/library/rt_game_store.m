@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 
 #import "rt_jar_manifest.h"
+#import "rt_proxy_store.h"
 
 static NSString *const RTConfigDefaultsKey = @"RTGameConfig";
 static NSString *const RTNamesDefaultsKey = @"RTGameNames";
@@ -57,7 +58,8 @@ NSDictionary *rt_game_config(NSString *file) {
     if (config) {
         return config;
     }
-    return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0, @"keys": @""};
+    return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0,
+             @"keys": @""};
 }
 
 void rt_store_game_config(NSString *file, NSDictionary *config) {
@@ -66,11 +68,29 @@ void rt_store_game_config(NSString *file, NSDictionary *config) {
             [[defaults dictionaryForKey:RTConfigDefaultsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
     all[file] = config;
     [defaults setObject:all forKey:RTConfigDefaultsKey];
+    // A proxy picked in a tab must survive the app being closed right away.
+    [defaults synchronize];
 }
 
 void rt_set_game_keys(NSString *file, NSString *keys) {
     NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
     config[@"keys"] = keys ?: @"";
+    rt_store_game_config(file, config);
+}
+
+NSArray<NSString *> *rt_game_slot_proxies(NSString *file) {
+    id slots = rt_game_config(file)[@"slots"];
+    return [slots isKindOfClass:[NSArray class]] ? slots : @[];
+}
+
+void rt_set_game_slot_proxy(NSString *file, NSUInteger index, NSString *proxyId) {
+    NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
+    NSMutableArray<NSString *> *slots = [(config[@"slots"] ?: @[]) mutableCopy];
+    while (slots.count <= index) {
+        [slots addObject:@""];
+    }
+    slots[index] = proxyId ?: @"";
+    config[@"slots"] = slots;
     rt_store_game_config(file, config);
 }
 
@@ -207,10 +227,10 @@ NSArray<RTGameEntry *> *rt_load_games(RTGameSortMode mode) {
         NSString *fpsPart = [config[@"fps"] intValue] > 0
                 ? [NSString stringWithFormat:@", %@ fps", config[@"fps"]]
                 : @"";
-        entry.detail = [NSString stringWithFormat:@"%@×%@, %@%@",
+        entry.detail = [NSString stringWithFormat:@"%@×%@%@, %@",
                                                   config[@"w"], config[@"h"],
-                                                  rt_last_played_phrase(entry.lastPlayed),
-                                                  fpsPart];
+                                                  fpsPart,
+                                                  rt_last_played_phrase(entry.lastPlayed)];
         [entries addObject:entry];
     }
 

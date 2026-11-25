@@ -33,7 +33,7 @@ void rt_host_close_all(void);
 /// and `turbo` makes a held fire key repeat.
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
                      const char *title, int full_keyboard, int turbo,
-                     const char *keys);
+                     const char *keys, const char *proxy_id);
 
 #ifdef __cplusplus
 }

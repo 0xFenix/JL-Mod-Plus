@@ -7,6 +7,8 @@
 #import "rt_game_store.h"
 #import "rt_host.h"
 #import "rt_library_vc.h"
+#import "rt_proxy_list.h"
+#import "rt_proxy_store.h"
 #import "rt_theme.h"
 
 #pragma mark - Cells
@@ -280,13 +282,24 @@
     bar.standardAppearance = appearance;
     bar.scrollEdgeAppearance = appearance;
 
-    self.navigationItem.leftBarButtonItem =
+    UIBarButtonItem *sortItem =
             [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.up.arrow.down"]
                                              style:UIBarButtonItemStylePlain
                                             target:self
                                             action:@selector(showSortOptions:)];
-    self.navigationItem.leftBarButtonItem.tintColor = rt_color_accent();
-    self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Sắp xếp";
+    sortItem.tintColor = rt_color_accent();
+    sortItem.accessibilityLabel = @"Sắp xếp";
+
+    // Proxies are managed in the library because one entry is shared by every
+    // game; each tab then picks from this list.
+    UIBarButtonItem *proxyItem =
+            [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"network"]
+                                             style:UIBarButtonItemStylePlain
+                                            target:self
+                                            action:@selector(showProxies:)];
+    proxyItem.tintColor = rt_color_accent();
+    proxyItem.accessibilityLabel = @"Proxy SOCKS5";
+    self.navigationItem.leftBarButtonItems = @[proxyItem, sortItem];
 
     self.navigationItem.rightBarButtonItem =
             [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"]
@@ -304,6 +317,11 @@
     // rescans on every appearance instead.
 }
 
+- (void)showProxies:(id)sender {
+    (void) sender;
+    rt_present_proxy_list(self);
+}
+
 - (void)gamesChanged:(NSNotification *)note {
     (void) note;
     [self reloadGames];
@@ -311,7 +329,20 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    // Test hook: seed saved proxies from the environment so a scripted run can
+    // open a tab through a proxy without tapping the add sheets.
+    const char *seed = getenv("RT_PROXY_SEED");
+    if (seed && seed[0]) {
+        rt_proxy_import(@(seed), NULL);
+        unsetenv("RT_PROXY_SEED");
+    }
     [self reloadGames];
+    static BOOL proxiesOpened = NO;
+    if (!proxiesOpened && getenv("RT_PROXY_TEST")) {
+        proxiesOpened = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ rt_present_proxy_list(self); });
+    }
     static BOOL openedOnce = NO;
     const char *open_path = getenv("RT_OPEN_JAR");
     if (!openedOnce && open_path && open_path[0]) {
@@ -619,7 +650,10 @@
                     entry.title.UTF8String,
                     [config[@"kb"] intValue],
                     [config[@"turbo"] intValue],
-                    [config[@"keys"] UTF8String]);
+                    [config[@"keys"] UTF8String],
+                    // A tab starts on its own saved slot proxy only; a game-wide
+                    // default would put a fresh tab back on an older proxy.
+                    "");
 }
 
 #pragma mark - Options
@@ -759,7 +793,8 @@
                kb:(int)kb turbo:(int)turbo {
     rt_store_game_config(file, @{@"w": @(width), @"h": @(height), @"fps": @(fps),
                                  @"kb": @(kb), @"turbo": @(turbo),
-                                 @"keys": rt_game_config(file)[@"keys"] ?: @""});
+                                 @"keys": rt_game_config(file)[@"keys"] ?: @"",
+                                 });
     [self reloadGames];
 }
 
