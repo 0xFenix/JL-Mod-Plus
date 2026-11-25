@@ -200,6 +200,23 @@ button also imports through `UIDocumentPickerViewController`.
 jar into `Documents/games` and launches the library, and `RT_AUTOLAUNCH=1`
 opens the first row after 0.3 s because `simctl` cannot tap.
 
+## Per-game controls
+
+The options sheet in the library (long-press a row, or the `⋯`/context menu)
+carries two control settings next to resolution and FPS:
+
+- **Bàn phím: 3 × 3 (gọn) / đầy đủ (có số)** - the compact pad has soft keys,
+  arrows, fire, `*` and `#`; the full layout adds the ten digits and grows the
+  keypad container from 190 to 340 pt. Games that ask for a number at a menu
+  need the full layout.
+- **Turbo khi giữ OK** - while enabled, holding fire sends a press/release
+  pulse every 80 ms instead of one press, for titles that expect rapid tapping.
+
+Both are stored per JAR under the `RTGameConfig` defaults key (added as `kb`
+and `turbo`) and follow the focused tab, because one keypad serves every
+session. `RT_FULL_KEYBOARD=1` and `RT_TURBO=1` set the same flags for
+scripted single-game runs.
+
 ## Visual design
 
 The host chrome is a dark console around the frame: near-black ink, quiet

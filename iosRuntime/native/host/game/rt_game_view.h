@@ -9,6 +9,13 @@
 @property(nonatomic) int canvasHeight;
 @end
 
-/// 3x3 MIDP keypad (soft keys, arrows, fire, * and #).
+/// MIDP keypad. Compact is 3x3 (soft keys, arrows, fire, * and #); the full
+/// layout adds the ten digits for games that ask for them.
 @interface RTKeypadView : UIView
+/// Rebuilds the pad with the digit rows when YES.
+@property(nonatomic) BOOL fullKeyboard;
+/// While YES, holding fire sends repeated press/release pairs (turbo).
+@property(nonatomic) BOOL turboEnabled;
+/// Height the current layout needs; the controller sizes its container to it.
+@property(nonatomic, readonly) CGFloat preferredHeight;
 @end

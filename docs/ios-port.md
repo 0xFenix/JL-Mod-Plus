@@ -318,3 +318,23 @@ macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →
 `j2me_api/build.sh` → open `.xcodeproj` → run. Games go in the app Documents
 folder (Files app / Xcode transfer); per-game config via long-press
 (resolution presets 101x80–480x800, FPS cap, 3D supersampling 3x).
+
+### 15. Per-game controls: full keypad and turbo — 2026-11-25
+
+`RTKeypadView` gained two per-game options, both stored in the same
+`RTGameConfig` dictionary as resolution and FPS (`kb`, `turbo`) and both
+applied from the focused session, since one pad serves every tab:
+
+- the full layout adds the ten digits (21 keys, 340 pt container) beside the
+  compact 3x3 pad (190 pt), for titles that ask for a number at a menu;
+- turbo repeats fire: holding OK posts a release/press pulse every 80 ms.
+
+The library's options sheet toggles both. `rt_present_game` takes the two
+flags and `RTViewController addGame:...fullKeyboard:turbo:` stores them on the
+session; `applySessionControls:` resizes the pad when the focused tab changes.
+Scripted runs use `RT_FULL_KEYBOARD=1` / `RT_TURBO=1`.
+
+Verification: simulator run of `build/test.jar` with both flags logged
+`[RT] keypad full=1 turbo=1`, the screenshot showed the six-row pad including
+digits, and a temporary 1 s synthetic hold produced 14 `keyPressed -5` lines
+in InputProbe, i.e. the repeat timer works.

@@ -562,7 +562,9 @@
                     [config[@"w"] intValue],
                     [config[@"h"] intValue],
                     [config[@"fps"] intValue],
-                    entry.title.UTF8String);
+                    entry.title.UTF8String,
+                    [config[@"kb"] intValue],
+                    [config[@"turbo"] intValue]);
 }
 
 #pragma mark - Options
@@ -635,7 +637,9 @@
                                                            [self setConfig:file
                                                                          w:resolution.width
                                                                          h:resolution.height
-                                                                       fps:[config[@"fps"] intValue]];
+                                                                       fps:[config[@"fps"] intValue]
+                                                                        kb:[config[@"kb"] intValue]
+                                                                     turbo:[config[@"turbo"] intValue]];
                                                        }];
         if (checked) [action setValue:@YES forKey:@"checked"];
         [sheet addAction:action];
@@ -650,18 +654,51 @@
                                                            [self setConfig:file
                                                                          w:[config[@"w"] intValue]
                                                                          h:[config[@"h"] intValue]
-                                                                       fps:fps.intValue];
+                                                                       fps:fps.intValue
+                                                                        kb:[config[@"kb"] intValue]
+                                                                     turbo:[config[@"turbo"] intValue]];
                                                        }];
         if (checked) [action setValue:@YES forKey:@"checked"];
         [sheet addAction:action];
     }
+    BOOL fullKeyboard = [config[@"kb"] intValue] != 0;
+    UIAlertAction *keypad = [UIAlertAction
+            actionWithTitle:(fullKeyboard ? @"Bàn phím: đầy đủ (có số)"
+                                          : @"Bàn phím: 3 × 3 (gọn)")
+                      style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        [self setConfig:file
+                                      w:[config[@"w"] intValue]
+                                      h:[config[@"h"] intValue]
+                                    fps:[config[@"fps"] intValue]
+                                     kb:(fullKeyboard ? 0 : 1)
+                                  turbo:[config[@"turbo"] intValue]];
+                    }];
+    [sheet addAction:keypad];
+
+    BOOL turbo = [config[@"turbo"] intValue] != 0;
+    UIAlertAction *turbAction = [UIAlertAction
+            actionWithTitle:(turbo ? @"Turbo khi giữ OK: bật" : @"Turbo khi giữ OK: tắt")
+                      style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        [self setConfig:file
+                                      w:[config[@"w"] intValue]
+                                      h:[config[@"h"] intValue]
+                                    fps:[config[@"fps"] intValue]
+                                     kb:[config[@"kb"] intValue]
+                                  turbo:(turbo ? 0 : 1)];
+                    }];
+    [sheet addAction:turbAction];
+
     [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = self.view;
     [self presentViewController:sheet animated:YES completion:nil];
 }
 
-- (void)setConfig:(NSString *)file w:(int)width h:(int)height fps:(int)fps {
-    rt_store_game_config(file, @{@"w": @(width), @"h": @(height), @"fps": @(fps)});
+- (void)setConfig:(NSString *)file w:(int)width h:(int)height fps:(int)fps
+               kb:(int)kb turbo:(int)turbo {
+    rt_store_game_config(file, @{@"w": @(width), @"h": @(height), @"fps": @(fps),
+                                 @"kb": @(kb), @"turbo": @(turbo)});
     [self reloadGames];
 }
 

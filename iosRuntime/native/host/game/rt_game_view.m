@@ -23,6 +23,17 @@ static const int rt_keypad_keys[] = {
     '*', RT_KEY_DOWN, '#',
 };
 
+// Digits stay out of the compact pad because the arrows and fire cover menu
+// navigation; games that ask for numbers get this full layout instead.
+static const int rt_keypad_full_keys[] = {
+    RT_KEY_SOFT1, RT_KEY_UP, RT_KEY_SOFT2,
+    RT_KEY_LEFT, RT_KEY_FIRE, RT_KEY_RIGHT,
+    '1', '2', '3',
+    '4', '5', '6',
+    '7', '8', '9',
+    '*', '0', '#',
+};
+
 static const int rt_keypad_cols = 3;
 
 // ---------------------------------------------------------------- game view
@@ -165,6 +176,7 @@ static const int rt_keypad_cols = 3;
 @property(nonatomic, strong) UIStackView *column;
 @property(nonatomic, strong) NSMutableArray<RTKeyButton *> *buttons;
 @property(nonatomic, strong) UIImpactFeedbackGenerator *haptic;
+@property(nonatomic, strong) NSTimer *turboTimer;
 @end
 
 @implementation RTKeypadView
@@ -201,8 +213,10 @@ static const int rt_keypad_cols = 3;
     }
     [self.buttons removeAllObjects];
 
-    const int *keys = rt_keypad_keys;
-    int total = (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
+    const int *keys = self.fullKeyboard ? rt_keypad_full_keys : rt_keypad_keys;
+    int total = self.fullKeyboard
+                ? (int) (sizeof(rt_keypad_full_keys) / sizeof(rt_keypad_full_keys[0]))
+                : (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
 
     for (int row = 0; row * rt_keypad_cols < total; row++) {
         UIStackView *line = [[UIStackView alloc] init];
@@ -272,10 +286,41 @@ static const int rt_keypad_cols = 3;
     [self.haptic prepare];
     [self.haptic impactOccurred];
     j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, button.midpKeyCode);
+    if (button.midpKeyCode == RT_KEY_FIRE && self.turboEnabled) {
+        [self.turboTimer invalidate];
+        self.turboTimer = [NSTimer scheduledTimerWithTimeInterval:0.08
+                                                          target:self
+                                                        selector:@selector(turboTick:)
+                                                        userInfo:@(button.midpKeyCode)
+                                                         repeats:YES];
+    }
+}
+
+- (void)turboTick:(NSTimer *)timer {
+    int key = [timer.userInfo intValue];
+    // A full pulse, so games that only look at keyPressed still see the repeat.
+    j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, key);
+    j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, key);
 }
 
 - (void)keyUp:(RTKeyButton *)button {
+    [self.turboTimer invalidate];
+    self.turboTimer = nil;
     j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, button.midpKeyCode);
+}
+
+- (void)setFullKeyboard:(BOOL)fullKeyboard {
+    if (_fullKeyboard == fullKeyboard) return;
+    _fullKeyboard = fullKeyboard;
+    [self rebuild];
+}
+
+- (CGFloat)preferredHeight {
+    return self.fullKeyboard ? 340 : 190;
+}
+
+- (void)dealloc {
+    [_turboTimer invalidate];
 }
 
 @end

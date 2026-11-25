@@ -49,6 +49,8 @@ static double rt_now(void) {
 @property(nonatomic) int height;
 @property(nonatomic) int fpsLimit;
 @property(nonatomic) BOOL running;
+@property(nonatomic) BOOL fullKeyboard;
+@property(nonatomic) BOOL turbo;
 @property(nonatomic) CGImageRef lastImage;
 @end
 
@@ -87,6 +89,7 @@ static double rt_now(void) {
 @property(nonatomic, strong) UITextField *keyboardField;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
+@property(nonatomic, strong) NSLayoutConstraint *keypadHeight;
 
 @property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
 @property(nonatomic) int focusedSlot;
@@ -353,13 +356,15 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         [self.keypadContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.keypadContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [self.keypadContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [self.keypadContainer.heightAnchor constraintEqualToConstant:190],
 
         [self.keypad.topAnchor constraintEqualToAnchor:self.keypadContainer.topAnchor],
         [self.keypad.leadingAnchor constraintEqualToAnchor:self.keypadContainer.leadingAnchor],
         [self.keypad.trailingAnchor constraintEqualToAnchor:self.keypadContainer.trailingAnchor],
         [self.keypad.bottomAnchor constraintEqualToAnchor:self.keypadContainer.bottomAnchor],
     ]];
+
+    self.keypadHeight = [self.keypadContainer.heightAnchor constraintEqualToConstant:190];
+    self.keypadHeight.active = YES;
 
     self.statusPill.hidden = NO;
     [self updateStatus];
@@ -528,7 +533,8 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 }
 
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
-           fps:(int)fpsLimit title:(NSString *)title {
+           fps:(int)fpsLimit title:(NSString *)title
+  fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo {
     int slot = -1;
     for (int candidate = 0; candidate < JVM_BRIDGE_MAX_SLOTS; candidate++) {
         if (![self sessionForSlot:candidate]) {
@@ -547,11 +553,23 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.width = width > 0 ? width : g_width;
     session.height = height > 0 ? height : g_height;
     session.fpsLimit = fpsLimit;
+    session.fullKeyboard = fullKeyboard;
+    session.turbo = turbo;
     session.running = YES;
     [self.sessions addObject:session];
     [self focusSlot:slot];
     [self startSession:session];
     return slot;
+}
+
+- (void)applySessionControls:(RTGameSession *)session {
+    // The pad layout and turbo switch are shared by every tab, so they follow
+    // the focused session instead of being duplicated per game.
+    self.keypad.fullKeyboard = session ? session.fullKeyboard : NO;
+    self.keypad.turboEnabled = session ? session.turbo : NO;
+    self.keypadHeight.constant = self.keypad.preferredHeight;
+    printf("[RT] keypad full=%d turbo=%d\n", self.keypad.fullKeyboard, self.keypad.turboEnabled);
+    fflush(stdout);
 }
 
 - (void)startSession:(RTGameSession *)session {
@@ -615,6 +633,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     self.gameView.canvasWidth = session.width;
     self.gameView.canvasHeight = session.height;
     self.gameView.currentImage = session.lastImage;
+    [self applySessionControls:session];
     [self updateStatus];
     rt_form_ui_present(j2me_ui_get_slot_active_action(slot));
     [self rebuildTabs];
@@ -695,11 +714,15 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     if (self.sessions.count == 0 && (self.jarPath.length || (g_midlet_jar && g_midlet_jar[0]))) {
         NSString *jar = self.jarPath.length ? self.jarPath : @(g_midlet_jar);
+        int kb = getenv("RT_FULL_KEYBOARD") ? 1 : 0;
+        int turbo = getenv("RT_TURBO") ? 1 : 0;
         [self addGame:jar
                 width:self.canvasWidth > 0 ? self.canvasWidth : g_width
                height:self.canvasHeight > 0 ? self.canvasHeight : g_height
                   fps:self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit
-                title:nil];
+                title:nil
+         fullKeyboard:kb
+                turbo:turbo];
     }
 
     if (getenv("RT_SYSTEM_KEYBOARD")) {
@@ -949,7 +972,7 @@ int rt_host_running_count(void) {
 }
 
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
-                     const char *title) {
+                     const char *title, int full_keyboard, int turbo) {
     if (!jar_path || !jar_path[0]) return;
     NSString *jar = @(jar_path);
     NSString *name = (title && title[0]) ? @(title) : jar.lastPathComponent;
@@ -960,7 +983,8 @@ void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
             host.showsBackButton = YES;
             g_controller = host;
         }
-        [host addGame:jar width:width height:height fps:fps_limit title:name];
+        [host addGame:jar width:width height:height fps:fps_limit title:name
+      fullKeyboard:full_keyboard turbo:turbo];
         UINavigationController *nav = rt_active_navigation_controller();
         if (nav && ![nav.viewControllers containsObject:host]) {
             [nav pushViewController:host animated:YES];

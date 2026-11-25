@@ -57,7 +57,7 @@ NSDictionary *rt_game_config(NSString *file) {
     if (config) {
         return config;
     }
-    return @{@"w": @240, @"h": @320, @"fps": @0};
+    return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0};
 }
 
 void rt_store_game_config(NSString *file, NSDictionary *config) {

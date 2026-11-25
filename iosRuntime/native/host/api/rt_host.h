@@ -25,9 +25,10 @@ void *rt_host_controller(void);
 int rt_host_running_count(void);
 
 /// Launch a title as a new tab: adds it to the shared host and pushes that host
-/// onto the library's navigation stack.
+/// onto the library's navigation stack. `full_keyboard` selects the digit pad
+/// and `turbo` makes a held fire key repeat.
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
-                     const char *title);
+                     const char *title, int full_keyboard, int turbo);
 
 #ifdef __cplusplus
 }
