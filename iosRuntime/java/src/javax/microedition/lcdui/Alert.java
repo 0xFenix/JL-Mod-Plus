@@ -15,6 +15,16 @@ public class Alert extends Screen {
     public static final int FOREVER = -2;
     public static final Command DISMISS_COMMAND = new Command("OK", Command.OK, 0);
 
+    /**
+     * Used until the MIDlet installs its own listener. Real handsets dismiss an
+     * alert whose command has no listener, so a title-only alert still closes.
+     */
+    private static final CommandListener DEFAULT_LISTENER = new CommandListener() {
+        public void commandAction(Command c, Displayable d) {
+            ((Alert) d).dismiss();
+        }
+    };
+
     private String text;
     private Image image;
     private AlertType type;
@@ -28,6 +38,36 @@ public class Alert extends Screen {
         this.text = alertText;
         this.image = alertImage;
         this.type = alertType;
+        super.addCommand(DISMISS_COMMAND);
+        super.setCommandListener(DEFAULT_LISTENER);
+    }
+
+    @Override
+    public void addCommand(Command cmd) {
+        if (cmd == DISMISS_COMMAND) return;
+        super.addCommand(cmd);
+        super.removeCommand(DISMISS_COMMAND);
+    }
+
+    @Override
+    public void removeCommand(Command cmd) {
+        if (cmd == DISMISS_COMMAND) return;
+        super.removeCommand(cmd);
+        if (getCommands().isEmpty()) super.addCommand(DISMISS_COMMAND);
+    }
+
+    @Override
+    public void setCommandListener(CommandListener listener) {
+        super.setCommandListener(listener != null ? listener : DEFAULT_LISTENER);
+    }
+
+    /** Show the displayable the alert was opened over, as a handset does. */
+    private void dismiss() {
+        Display display = Display.getDisplay(null);
+        if (display.getCurrent() != this) return;
+        Displayable next = nextDisplayable;
+        nextDisplayable = null;
+        if (next != null) display.setCurrent(next);
     }
 
     public String getString() { return text; }
@@ -46,14 +86,9 @@ public class Alert extends Screen {
         NativeBridge.formBegin(getTitle(), 2); // type 2 = alert
         NativeBridge.setAlertText(text != null ? text : "", timeout);
         java.util.ArrayList<Command> cmds = getCommands();
-        if (cmds.isEmpty()) {
-            NativeBridge.formAddCommand(DISMISS_COMMAND.getLabel(),
-                    DISMISS_COMMAND.getCommandType(), DISMISS_COMMAND.getPriority(), 0);
-        } else {
-            for (int i = 0; i < cmds.size(); i++) {
-                Command c = cmds.get(i);
-                NativeBridge.formAddCommand(c.getLabel(), c.getCommandType(), c.getPriority(), i);
-            }
+        for (int i = 0; i < cmds.size(); i++) {
+            Command c = cmds.get(i);
+            NativeBridge.formAddCommand(c.getLabel(), c.getCommandType(), c.getPriority(), i);
         }
         NativeBridge.formShow();
     }

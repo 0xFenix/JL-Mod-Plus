@@ -492,6 +492,32 @@ separated, commands visible below.
 One vendored accessor was added for this (`List`, `NativeBridge.java`,
 `j2me_ui.m/.h`), because a host-only guess cannot know the guest's selection.
 
+### 26. Alert commands behave like a phone — 2026-11-26
+
+`Alert` used to be a dead end: the host drew its text with one hardcoded `OK`
+button that posted `J2ME_UI_ALERT_DISMISSED`, so a MIDlet's own alert commands
+were never rendered and its `CommandListener.commandAction` never ran.
+
+Now the Java side follows J2ME-Loader's `Alert`: the implicit
+`DISMISS_COMMAND` is present from construction, `addCommand` drops it as soon
+as the MIDlet adds a real command and `removeCommand` puts it back when the
+list empties, and `setCommandListener(null)` installs a default listener that
+dismisses to the displayable given to `Display.setCurrent(alert, next)`.
+
+The host renders the alert title and text, then reuses the normal command
+buttons, so a tap posts `J2ME_UI_COMMAND_ACTION` with the alert's real command
+id and `Display` fires `commandAction` on the alert like any other
+`Displayable`. The old `J2ME_UI_ALERT_DISMISSED` branch and the
+`dismissAlert:` button are gone.
+
+Verified on the simulator with `test/AlertProbe.java`: log shows
+`[ALERT] confirm commands=2`, `[ALERT] silent commands=1`,
+`[ALERT] commandAction label=Đồng ý on=javax.microedition.lcdui.Alert`, then
+the implicit-dismiss alert closes silently and
+`[ALERT] commandAction label=Đóng on=javax.microedition.lcdui.Form`; the
+screenshot shows the title, body, amber `Đồng ý` at full width and `Để sau` at
+half width. Alert timeouts and the indicator gauge are still not implemented.
+
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 
 A List with more items than fit used to grow the panel until the command

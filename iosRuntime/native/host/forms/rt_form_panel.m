@@ -213,12 +213,20 @@ static void (*g_visibility_callback)(int visible) = NULL;
     if (action == J2ME_UI_ACTION_SHOW_ALERT) {
         UIView *card = [self makeCard];
         UIStackView *stack = [self makeCardStack:card];
+        const char *title = j2me_ui_get_form_title();
+        if (title && title[0]) {
+            [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
+        }
         const char *text = j2me_ui_get_alert_text();
         [stack addArrangedSubview:[self makeBodyLabel:(text ? @(text) : @"")]];
-        UIButton *ok = [self makePrimaryButton:@"OK" action:@selector(dismissAlert:)];
-        [stack addArrangedSubview:ok];
-        [stack setCustomSpacing:16 afterView:stack.arrangedSubviews[0]];
+        if (stack.arrangedSubviews.count > 1) {
+            [stack setCustomSpacing:14 afterView:stack.arrangedSubviews[stack.arrangedSubviews.count - 2]];
+        }
         [self.stackView addArrangedSubview:card];
+        // Commands go through the same buttons as forms and lists, so a tap
+        // posts J2ME_UI_COMMAND_ACTION with the command's real id instead of a
+        // hardcoded dismiss.
+        [self addCommandButtons];
         return;
     }
 
@@ -675,11 +683,6 @@ static BOOL rt_command_is_primary_type(int type) {
     j2me_input_post_ui_event(J2ME_UI_LIST_SELECT, (int) sender.tag);
 }
 
-- (void)dismissAlert:(UIButton *)sender {
-    (void)sender;
-    j2me_input_post_ui_event(J2ME_UI_ALERT_DISMISSED, 0);
-}
-
 - (void)acceptTextBox:(UIButton *)sender {
     (void)sender;
     for (UIView *view in self.stackView.arrangedSubviews) {
@@ -762,4 +765,5 @@ void rt_form_ui_present(int action) {
     [host bringSubviewToFront:g_panel];
     [g_panel rebuildForAction:action];
     if (g_visibility_callback) g_visibility_callback(1);
+
 }

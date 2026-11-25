@@ -149,11 +149,19 @@ option rows, command buttons). Choices are tappable: the option list is
 serialized into the item text by `Form.showNative`, so a tap rewrites that
 text through `j2me_ui_set_form_item_text` and `Form.syncFromNative` picks up
 the selection when a command fires. UI events travel back through
-`j2me_input_post_ui_event` (command action, list select, alert dismissed,
-list set index). Verified on the simulator with
+`j2me_input_post_ui_event` (command action, list select, list set index).
+Alerts follow MIDP the way J2ME Loader does it: `Alert` keeps the implicit
+`DISMISS_COMMAND` while it has no commands of its own, a command tap fires
+`commandAction` on the guest's `CommandListener` exactly like a form button,
+and an alert whose listener was never replaced dismisses itself to the
+displayable passed to `Display.setCurrent(alert, next)`. Verified on the
+simulator with
 `test/FormProbe.java` (`./scripts/make-test-jar.sh test/form-probe.mf`):
 the login Form with a password field and a two-option ChoiceGroup, the
-TextBox, the List, and the Alert all render, and the same run covers the
+TextBox, the List, and the Alert all render, and `test/AlertProbe.java`
+(`./scripts/make-test-jar.sh test/alert-probe.mf`) prints the fired command
+labels and shows the implicit dismiss returning to its next displayable. The
+same run covers the
 Canvas screen with `Avatar_LAPRO`.
 
 `scripts/audit-natives.sh` compares every `native` declaration in

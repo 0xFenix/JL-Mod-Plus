@@ -15,6 +15,7 @@ case "$MANIFEST" in
     *form-probe.mf) OUT="$ROOT/build/form-probe.jar" ;;
     *command-probe.mf) OUT="$ROOT/build/command-probe.jar" ;;
     *list-probe.mf) OUT="$ROOT/build/list-probe.jar" ;;
+    *alert-probe.mf) OUT="$ROOT/build/alert-probe.jar" ;;
     *http-probe.mf) OUT="$ROOT/build/http-probe.jar" ;;
     *file-probe.mf) OUT="$ROOT/build/file-probe.jar" ;;
     *) OUT="$ROOT/build/test.jar" ;;
