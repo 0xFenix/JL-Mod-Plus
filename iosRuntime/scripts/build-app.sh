@@ -137,12 +137,29 @@ cat > "$APP/Info.plist" <<PLIST
   <key>NSLocalNetworkUsageDescription</key><string>Kết nối tới máy chủ game trong mạng nội bộ.</string>
   <key>UIFileSharingEnabled</key><true/>
   <key>LSSupportsOpeningDocumentsInPlace</key><true/>
-  <key>CFBundleDocumentTypes</key><array><dict>
-    <key>CFBundleTypeName</key><string>JAR</string>
-    <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
-    <key>LSHandlerRank</key><string>Alternate</string>
-    <key>LSItemContentTypes</key><array><string>com.pkware.zip-archive</string></array>
+  <key>UTImportedTypeDeclarations</key><array><dict>
+    <key>UTTypeIdentifier</key><string>io.github.0xfenix.jlmodplus.jar</string>
+    <key>UTTypeDescription</key><string>J2ME Application</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string><string>com.pkware.zip-archive</string></array>
+    <key>UTTypeTagSpecification</key><dict>
+      <key>public.filename-extension</key><array><string>jar</string></array>
+      <key>public.mime-type</key><array><string>application/java-archive</string></array>
+    </dict>
   </dict></array>
+  <key>CFBundleDocumentTypes</key><array>
+    <dict>
+      <key>CFBundleTypeName</key><string>J2ME Application</string>
+      <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>LSItemContentTypes</key><array><string>io.github.0xfenix.jlmodplus.jar</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>JAR archive</string>
+      <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>LSItemContentTypes</key><array><string>com.pkware.zip-archive</string></array>
+    </dict>
+  </array>
 </dict></plist>
 PLIST
 

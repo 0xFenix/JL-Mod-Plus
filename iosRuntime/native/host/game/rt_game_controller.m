@@ -87,6 +87,7 @@ static double rt_now(void) {
 @property(nonatomic, strong) UIButton *fpsButton;
 @property(nonatomic, strong) UIButton *tabsButton;
 @property(nonatomic, strong) UIButton *keyboardButton;
+@property(nonatomic, strong) UIButton *aboutButton;
 @property(nonatomic, strong) UITextField *keyboardField;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
@@ -209,6 +210,20 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                   forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.keyboardButton];
 
+    // J2ME games cannot use the App Store review flow, so the credit lives in
+    // the game chrome where it is always reachable.
+    self.aboutButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.aboutButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.aboutButton.tintColor = rt_color_text_secondary();
+    self.aboutButton.accessibilityLabel = @"Giới thiệu";
+    [self.aboutButton setImage:[[UIImage systemImageNamed:@"exclamationmark.circle"]
+            imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                      forState:UIControlStateNormal];
+    [self.aboutButton addTarget:self
+                         action:@selector(showAbout:)
+               forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.aboutButton];
+
     // Off-screen responder that owns the system keyboard; it never shows text
     // itself, it only forwards keystrokes to the MIDlet.
     self.keyboardField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
@@ -316,7 +331,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         [self.backButton.widthAnchor constraintEqualToConstant:44],
         [self.backButton.heightAnchor constraintEqualToConstant:44],
 
-        [self.fpsButton.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor constant:-4],
+        [self.aboutButton.trailingAnchor constraintEqualToAnchor:self.topBar.trailingAnchor constant:-4],
+        [self.aboutButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.aboutButton.widthAnchor constraintEqualToConstant:40],
+        [self.aboutButton.heightAnchor constraintEqualToConstant:40],
+
+        [self.fpsButton.trailingAnchor constraintEqualToAnchor:self.aboutButton.leadingAnchor constant:-2],
         [self.fpsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
         [self.fpsButton.widthAnchor constraintEqualToConstant:44],
         [self.fpsButton.heightAnchor constraintEqualToConstant:44],
@@ -640,6 +660,22 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self rebuildTabs];
 }
 
+- (void)showAbout:(id)sender {
+    (void) sender;
+    NSString *message = @"Ứng dụng: JL-Next\n"
+                        @"Người làm: Trần Đức Huy\n\n"
+                        @"Thành phần bên thứ ba:\n"
+                        @"• J2ME Loader\n"
+                        @"• miniJVM";
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Giới thiệu"
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Đóng"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)closeSlot:(int)slot {
     RTGameSession *session = [self sessionForSlot:slot];
     if (!session) {
@@ -748,6 +784,13 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         }
     }
 
+    if (getenv("RT_SHOW_ABOUT")) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+                           [self showAbout:nil];
+                       });
+    }
+
     if (getenv("RT_SYNTH_INPUT")) {
         [self scheduleSyntheticEvents];
     }
@@ -815,13 +858,36 @@ static int g_shell_mode = 0;
 @property(nonatomic, strong) UIWindow *window;
 @end
 
+static void rt_handle_open_urls(NSSet<UIOpenURLContext *> *contexts, UIWindow *window) {
+    if (contexts.count == 0) {
+        return;
+    }
+    BOOL imported = NO;
+    for (UIOpenURLContext *context in contexts) {
+        NSURL *url = context.URL;
+        if (!url.isFileURL) {
+            continue;
+        }
+        if (rt_import_jar_path(url.path.UTF8String)) {
+            imported = YES;
+        }
+    }
+    if (imported && [window.rootViewController isKindOfClass:[UINavigationController class]]) {
+        [(UINavigationController *) window.rootViewController popToRootViewControllerAnimated:YES];
+    }
+}
+
 @implementation RTSceneDelegate
+
+- (void)scene:(UIScene *)scene
+        openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
+    rt_handle_open_urls(URLContexts, self.window);
+}
 
 - (void)scene:(UIScene *)scene
         willConnectToSession:(UISceneSession *)session
         options:(UISceneConnectionOptions *)connectionOptions {
     (void)session;
-    (void)connectionOptions;
     if (![scene isKindOfClass:[UIWindowScene class]]) return;
     UIWindow *window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *) scene];
     UIViewController *root = nil;
@@ -835,6 +901,9 @@ static int g_shell_mode = 0;
     window.rootViewController = root;
     [window makeKeyAndVisible];
     self.window = window;
+    // A JAR opened from Files before the scene existed arrives here, not in
+    // scene:openURLContexts:.
+    rt_handle_open_urls(connectionOptions.URLContexts, window);
 }
 
 @end

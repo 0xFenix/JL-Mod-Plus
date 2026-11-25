@@ -223,6 +223,10 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(gamesChanged:)
+                                                 name:@"RTGamesChanged"
+                                               object:nil];
     self.title = @"Trò chơi";
     self.view.backgroundColor = rt_color_ink();
     self.tableView.backgroundColor = rt_color_ink();
@@ -300,9 +304,22 @@
     // rescans on every appearance instead.
 }
 
+- (void)gamesChanged:(NSNotification *)note {
+    (void) note;
+    [self reloadGames];
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reloadGames];
+    static BOOL openedOnce = NO;
+    const char *open_path = getenv("RT_OPEN_JAR");
+    if (!openedOnce && open_path && open_path[0]) {
+        openedOnce = YES;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            rt_import_jar_path(open_path);
+        });
+    }
     static BOOL autoLaunched = NO;
     if (!autoLaunched && getenv("RT_AUTOLAUNCH") && self.games.count > 0) {
         autoLaunched = YES;
@@ -737,6 +754,52 @@
 }
 
 @end
+
+int rt_import_jar_path(const char *path) {
+    if (!path || !path[0]) {
+        return 0;
+    }
+    NSString *source = @(path);
+    if (![[source.pathExtension lowercaseString] isEqualToString:@"jar"]) {
+        return 0;
+    }
+    char *dir_c = rt_games_directory();
+    NSString *dir = @(dir_c);
+    free(dir_c);
+    if (!dir) {
+        return 0;
+    }
+
+    NSString *base = source.lastPathComponent.stringByDeletingPathExtension;
+    NSString *destination = [dir stringByAppendingPathComponent:source.lastPathComponent];
+    for (int n = 2; [[NSFileManager defaultManager] fileExistsAtPath:destination]; n++) {
+        destination = [dir stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"%@ %d.jar", base, n]];
+    }
+
+    // Files hands over a security-scoped URL; the copy only works inside the
+    // scope, and a failure here is the usual cause of an "import does nothing"
+    // report.
+    NSURL *source_url = [NSURL fileURLWithPath:source];
+    BOOL scoped = [source_url startAccessingSecurityScopedResource];
+    NSError *error = nil;
+    BOOL copied = [[NSFileManager defaultManager] copyItemAtURL:source_url
+                                                         toURL:[NSURL fileURLWithPath:destination]
+                                                         error:&error];
+    if (scoped) {
+        [source_url stopAccessingSecurityScopedResource];
+    }
+    if (!copied) {
+        NSLog(@"[RT] open-in import failed: %@", error);
+        return 0;
+    }
+    printf("[RT] imported %s -> %s\n", path, destination.UTF8String);
+    fflush(stdout);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"RTGamesChanged" object:nil];
+    });
+    return 1;
+}
 
 void *rt_shell_root_controller(void) {
     RTLibraryViewController *library = [[RTLibraryViewController alloc] initWithStyle:UITableViewStyleInsetGrouped];

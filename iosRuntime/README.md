@@ -218,6 +218,22 @@ and `turbo`) and follow the focused tab, because one keypad serves every
 session. `RT_FULL_KEYBOARD=1` and `RT_TURBO=1` set the same flags for
 scripted single-game runs.
 
+## Opening JARs from Files
+
+The app declares a `jar` document type and an imported UTI
+(`io.github.0xfenix.jlmodplus.jar`, conforming to `public.data`), with a second
+alternate entry for `com.pkware.zip-archive` so the app also appears when iOS
+classifies a JAR as a plain archive. Tapping a JAR in Files (or choosing
+**JL-Next** in its share sheet) hands the file URL to
+`scene:openURLContexts:`; `rt_import_jar_path()` copies it into
+`Documents/games` under a non-clashing name (respecting the security-scoped
+URL) and posts `RTGamesChanged`, so the library rescans and pops back to the
+game list. A cold launch through the same path is handled in
+`scene:willConnectToSession:`.
+
+The game top bar also carries an `!` button that opens the About sheet: app
+name, author and the third-party components (J2ME Loader, miniJVM).
+
 ## Background keep-alive
 
 A J2ME title keeps one TCP socket open for the whole session, and iOS suspends

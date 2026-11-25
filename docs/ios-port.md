@@ -374,3 +374,25 @@ connection to its server was `ESTABLISHED` before the close and gone entirely
 after `Destroying slot 0 JVM`, while single-session play still runs at
 ~18.6 fps.
 
+### 18. Files share sheet and About sheet — 2026-11-25
+
+The app registers itself as a handler for JAR files: an imported UTI
+`io.github.0xfenix.jlmodplus.jar` (conforming to `public.data` and
+`com.pkware.zip-archive`, extension `jar`) is declared as the owner type, plus
+an alternate `com.pkware.zip-archive` document type so the app still appears
+when iOS treats the file as a plain archive. `scene:openURLContexts:` and the
+cold-start `scene:willConnectToSession:` both route file URLs through
+`rt_import_jar_path()`, which copies into `Documents/games` with a
+non-clashing name, honours the security-scoped URL, and posts
+`RTGamesChanged` so the visible library rescans and pops to the game list.
+
+The game chrome gained an `!` button next to the FPS toggle; it presents the
+About alert (app name, author Trần Đức Huy, third-party credits J2ME Loader and
+miniJVM).
+
+Verification on the simulator: launching with `RT_OPEN_JAR=/tmp/rotate2.jar`
+copied the file into `Documents/games/rotate2.jar` and the library listed it as
+"Avatar" (6 titles, screenshot read); `RT_SHOW_ABOUT=1` produced the About
+alert over the running game (screenshot read); a normal library launch shows
+the top bar with back chevron, title, keyboard, speedometer and `!`
+(screenshot read).
