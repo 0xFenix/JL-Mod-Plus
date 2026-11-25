@@ -257,10 +257,13 @@ the rows scroll. `test/ListProbe.java` (30 items) is the fixture
 A MIDlet may attach any number of commands to a form or list. The types a
 handset always keeps on screen — OK, Back, Cancel, Exit — stay as buttons: OK
 (or the first of them) takes the amber full-width slot, the rest sit two per
-row at half width (a lone button stays half width). Everything else hides
-behind a `Tùy chọn (n)` button that opens
+row at half width with 10 pt gaps (a lone button stays half width). Everything
+else hides behind a `Tùy chọn (n)` half-width button that shares the last row
+and opens
 an action sheet, the way J2ME Loader does it. A screen with only ordinary
 commands keeps the earlier rule (one command = a button, several = a menu).
+List rows are separate 44 pt targets with a 6 pt gap, and the selected row is
+tinted amber so it stands apart from the rest; it follows taps and long-presses.
 Long-pressing a list row selects that row and offers every command. Commands
 still fire as `J2ME_UI_COMMAND_ACTION` with their original id, so the MIDlet
 cannot tell the difference. `test/CommandProbe.java` (OK/Back/Cancel/Exit plus

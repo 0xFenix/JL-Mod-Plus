@@ -25,6 +25,8 @@ enum {
 @interface RTFormPanel : UIView <UITextFieldDelegate>
 @property(nonatomic, strong) UIScrollView *scrollView;
 @property(nonatomic, strong) UIStackView *stackView;
+@property(nonatomic, strong) NSMutableArray<UIButton *> *listRows;
+@property(nonatomic) NSInteger listSelectedIndex;
 - (void)rebuildForAction:(int)action;
 @end
 
@@ -40,6 +42,8 @@ static void (*g_visibility_callback)(int visible) = NULL;
         // A MIDP screen replaces the canvas, so the panel dims rather than
         // hides what is behind it and reads as a sheet over the game.
         self.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+        _listRows = [NSMutableArray array];
+        _listSelectedIndex = 0;
 
         _scrollView = [[UIScrollView alloc] initWithFrame:self.bounds];
         _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -255,6 +259,7 @@ static void (*g_visibility_callback)(int visible) = NULL;
         UIStackView *listStack = [[UIStackView alloc] init];
         listStack.translatesAutoresizingMaskIntoConstraints = NO;
         listStack.axis = UILayoutConstraintAxisVertical;
+        listStack.spacing = 6;
         [listScroll addSubview:listStack];
         [NSLayoutConstraint activateConstraints:@[
             [listStack.leadingAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.leadingAnchor],
@@ -271,17 +276,20 @@ static void (*g_visibility_callback)(int visible) = NULL;
         fit.active = YES;
 
         int count = j2me_ui_get_list_item_count();
+        if (self.listSelectedIndex < 0 || self.listSelectedIndex >= count) {
+            self.listSelectedIndex = 0;
+        }
+        [self.listRows removeAllObjects];
         for (int i = 0; i < count; i++) {
-            if (listStack.arrangedSubviews.count > 0) {
-                [self addSeparatorToStack:listStack after:nil];
-            }
             const char *item = j2me_ui_get_list_item(i);
             NSString *titleText = item ? @(item) : @"";
             if (j2me_ui_is_list_item_running(i)) {
                 titleText = [titleText stringByAppendingString:@"  ▶"];
             }
-            UIButton *row = [self makeListRowWithTitle:titleText];
+            UIButton *row = [self makeListRowWithTitle:titleText
+                                              selected:(i == self.listSelectedIndex)];
             row.tag = i;
+            [self.listRows addObject:row];
             [row addTarget:self action:@selector(selectListRow:) forControlEvents:UIControlEventTouchUpInside];
             // Long-pressing an item opens the command menu, like a handset's
             // context menu; the tapped row becomes the selected one first.
@@ -381,18 +389,31 @@ static void (*g_visibility_callback)(int visible) = NULL;
     return row;
 }
 
-- (UIButton *)makeListRowWithTitle:(NSString *)title {
+- (UIButton *)makeListRowWithTitle:(NSString *)title selected:(BOOL)selected {
     UIButton *row = [UIButton buttonWithType:UIButtonTypeSystem];
     row.translatesAutoresizingMaskIntoConstraints = NO;
     [row setTitle:title ?: @"" forState:UIControlStateNormal];
-    [row setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
-    row.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-            scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightRegular]];
     row.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
-    row.contentEdgeInsets = UIEdgeInsetsMake(0, 4, 0, 4);
+    row.contentEdgeInsets = UIEdgeInsetsMake(0, 12, 0, 12);
+    row.layer.cornerRadius = 10.0;
+    row.layer.cornerCurve = kCACornerCurveContinuous;
     [row.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    [self styleListRow:row selected:selected];
     return row;
+}
+
+// The selected row keeps the accent so it stands out from the rest of the
+// list, the way a handset highlights the current item.
+- (void)styleListRow:(UIButton *)row selected:(BOOL)selected {
+    [row setTitleColor:(selected ? rt_color_accent() : rt_color_text_primary())
+              forState:UIControlStateNormal];
+    row.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:16
+                                               weight:(selected ? UIFontWeightSemibold
+                                                                : UIFontWeightRegular)]];
+    row.backgroundColor = selected
+            ? [rt_color_accent() colorWithAlphaComponent:0.16] : [UIColor clearColor];
 }
 
 - (void)addChoiceGroupForItem:(int)itemIndex label:(NSString *)labelText text:(NSString *)valueText inStack:(UIStackView *)stack {
@@ -546,6 +567,7 @@ static BOOL rt_command_is_primary_type(int type) {
 
     UIView *card = [self makeCard];
     UIStackView *stack = [self makeCardStack:card];
+    stack.spacing = 10;
 
     const char *primaryLabel = j2me_ui_get_command_label(primaryIndex);
     UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
@@ -553,36 +575,34 @@ static BOOL rt_command_is_primary_type(int type) {
     primary.tag = j2me_ui_get_command_id(primaryIndex);
     [stack addArrangedSubview:primary];
 
-    // Two buttons per row, so each keeps half the width instead of shrinking as
-    // commands are added.
-    if (outside.count > 0) {
-        UIStackView *row = nil;
-        for (NSUInteger i = 0; i < outside.count; i++) {
-            if (i % 2 == 0) {
-                row = [[UIStackView alloc] init];
-                row.axis = UILayoutConstraintAxisHorizontal;
-                row.distribution = UIStackViewDistributionFillEqually;
-                row.spacing = 10;
-                [stack addArrangedSubview:row];
-            }
+    // Soft commands and the options menu share the same two-column flow, so a
+    // lone button keeps half the width instead of stretching across the card.
+    NSUInteger slots = outside.count + (inside.count > 0 ? 1 : 0);
+    UIStackView *row = nil;
+    for (NSUInteger i = 0; i < slots; i++) {
+        if (i % 2 == 0) {
+            row = [[UIStackView alloc] init];
+            row.axis = UILayoutConstraintAxisHorizontal;
+            row.distribution = UIStackViewDistributionFillEqually;
+            row.spacing = 10;
+            [stack addArrangedSubview:row];
+        }
+        UIButton *button;
+        if (i < outside.count) {
             int index = outside[i].intValue;
             const char *label = j2me_ui_get_command_label(index);
-            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"")
-                                                  action:@selector(fireCommand:)];
+            button = [self makeSecondaryButton:(label ? @(label) : @"")
+                                        action:@selector(fireCommand:)];
             button.tag = j2me_ui_get_command_id(index);
-            [row addArrangedSubview:button];
-            if (i % 2 == 0 && i + 1 == outside.count) {
-                // Keep a lone button at half width instead of stretching it.
-                [row addArrangedSubview:[[UIView alloc] init]];
-            }
+        } else {
+            button = [self makeSecondaryButton:
+                    [NSString stringWithFormat:@"Tùy chọn (%lu)", (unsigned long) inside.count]
+                                       action:@selector(showCommandMenu:)];
         }
-    }
-
-    if (inside.count > 0) {
-        UIButton *menu = [self makeSecondaryButton:
-                [NSString stringWithFormat:@"Tùy chọn (%lu)", (unsigned long) inside.count]
-                                            action:@selector(showCommandMenu:)];
-        [stack addArrangedSubview:menu];
+        [row addArrangedSubview:button];
+        if (i % 2 == 0 && i + 1 == slots) {
+            [row addArrangedSubview:[[UIView alloc] init]];
+        }
     }
 
     [self.stackView addArrangedSubview:card];
@@ -640,7 +660,15 @@ static BOOL rt_command_is_primary_type(int type) {
     [self fireCommandId:(int) sender.tag];
 }
 
+- (void)setListSelection:(NSInteger)index {
+    self.listSelectedIndex = index;
+    for (UIButton *row in self.listRows) {
+        [self styleListRow:row selected:(row.tag == index)];
+    }
+}
+
 - (void)selectListRow:(UIButton *)sender {
+    [self setListSelection:sender.tag];
     j2me_input_post_ui_event(J2ME_UI_LIST_SELECT, (int) sender.tag);
 }
 
