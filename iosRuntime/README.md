@@ -157,14 +157,16 @@ game to the running host. `rt_game_store.m` owns the settings, names and
 save-directory bookkeeping.
 Each game keeps its own resolution/FPS settings and save directory.
 
-The host keeps several games running at once, one engine slot each. They are
-shown as tabs above the canvas; tapping a tab switches which slot receives
-input and renders to the screen, so a game keeps its state while another is
-played. `✕` stops and destroys that slot; when the last tab closes the host
-returns to the library, which then shows an `Đang chơi (n)` row to get back to
-running games. Only the focused slot is rendered to the screen, but every slot
-reports its frames (`[RT] slot N frames=…`), and each tab holds its latest
-frame so switching is instant.
+The host keeps several games running at once, one engine slot each. The top
+bar shows a `▢ n` button once more than one game runs; it opens
+`native/host/game/rt_tab_grid.m`, a window switcher with two columns and
+exactly two rows visible — four cards — and vertical scrolling beyond that.
+Each card shows the slot's latest frame and title. Tapping a card focuses that
+slot and returns to it; `✕` stops and destroys the slot in place. The focused
+card carries the amber border and the grid scrolls to it on open, so the active
+game is always visible. When the last card closes the host returns to the
+library, which then shows an `Đang chơi (n)` row. Only the focused slot renders
+to the screen, but every slot reports its frames (`[RT] slot N frames=…`).
 
 The library also shows the game's own icon — the one named in the `MIDlet-1`
 manifest field, extracted from the JAR and scaled with nearest-neighbour

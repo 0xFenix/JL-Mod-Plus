@@ -21,6 +21,7 @@
 #include "rt_theme.h"
 #include "rt_host.h"
 #include "rt_game_view.h"
+#include "rt_tab_grid.h"
 
 // ------------------------------------------------------------ runtime state
 
@@ -81,12 +82,7 @@ static double rt_now(void) {
 @property(nonatomic, strong) UIButton *backButton;
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIButton *fpsButton;
-@property(nonatomic, strong) UIScrollView *tabScroll;
-@property(nonatomic, strong) UIStackView *tabStack;
-/// Two placements for the tab strip: beside the title for one game, and using
-/// the whole bar once tabs need the room.
-@property(nonatomic, strong) NSLayoutConstraint *tabLeadingToTitle;
-@property(nonatomic, strong) NSLayoutConstraint *tabLeadingToBack;
+@property(nonatomic, strong) UIButton *tabsButton;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
 @property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
@@ -193,17 +189,14 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
              forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.fpsButton];
 
-    self.tabScroll = [[UIScrollView alloc] init];
-    self.tabScroll.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tabScroll.showsHorizontalScrollIndicator = NO;
-    [self.topBar addSubview:self.tabScroll];
-
-    self.tabStack = [[UIStackView alloc] init];
-    self.tabStack.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tabStack.axis = UILayoutConstraintAxisHorizontal;
-    self.tabStack.spacing = 8;
-    self.tabStack.alignment = UIStackViewAlignmentCenter;
-    [self.tabScroll addSubview:self.tabStack];
+    self.tabsButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.tabsButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tabsButton.tintColor = rt_color_text_secondary();
+    self.tabsButton.accessibilityLabel = @"Cửa sổ đang chạy";
+    [self.tabsButton addTarget:self
+                        action:@selector(showTabs:)
+              forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.tabsButton];
 
     // Canvas
     self.canvasContainer = [[UIView alloc] init];
@@ -257,11 +250,6 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     self.topBarHeight = [self.topBar.heightAnchor constraintEqualToConstant:0];
-    self.tabLeadingToTitle = [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.titleLabel.trailingAnchor
-                                                                         constant:8];
-    self.tabLeadingToBack = [self.tabScroll.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor
-                                                                        constant:4];
-    self.tabLeadingToTitle.active = YES;
     [NSLayoutConstraint activateConstraints:@[
         [self.topBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.topBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
@@ -295,17 +283,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:4],
         [self.titleLabel.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
-        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.fpsButton.leadingAnchor constant:-8],
+        [self.tabsButton.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-2],
+        [self.tabsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.tabsButton.heightAnchor constraintEqualToConstant:36],
 
-        [self.tabScroll.topAnchor constraintEqualToAnchor:self.topBar.topAnchor constant:4],
-        [self.tabScroll.bottomAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:-4],
-        [self.tabScroll.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-4],
-
-        [self.tabStack.leadingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.leadingAnchor constant:4],
-        [self.tabStack.trailingAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.trailingAnchor constant:-4],
-        [self.tabStack.topAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.topAnchor],
-        [self.tabStack.bottomAnchor constraintEqualToAnchor:self.tabScroll.contentLayoutGuide.bottomAnchor],
-        [self.tabStack.heightAnchor constraintEqualToAnchor:self.tabScroll.frameLayoutGuide.heightAnchor],
+        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.tabsButton.leadingAnchor
+                                                                 constant:-8],
 
         [self.canvasContainer.topAnchor constraintEqualToAnchor:self.topBar.bottomAnchor constant:12],
         [self.canvasContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:12],
@@ -376,84 +359,74 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 }
 
 - (void)rebuildTabs {
-    for (UIView *view in self.tabStack.arrangedSubviews) {
-        [self.tabStack removeArrangedSubview:view];
-        [view removeFromSuperview];
-    }
-    for (RTGameSession *session in self.sessions) {
-        UIView *tab = [[UIView alloc] init];
-        BOOL selected = session.slot == self.focusedSlot;
-        tab.backgroundColor = selected
-                ? [rt_color_accent() colorWithAlphaComponent:0.16]
-                : [UIColor colorWithWhite:1.0 alpha:0.06];
-        tab.layer.cornerRadius = 8.0;
-        tab.layer.cornerCurve = kCACornerCurveContinuous;
-        tab.clipsToBounds = YES;
-
-        UIButton *title = [UIButton buttonWithType:UIButtonTypeCustom];
-        title.translatesAutoresizingMaskIntoConstraints = NO;
-        NSString *tabTitle = session.title;
-        [title setTitle:tabTitle forState:UIControlStateNormal];
-        [title setTitleColor:selected ? rt_color_accent()
-                                     : (session.running ? rt_color_text_secondary() : rt_color_text_tertiary())
-                      forState:UIControlStateNormal];
-        title.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1]
-                scaledFontForFont:[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold]];
-        title.contentEdgeInsets = UIEdgeInsetsMake(4, 10, 4, 4);
-        title.tag = session.slot;
-        [title addTarget:self action:@selector(selectTab:) forControlEvents:UIControlEventTouchUpInside];
-        [tab addSubview:title];
-
-        UIButton *close = [UIButton buttonWithType:UIButtonTypeCustom];
-        close.translatesAutoresizingMaskIntoConstraints = NO;
-        [close setImage:[[UIImage systemImageNamed:@"xmark"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
-               forState:UIControlStateNormal];
-        close.tintColor = selected ? rt_color_accent() : rt_color_text_secondary();
-        close.backgroundColor = [UIColor clearColor];
-        close.tag = session.slot;
-        close.accessibilityLabel = @"Đóng";
-        [close addTarget:self action:@selector(closeTab:) forControlEvents:UIControlEventTouchUpInside];
-        [tab addSubview:close];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [title.leadingAnchor constraintEqualToAnchor:tab.leadingAnchor],
-            [title.topAnchor constraintEqualToAnchor:tab.topAnchor],
-            [title.bottomAnchor constraintEqualToAnchor:tab.bottomAnchor],
-
-            [close.leadingAnchor constraintEqualToAnchor:title.trailingAnchor],
-            [close.trailingAnchor constraintEqualToAnchor:tab.trailingAnchor constant:-2],
-            [close.centerYAnchor constraintEqualToAnchor:tab.centerYAnchor],
-            [close.widthAnchor constraintEqualToConstant:36],
-            [close.heightAnchor constraintEqualToConstant:36],
-        ]];
-        [self.tabStack addArrangedSubview:tab];
-    }
+    RTGameSession *focused = [self sessionForSlot:self.focusedSlot];
+    self.titleLabel.text = focused ? focused.title : @"";
 
     BOOL showBar = self.sessions.count > 1 || self.showsBackButton;
     BOOL showTabs = self.sessions.count > 1;
     self.topBar.hidden = !showBar;
     self.topBarHeight.constant = showBar ? 44 : 0;
-    self.tabScroll.hidden = !showTabs;
-    // With tabs on screen the focused title is redundant and steals the room
-    // the strip needs, so the strip takes the space beside the back button.
-    self.titleLabel.hidden = showTabs;
-    self.tabLeadingToTitle.active = !showTabs;
-    self.tabLeadingToBack.active = showTabs;
 
-    RTGameSession *focused = [self sessionForSlot:self.focusedSlot];
-    self.titleLabel.text = focused ? focused.title : @"";
+    self.tabsButton.hidden = !showTabs;
+    if (showTabs) {
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.image = [UIImage systemImageNamed:@"square.on.square"];
+        config.title = [NSString stringWithFormat:@"%lu", (unsigned long) self.sessions.count];
+        config.imagePadding = 4;
+        config.baseForegroundColor = rt_color_text_secondary();
+        config.contentInsets = NSDirectionalEdgeInsetsMake(6, 8, 6, 8);
+        self.tabsButton.configuration = config;
+        self.tabsButton.accessibilityValue = [NSString stringWithFormat:@"%lu cửa sổ",
+                                                                        (unsigned long) self.sessions.count];
+    }
     [self.view setNeedsLayout];
-    [self.view layoutIfNeeded];
+}
 
-    NSUInteger index = 0;
-    for (RTGameSession *session in self.sessions) {
-        if (session.slot == self.focusedSlot) break;
-        index++;
-    }
-    if (index < self.tabStack.arrangedSubviews.count) {
-        UIView *tab = self.tabStack.arrangedSubviews[index];
-        [self.tabScroll scrollRectToVisible:[tab convertRect:tab.bounds toView:self.tabScroll] animated:NO];
-    }
+- (void)showTabs:(id)sender {
+    (void)sender;
+    if (self.sessions.count == 0) return;
+
+    printf("[RT] showing tab grid (%lu sessions)\n", (unsigned long) self.sessions.count);
+    fflush(stdout);
+    RTTabGridController *grid = [[RTTabGridController alloc] init];
+    __weak RTViewController *weakSelf = self;
+    grid.itemsProvider = ^NSArray<RTTabGridItem *> *{
+        RTViewController *strongSelf = weakSelf;
+        if (!strongSelf) return @[];
+        NSMutableArray<RTTabGridItem *> *items = [NSMutableArray array];
+        for (RTGameSession *session in strongSelf.sessions) {
+            RTTabGridItem *item = [[RTTabGridItem alloc] init];
+            item.slot = session.slot;
+            item.title = session.title;
+            item.running = session.running;
+            item.focused = session.slot == strongSelf.focusedSlot;
+            [items addObject:item];
+        }
+        return items;
+    };
+    grid.imageProvider = ^UIImage *(int slot) {
+        RTGameSession *session = [weakSelf sessionForSlot:slot];
+        if (!session || !session.lastImage) return nil;
+        return [UIImage imageWithCGImage:session.lastImage];
+    };
+    grid.onSelect = ^(int slot) {
+        RTViewController *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf focusSlot:slot];
+        [strongSelf dismissViewControllerAnimated:YES completion:nil];
+    };
+    grid.onClose = ^(int slot) {
+        RTViewController *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf closeSlot:slot];
+        if (strongSelf.sessions.count == 0) {
+            [strongSelf dismissViewControllerAnimated:YES completion:nil];
+        } else {
+            [grid reload];
+        }
+    };
+    [grid reload];
+    [self presentViewController:grid animated:YES completion:nil];
 }
 
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
@@ -547,20 +520,6 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self updateStatus];
     rt_form_ui_present(j2me_ui_get_slot_active_action(slot));
     [self rebuildTabs];
-}
-
-- (void)selectTab:(UIButton *)sender {
-    RTGameSession *session = [self sessionForSlot:(int) sender.tag];
-    if (session) {
-        [self focusSlot:session.slot];
-    }
-}
-
-- (void)closeTab:(UIButton *)sender {
-    RTGameSession *session = [self sessionForSlot:(int) sender.tag];
-    if (session) {
-        [self closeSlot:session.slot];
-    }
 }
 
 - (void)closeSlot:(int)slot {
@@ -658,6 +617,20 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                                            selector:@selector(cycleFocus:)
                                            userInfo:nil
                                             repeats:YES];
+        }
+    }
+
+    // Headless verification hook: open the window switcher once two games run.
+    const char *showGrid = getenv("RT_SHOW_TAB_GRID");
+    if (showGrid && showGrid[0]) {
+        double seconds = atof(showGrid);
+        if (seconds > 0.2) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (seconds * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (self.sessions.count >= 2 && !self.presentedViewController) {
+                    [self showTabs:nil];
+                }
+            });
         }
     }
 

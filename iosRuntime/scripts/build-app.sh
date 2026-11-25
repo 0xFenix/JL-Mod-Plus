@@ -103,6 +103,7 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/host/library/rt_library_vc.m" \
     "$ROOT/native/host/game/rt_game_view.m" \
     "$ROOT/native/host/game/rt_game_controller.m" \
+    "$ROOT/native/host/game/rt_tab_grid.m" \
     "$ROOT/native/host/forms/rt_form_panel.m" \
     -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreText \
     -framework AudioToolbox -framework AVFoundation -framework UIKit -framework CoreHaptics \

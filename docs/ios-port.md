@@ -244,6 +244,17 @@ links a JVM symbol. `ARCHITECTURE.md` documents the module map plus a
 read-only. Behaviour is unchanged: the simulator still runs Avatar at ~18.7
 fps and two-game tabs still switch with focus cycling.
 
+### 11. Window switcher grid — 2026-11-25
+
+The inline tab strip was replaced by a card grid
+(`native/host/game/rt_tab_grid.m`): two columns, exactly two rows visible (four
+cards), vertical scrolling for more, the focused card outlined in amber and
+scrolled into view on open. Tapping a card focuses that slot and dismisses;
+`✕` stops and destroys the slot in place. The top bar now shows a `▢ n` button
+instead of the strip. Verified on the simulator with five sessions: four cards
+fill the screen, the fifth is reachable by scrolling, and the active card is
+brought into view.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →

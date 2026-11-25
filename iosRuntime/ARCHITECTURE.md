@@ -43,6 +43,7 @@ patches/                      engine fixes applied to the miniJVM checkout
 | JAR metadata (icon, manifest field) | `host/library/rt_jar_manifest.{h,c}` |
 | Canvas size, keypad layout, touch mapping | `host/game/rt_game_view.m` |
 | Tab behaviour, focus, per-slot lifecycle | `host/game/rt_game_controller.m` |
+| Window switcher grid (cards, close, scroll) | `host/game/rt_tab_grid.m` |
 | Native screen (Form/List/Alert) rendering | `host/forms/rt_form_panel.m` |
 | Colour, spacing, corner radius | `host/theme/rt_theme.h` |
 | Engine fix | `patches/` (never edit `~/dev/miniJVM` in place) |
