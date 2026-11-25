@@ -105,10 +105,11 @@ The bottom pad is the fixed 3x3 layout (soft keys, arrows, OK, `*`, `#`).
 The keyboard button in the top bar instead raises the iOS QWERTY keyboard:
 every typed character is posted to the focused MIDlet as a MIDP key
 press/release pair (return sends fire, delete sends the right soft key). The
-hidden field is an `RTKeyboardField`: characters arrive through the text-field
-delegate, while the delete key is taken over in `deleteBackward:` because UIKit
-skips the delegate for a backspace on an empty field. One hook per event is why
-the built-in keyboard needs both. This is how
+hidden field keeps a run of invisible filler text and refuses every edit in the
+text-field delegate. UIKit stops reporting deletes (and stops the key repeat
+while the finger is held) once a field is empty, so the filler keeps delete a
+normal editing key: one tap sends one RSK event, holding the key repeats it,
+and neither the filler nor any real text ever changes. This is how
 games that draw their own name fields receive text. Forms, lists and text
 boxes keep using their native fields and the system keyboard.
 `RT_SYSTEM_KEYBOARD=1` opens the keyboard and `RT_TYPE_TEXT=abc` types a string

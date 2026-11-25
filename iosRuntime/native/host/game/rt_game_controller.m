@@ -69,27 +69,6 @@ static double rt_now(void) {
 
 @end
 
-// UIKit only consults the text-field delegate while there is text to change,
-// so a backspace on the empty hidden field never reached us with the built-in
-// keyboard (installed third-party keyboards send the event anyway). Only the
-// delete key is taken over at the UIKeyInput level; characters stay on the
-// delegate path, which is the one that delivers them reliably.
-@interface RTKeyboardField : UITextField
-@end
-
-@implementation RTKeyboardField
-
-// Only the delete key needs the low-level hook: UIKit refuses to consult the
-// text-field delegate for a backspace on an empty field, so deletes from the
-// built-in keyboard never arrived. Characters keep using the delegate below,
-// which is the path that reliably delivers them.
-- (void)deleteBackward {
-    j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -7);
-    j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -7);
-}
-
-@end
-
 @interface RTViewController : UIViewController
 @property(nonatomic, strong) RTGameView *gameView;
 @property(nonatomic, strong) UIView *canvasContainer;
@@ -228,7 +207,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     // Off-screen responder that owns the system keyboard; it never shows text
     // itself, it only forwards keystrokes to the MIDlet.
-    self.keyboardField = [[RTKeyboardField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+    self.keyboardField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
     self.keyboardField.delegate = self;
     self.keyboardField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.keyboardField.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -237,6 +216,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     self.keyboardField.tintColor = [UIColor clearColor];
     self.keyboardField.backgroundColor = [UIColor clearColor];
     self.keyboardField.alpha = 0.02;
+    // UIKit stops reporting deletes once the field is empty, which also stops
+    // the key-repeat while the finger is held down. Parking invisible filler
+    // in the field keeps the delete key a normal editing key: one tap sends one
+    // event, holding the key repeats it, and the delegate refuses every change
+    // so the filler never actually shrinks.
+    self.keyboardField.text = [@"" stringByPaddingToLength:64 withString:@" " startingAtIndex:0];
     [self.view addSubview:self.keyboardField];
 
     self.tabsButton = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -444,7 +429,14 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 - (BOOL)textField:(UITextField *)textField
         shouldChangeCharactersInRange:(NSRange)range
                     replacementString:(NSString *)string {
-    [self postKeyCharacters:string];
+    if (string.length == 0) {
+        // Games that draw their own text fields erase with the right soft key,
+        // not MIDP KEY_CLEAR.
+        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -7);
+        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -7);
+    } else {
+        [self postKeyCharacters:string];
+    }
     return NO;
 }
 
@@ -455,6 +447,9 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
 - (void)textFieldDidBeginEditing:(UITextField *)textField {
     self.keyboardButton.tintColor = rt_color_accent();
+    if (textField.text.length == 0) {
+        textField.text = [@"" stringByPaddingToLength:64 withString:@" " startingAtIndex:0];
+    }
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
