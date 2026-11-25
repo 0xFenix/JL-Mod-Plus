@@ -466,7 +466,10 @@ blank slot when the count is odd so a lone button does not stretch. Every other 
 (`SCREEN`, `ITEM`, `HELP`, `STOP`) folds into a `Tùy chọn (n)` button that
 opens an action sheet, matching J2ME Loader. A screen with only ordinary
 commands keeps the previous behaviour: one command is a plain button, several
-collapse into a single menu. Long-pressing a list row sets that row as the
+collapse into a single menu. Whenever the half-width buttons would come out odd
+— a two-command screen, or OK plus three soft commands — the primary shrinks to
+half width and takes the free slot, so every row is full instead of ending in a
+lonely button. Long-pressing a list row sets that row as the
 selected index (`J2ME_UI_LIST_SET_INDEX`) and then opens a menu with every
 command, so commands act on the held item.
 

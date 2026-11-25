@@ -581,39 +581,54 @@ static BOOL rt_command_is_primary_type(int type) {
     stack.spacing = 10;
 
     const char *primaryLabel = j2me_ui_get_command_label(primaryIndex);
-    UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
-                                         action:@selector(fireCommand:)];
-    primary.tag = j2me_ui_get_command_id(primaryIndex);
-    [stack addArrangedSubview:primary];
+    NSUInteger slots = outside.count + (inside.count > 0 ? 1 : 0);
+    // An odd number of half-width buttons would leave a gap, so the primary
+    // drops to half width and pairs up with them into even rows.
+    BOOL primaryHalf = (slots % 2) == 1;
+
+    NSMutableArray<UIButton *> *halves = [NSMutableArray array];
+    if (primaryHalf) {
+        UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
+                                             action:@selector(fireCommand:)];
+        primary.tag = j2me_ui_get_command_id(primaryIndex);
+        [halves addObject:primary];
+    } else {
+        UIButton *primary = [self makePrimaryButton:(primaryLabel ? @(primaryLabel) : @"OK")
+                                             action:@selector(fireCommand:)];
+        primary.tag = j2me_ui_get_command_id(primaryIndex);
+        [stack addArrangedSubview:primary];
+    }
 
     // Soft commands and the options menu share the same two-column flow, so a
     // lone button keeps half the width instead of stretching across the card.
-    NSUInteger slots = outside.count + (inside.count > 0 ? 1 : 0);
-    UIStackView *row = nil;
     for (NSUInteger i = 0; i < slots; i++) {
-        if (i % 2 == 0) {
-            row = [[UIStackView alloc] init];
-            row.axis = UILayoutConstraintAxisHorizontal;
-            row.distribution = UIStackViewDistributionFillEqually;
-            row.spacing = 10;
-            [stack addArrangedSubview:row];
-        }
-        UIButton *button;
         if (i < outside.count) {
             int index = outside[i].intValue;
             const char *label = j2me_ui_get_command_label(index);
-            button = [self makeSecondaryButton:(label ? @(label) : @"")
-                                        action:@selector(fireCommand:)];
+            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"")
+                                                  action:@selector(fireCommand:)];
             button.tag = j2me_ui_get_command_id(index);
+            [halves addObject:button];
         } else {
-            button = [self makeSecondaryButton:
+            UIButton *menu = [self makeSecondaryButton:
                     [NSString stringWithFormat:@"Tùy chọn (%lu)", (unsigned long) inside.count]
-                                       action:@selector(showCommandMenu:)];
+                                                action:@selector(showCommandMenu:)];
+            [halves addObject:menu];
         }
-        [row addArrangedSubview:button];
-        if (i % 2 == 0 && i + 1 == slots) {
+    }
+
+    for (NSUInteger i = 0; i < halves.count; i += 2) {
+        UIStackView *row = [[UIStackView alloc] init];
+        row.axis = UILayoutConstraintAxisHorizontal;
+        row.distribution = UIStackViewDistributionFillEqually;
+        row.spacing = 10;
+        [row addArrangedSubview:halves[i]];
+        if (i + 1 < halves.count) {
+            [row addArrangedSubview:halves[i + 1]];
+        } else {
             [row addArrangedSubview:[[UIView alloc] init]];
         }
+        [stack addArrangedSubview:row];
     }
 
     [self.stackView addArrangedSubview:card];
