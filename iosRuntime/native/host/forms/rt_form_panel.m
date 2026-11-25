@@ -276,6 +276,9 @@ static void (*g_visibility_callback)(int visible) = NULL;
         fit.active = YES;
 
         int count = j2me_ui_get_list_item_count();
+        // The guest owns the selection; the local index only fills the gap
+        // between a tap and the next rebuild.
+        self.listSelectedIndex = j2me_ui_get_list_selected_index();
         if (self.listSelectedIndex < 0 || self.listSelectedIndex >= count) {
             self.listSelectedIndex = 0;
         }

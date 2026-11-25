@@ -480,10 +480,17 @@ separated by 10 pt gaps.
 List rows used to run together as one continuous block. They are now separate
 44 pt targets with a 6 pt gap, and the selected row is filled with the accent
 at 16% alpha with an amber semibold title, so the current item is obvious. The
-host tracks the index itself (the bridge model carries no selection): it
-defaults to 0, follows taps and long-presses, and clamps when the list shrinks.
-Verified on the simulator with `test/ListProbe.java` (30 items): `Mục 1`
-highlighted, rows separated, commands visible below.
+The bridge model had no selection at all, so the host guessed index 0 and every
+list looked like its first row was current. `List` now reports its
+`selectedIndex` through `NativeBridge.setListSelectedIndex` from
+`showNative()`, `setSelectedIndex()` and `handleListSelect()`, and the panel
+renders whatever the guest says while still updating immediately on taps and
+long-presses (clamped when the list shrinks). Verified on the simulator with
+`test/ListProbe.java`, which preselects index 3: `Mục 4` highlighted, rows
+separated, commands visible below.
+
+One vendored accessor was added for this (`List`, `NativeBridge.java`,
+`j2me_ui.m/.h`), because a host-only guess cannot know the guest's selection.
 
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 

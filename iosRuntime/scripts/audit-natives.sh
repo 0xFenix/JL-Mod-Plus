@@ -37,7 +37,7 @@ for line in txt.splitlines():
         pending = None
 
 impl = set()
-for path in glob.glob(os.path.join(root, 'native', '*.[cm]')):
+for path in glob.glob(os.path.join(root, 'native', '**', '*.[cm]'), recursive=True):
     src = open(path, encoding='utf-8', errors='replace').read()
     defines = dict(re.findall(r'#define\s+(\w+)\s+"([^"]+)"', src))
     for c, n, d in re.findall(r'\{\s*(\w+|"[\w/$]+")\s*,\s*"(\w+)"\s*,\s*"([^"]+)"', src):

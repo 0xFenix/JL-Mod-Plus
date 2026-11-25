@@ -52,6 +52,7 @@ typedef struct {
     int list_items_running[MAX_FORM_ITEMS];
     int list_item_count;
     int list_type;      // IMPLICIT=3, EXCLUSIVE=1, MULTIPLE=2
+    int list_selected_index;
 
     char alert_text[1024];
     int alert_timeout;
@@ -163,6 +164,10 @@ const char *j2me_ui_get_list_item(int index) {
 }
 int j2me_ui_get_list_type(void) { return get_focused_slot_ui()->list_type; }
 
+int j2me_ui_get_list_selected_index(void) {
+    return get_focused_slot_ui()->list_selected_index;
+}
+
 const char *j2me_ui_get_alert_text(void) { return get_focused_slot_ui()->alert_text; }
 int j2me_ui_get_alert_timeout(void) { return get_focused_slot_ui()->alert_timeout; }
 
@@ -200,6 +205,7 @@ static s32 n_formBegin(Runtime *runtime, JClass *clazz) {
     ui->form_item_count = 0;
     ui->form_command_count = 0;
     ui->list_item_count = 0;
+    ui->list_selected_index = 0;
     ui->form_type = type;
 
     if (jtitle) {
@@ -420,6 +426,15 @@ static s32 n_setListType(Runtime *runtime, JClass *clazz) {
     return RUNTIME_STATUS_NORMAL;
 }
 
+static s32 n_setListSelectedIndex(Runtime *runtime, JClass *clazz) {
+    int slot = jvm_bridge_get_jvm_slot(runtime->jvm);
+    pthread_mutex_lock(&g_ui_mutex);
+    SlotUIState *ui = get_slot_ui(slot);
+    ui->list_selected_index = runtime->jnienv->localvar_getInt(runtime->localvar, 0);
+    pthread_mutex_unlock(&g_ui_mutex);
+    return RUNTIME_STATUS_NORMAL;
+}
+
 static s32 n_setAlertText(Runtime *runtime, JClass *clazz) {
     int slot = jvm_bridge_get_jvm_slot(runtime->jvm);
     pthread_mutex_lock(&g_ui_mutex);
@@ -526,6 +541,7 @@ static java_native_method j2me_ui_methods[] = {
     {CLS, "showCanvas",       "()V",                                             n_showCanvas},
     {CLS, "listAddItem",      "(Ljava/lang/String;Z)V",                          n_listAddItem},
     {CLS, "setListType",      "(I)V",                                            n_setListType},
+    {CLS, "setListSelectedIndex", "(I)V",                                        n_setListSelectedIndex},
     {CLS, "setAlertText",     "(Ljava/lang/String;I)V",                          n_setAlertText},
     {CLS, "platformRequest",  "(Ljava/lang/String;)V",                           n_platformRequest},
     {CLS, "getTextBoxText",   "()Ljava/lang/String;",                            n_getTextBoxText},

@@ -76,6 +76,7 @@ public class NativeBridge {
     public static native void showCanvas();
     public static native void listAddItem(String text, boolean isRunning);
     public static native void setListType(int type);
+    public static native void setListSelectedIndex(int index);
     public static native void setAlertText(String text, int timeout);
     public static native String getTextBoxText();
     public static native String getFormItemText(int index);
