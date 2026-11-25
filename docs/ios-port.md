@@ -415,3 +415,17 @@ with the title.
 Verified on the simulator by opening Avatar LAPRO twice: slot 0 logged
 `save=game`, slot 1 logged `save=game 2`, both rendered concurrently, and the
 two directories contained independent `rms/*.rsh` files.
+
+### 20. Per-game keypad layout editor — 2026-11-25
+
+Games disagree about which keys matter, so the fixed compact/full presets are
+now backed by an editor. `rt_keypad_editor.m` presents a table of slots on the
+same three-column grid (three to six rows); each slot is assigned LSK, RSK, an
+arrow, fire, a digit, `*`, `#` or left blank (`0`). Choosing save writes the
+comma-separated MIDP codes into the game's `keys` config entry, and
+`RTKeypadView` renders an explicit layout in preference to the preset, sizing
+itself from the row count. Blank slots are real gaps, not disabled keys.
+
+Verified on the simulator: the editor renders every slot with its key name and
+the row controls; `RT_KEYS="-6,-1,-7"` produced the expected single row, and
+the six-row preset with digits still renders unchanged.

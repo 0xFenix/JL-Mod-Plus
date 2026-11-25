@@ -5,6 +5,7 @@
 
 #include "j2me_input.h"
 #include "rt_game_view.h"
+#include "rt_keys.h"
 #include "rt_theme.h"
 
 // ---------------------------------------------------------------- MIDP keys
@@ -213,10 +214,10 @@ static const int rt_keypad_cols = 3;
     }
     [self.buttons removeAllObjects];
 
-    const int *keys = self.fullKeyboard ? rt_keypad_full_keys : rt_keypad_keys;
-    int total = self.fullKeyboard
-                ? (int) (sizeof(rt_keypad_full_keys) / sizeof(rt_keypad_full_keys[0]))
-                : (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
+    NSArray<NSNumber *> *codes = self.keyCodes.count > 0
+                                 ? self.keyCodes
+                                 : rt_key_default_codes(self.fullKeyboard);
+    int total = (int) codes.count;
 
     for (int row = 0; row * rt_keypad_cols < total; row++) {
         UIStackView *line = [[UIStackView alloc] init];
@@ -227,7 +228,15 @@ static const int rt_keypad_cols = 3;
         for (int col = 0; col < rt_keypad_cols; col++) {
             int index = row * rt_keypad_cols + col;
             if (index >= total) break;
-            RTKeyButton *button = [self makeButtonForMIDPKey:keys[index]];
+            int key = codes[index].intValue;
+            if (key == 0) {
+                UIView *blank = [[UIView alloc] initWithFrame:CGRectZero];
+                blank.translatesAutoresizingMaskIntoConstraints = NO;
+                [blank.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+                [line addArrangedSubview:blank];
+                continue;
+            }
+            RTKeyButton *button = [self makeButtonForMIDPKey:key];
             [self.buttons addObject:button];
             [line addArrangedSubview:button];
         }
@@ -315,8 +324,17 @@ static const int rt_keypad_cols = 3;
     [self rebuild];
 }
 
+- (void)setKeyCodes:(NSArray<NSNumber *> *)keyCodes {
+    _keyCodes = [keyCodes copy];
+    [self rebuild];
+}
+
 - (CGFloat)preferredHeight {
-    return self.fullKeyboard ? 340 : 190;
+    if (self.keyCodes.count == 0) {
+        return self.fullKeyboard ? 340 : 190;
+    }
+    int rows = (int) ((self.keyCodes.count + rt_keypad_cols - 1) / rt_keypad_cols);
+    return 24 + rows * 44 + MAX(0, rows - 1) * 8;
 }
 
 - (void)dealloc {

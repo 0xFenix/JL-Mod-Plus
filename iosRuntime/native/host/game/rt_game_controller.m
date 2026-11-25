@@ -18,6 +18,7 @@
 #include "j2me_ui.h"
 #include "rt_form_panel.h"
 #include "rt_background.h"
+#include "rt_keys.h"
 #include "rt_library_vc.h"
 #include "rt_theme.h"
 #include "rt_host.h"
@@ -55,6 +56,7 @@ static double rt_now(void) {
 @property(nonatomic) BOOL running;
 @property(nonatomic) BOOL fullKeyboard;
 @property(nonatomic) BOOL turbo;
+@property(nonatomic, copy) NSArray<NSNumber *> *keyCodes;
 @property(nonatomic) CGImageRef lastImage;
 @end
 
@@ -558,7 +560,8 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
            fps:(int)fpsLimit title:(NSString *)title
-  fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo {
+  fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo
+      keyCodes:(NSArray<NSNumber *> *)keyCodes {
     int slot = -1;
     for (int candidate = 0; candidate < JVM_BRIDGE_MAX_SLOTS; candidate++) {
         if (![self sessionForSlot:candidate]) {
@@ -579,6 +582,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.fpsLimit = fpsLimit;
     session.fullKeyboard = fullKeyboard;
     session.turbo = turbo;
+    session.keyCodes = keyCodes;
     session.running = YES;
     [self.sessions addObject:session];
     [self focusSlot:slot];
@@ -591,8 +595,10 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     // the focused session instead of being duplicated per game.
     self.keypad.fullKeyboard = session ? session.fullKeyboard : NO;
     self.keypad.turboEnabled = session ? session.turbo : NO;
+    self.keypad.keyCodes = session.keyCodes;
     self.keypadHeight.constant = self.keypad.preferredHeight;
-    printf("[RT] keypad full=%d turbo=%d\n", self.keypad.fullKeyboard, self.keypad.turboEnabled);
+    printf("[RT] keypad full=%d turbo=%d keys=%lu\n", self.keypad.fullKeyboard,
+           self.keypad.turboEnabled, (unsigned long) self.keypad.keyCodes.count);
     fflush(stdout);
 }
 
@@ -777,13 +783,15 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         NSString *jar = self.jarPath.length ? self.jarPath : @(g_midlet_jar);
         int kb = getenv("RT_FULL_KEYBOARD") ? 1 : 0;
         int turbo = getenv("RT_TURBO") ? 1 : 0;
+        NSString *keysEnv = getenv("RT_KEYS") ? @(getenv("RT_KEYS")) : nil;
         [self addGame:jar
                 width:self.canvasWidth > 0 ? self.canvasWidth : g_width
                height:self.canvasHeight > 0 ? self.canvasHeight : g_height
                   fps:self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit
                 title:nil
          fullKeyboard:kb
-                turbo:turbo];
+                turbo:turbo
+             keyCodes:keysEnv.length ? rt_key_codes_from_string(keysEnv) : nil];
     }
 
     if (getenv("RT_SYSTEM_KEYBOARD")) {
@@ -1079,10 +1087,14 @@ int rt_host_running_count(void) {
 }
 
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
-                     const char *title, int full_keyboard, int turbo) {
+                     const char *title, int full_keyboard, int turbo,
+                     const char *keys) {
     if (!jar_path || !jar_path[0]) return;
     NSString *jar = @(jar_path);
     NSString *name = (title && title[0]) ? @(title) : jar.lastPathComponent;
+    NSArray<NSNumber *> *keyCodes = keys && keys[0]
+            ? rt_key_codes_from_string(@(keys))
+            : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
         RTViewController *host = g_controller;
         if (!host) {
@@ -1091,7 +1103,7 @@ void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
             g_controller = host;
         }
         [host addGame:jar width:width height:height fps:fps_limit title:name
-      fullKeyboard:full_keyboard turbo:turbo];
+      fullKeyboard:full_keyboard turbo:turbo keyCodes:keyCodes];
         UINavigationController *nav = rt_active_navigation_controller();
         if (nav && ![nav.viewControllers containsObject:host]) {
             [nav pushViewController:host animated:YES];

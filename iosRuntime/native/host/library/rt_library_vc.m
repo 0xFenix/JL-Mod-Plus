@@ -581,7 +581,8 @@
                     [config[@"fps"] intValue],
                     entry.title.UTF8String,
                     [config[@"kb"] intValue],
-                    [config[@"turbo"] intValue]);
+                    [config[@"turbo"] intValue],
+                    [config[@"keys"] UTF8String]);
 }
 
 #pragma mark - Options
@@ -686,18 +687,15 @@
         if (checked) [action setValue:@YES forKey:@"checked"];
         [sheet addAction:action];
     }
-    BOOL fullKeyboard = [config[@"kb"] intValue] != 0;
     UIAlertAction *keypad = [UIAlertAction
-            actionWithTitle:(fullKeyboard ? @"Bàn phím: đầy đủ (có số)"
-                                          : @"Bàn phím: 3 × 3 (gọn)")
+            actionWithTitle:@"Bố cục phím…"
                       style:UIAlertActionStyleDefault
                     handler:^(UIAlertAction *action) {
-                        [self setConfig:file
-                                      w:[config[@"w"] intValue]
-                                      h:[config[@"h"] intValue]
-                                    fps:[config[@"fps"] intValue]
-                                     kb:(fullKeyboard ? 0 : 1)
-                                  turbo:[config[@"turbo"] intValue]];
+                        // Present after the sheet closes, otherwise UIKit
+                        // refuses the second presentation.
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            rt_present_keypad_editor(self, file, entry.title);
+                        });
                     }];
     [sheet addAction:keypad];
 
@@ -723,7 +721,8 @@
 - (void)setConfig:(NSString *)file w:(int)width h:(int)height fps:(int)fps
                kb:(int)kb turbo:(int)turbo {
     rt_store_game_config(file, @{@"w": @(width), @"h": @(height), @"fps": @(fps),
-                                 @"kb": @(kb), @"turbo": @(turbo)});
+                                 @"kb": @(kb), @"turbo": @(turbo),
+                                 @"keys": rt_game_config(file)[@"keys"] ?: @""});
     [self reloadGames];
 }
 

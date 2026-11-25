@@ -28,7 +28,8 @@ int rt_host_running_count(void);
 /// onto the library's navigation stack. `full_keyboard` selects the digit pad
 /// and `turbo` makes a held fire key repeat.
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
-                     const char *title, int full_keyboard, int turbo);
+                     const char *title, int full_keyboard, int turbo,
+                     const char *keys);
 
 #ifdef __cplusplus
 }

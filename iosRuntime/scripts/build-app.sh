@@ -102,7 +102,9 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/host/library/rt_jar_manifest.c" \
     "$ROOT/native/host/library/rt_game_store.m" \
     "$ROOT/native/host/library/rt_library_vc.m" \
+    "$ROOT/native/host/library/rt_keypad_editor.m" \
     "$ROOT/native/host/game/rt_game_view.m" \
+    "$ROOT/native/host/game/rt_keys.m" \
     "$ROOT/native/host/game/rt_game_controller.m" \
     "$ROOT/native/host/game/rt_tab_grid.m" \
     "$ROOT/native/host/forms/rt_form_panel.m" \

@@ -206,10 +206,13 @@ opens the first row after 0.3 s because `simctl` cannot tap.
 The options sheet in the library (long-press a row, or the `⋯`/context menu)
 carries two control settings next to resolution and FPS:
 
-- **Bàn phím: 3 × 3 (gọn) / đầy đủ (có số)** - the compact pad has soft keys,
-  arrows, fire, `*` and `#`; the full layout adds the ten digits and grows the
-  keypad container from 190 to 340 pt. Games that ask for a number at a menu
-  need the full layout.
+- **Bố cục phím…** - a full editor for the virtual pad: a fixed three-column
+  grid with three to six rows (three to eighteen slots). Every slot is picked
+  from LSK, RSK, arrows, fire, digits, `*`, `#` or left blank, so a title that
+  needs an odd layout gets it. The layout is stored per JAR under the `keys`
+  config entry; the pad grows or shrinks to the row count. Untouched games keep
+  the compact preset, and `RT_KEYS` (comma-separated MIDP codes) applies one
+  from the command line for scripted runs.
 - **Turbo khi giữ OK** - while enabled, holding fire sends a press/release
   pulse every 80 ms instead of one press, for titles that expect rapid tapping.
 
