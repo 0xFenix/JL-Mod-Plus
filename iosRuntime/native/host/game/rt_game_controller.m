@@ -83,8 +83,11 @@ static double rt_now(void) {
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIButton *fpsButton;
 @property(nonatomic, strong) UIButton *tabsButton;
+@property(nonatomic, strong) UIButton *keyboardButton;
+@property(nonatomic, strong) UITextField *keyboardField;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
+
 @property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
 @property(nonatomic) int focusedSlot;
 @property(nonatomic) BOOL midletStarted;
@@ -107,6 +110,7 @@ static void rt_set_keypad_visible(int visible) {
     controller.statusPill.hidden = visible != 0;
 }
 static NSString *const RTShowFPSDefaultsKey = @"RTShowFPS";
+
 static int g_slot_frames[JVM_BRIDGE_MAX_SLOTS];
 static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
@@ -189,6 +193,31 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
              forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.fpsButton];
 
+    self.keyboardButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.keyboardButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.keyboardButton.tintColor = rt_color_text_secondary();
+    self.keyboardButton.accessibilityLabel = @"Bàn phím iOS";
+    [self.keyboardButton setImage:[[UIImage systemImageNamed:@"keyboard"]
+            imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                         forState:UIControlStateNormal];
+    [self.keyboardButton addTarget:self
+                            action:@selector(toggleSystemKeyboard:)
+                  forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.keyboardButton];
+
+    // Off-screen responder that owns the system keyboard; it never shows text
+    // itself, it only forwards keystrokes to the MIDlet.
+    self.keyboardField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+    self.keyboardField.delegate = self;
+    self.keyboardField.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.keyboardField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    self.keyboardField.spellCheckingType = UITextSpellCheckingTypeNo;
+    self.keyboardField.textColor = [UIColor clearColor];
+    self.keyboardField.tintColor = [UIColor clearColor];
+    self.keyboardField.backgroundColor = [UIColor clearColor];
+    self.keyboardField.alpha = 0.02;
+    [self.view addSubview:self.keyboardField];
+
     self.tabsButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.tabsButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.tabsButton.tintColor = rt_color_text_secondary();
@@ -250,6 +279,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     self.topBarHeight = [self.topBar.heightAnchor constraintEqualToConstant:0];
+
     [NSLayoutConstraint activateConstraints:@[
         [self.topBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.topBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
@@ -283,7 +313,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:4],
         [self.titleLabel.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
-        [self.tabsButton.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-2],
+        [self.keyboardButton.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-2],
+        [self.keyboardButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.keyboardButton.widthAnchor constraintEqualToConstant:40],
+        [self.keyboardButton.heightAnchor constraintEqualToConstant:40],
+
+        [self.tabsButton.trailingAnchor constraintEqualToAnchor:self.keyboardButton.leadingAnchor constant:-2],
         [self.tabsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
         [self.tabsButton.heightAnchor constraintEqualToConstant:36],
 
@@ -356,6 +391,59 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [[NSUserDefaults standardUserDefaults] setBool:self.showsFPS forKey:RTShowFPSDefaultsKey];
     self.fpsButton.tintColor = self.showsFPS ? rt_color_accent() : rt_color_text_secondary();
     [self updateStatus];
+}
+
+// The system QWERTY keyboard types straight into the focused MIDlet: every
+// committed character is posted as a MIDP key press/release pair, matching
+// what a handset reports for a printable key. J2ME has no clipboard or text
+// input event on Canvas, so this is the only way to enter names in games that
+// draw their own text fields.
+- (void)toggleSystemKeyboard:(id)sender {
+    (void)sender;
+    if (self.keyboardField.isFirstResponder) {
+        [self.keyboardField resignFirstResponder];
+    } else {
+        [self.keyboardField becomeFirstResponder];
+    }
+}
+
+- (void)postKeyCharacters:(NSString *)text {
+    for (NSUInteger i = 0; i < text.length; i++) {
+        unichar ch = [text characterAtIndex:i];
+        if (ch == '\n' || ch == '\r') {
+            j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -5);
+            j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -5);
+            continue;
+        }
+        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, (int) ch);
+        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, (int) ch);
+    }
+}
+
+- (BOOL)textField:(UITextField *)textField
+        shouldChangeCharactersInRange:(NSRange)range
+                    replacementString:(NSString *)string {
+    if (!textField.text.length && range.length == 1 && string.length == 0) {
+        // Backspace has no printable character; a handset reports KEY_CLEAR.
+        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -8);
+        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -8);
+    } else {
+        [self postKeyCharacters:string];
+    }
+    return NO;
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [self postKeyCharacters:@"\n"];
+    return NO;
+}
+
+- (void)textFieldDidBeginEditing:(UITextField *)textField {
+    self.keyboardButton.tintColor = rt_color_accent();
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    self.keyboardButton.tintColor = rt_color_text_secondary();
 }
 
 - (void)rebuildTabs {
@@ -602,6 +690,15 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                height:self.canvasHeight > 0 ? self.canvasHeight : g_height
                   fps:self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit
                 title:nil];
+    }
+
+    if (getenv("RT_SYSTEM_KEYBOARD")) {
+        [self.keyboardField becomeFirstResponder];
+    }
+    if (getenv("RT_TYPE_TEXT")) {
+        NSString *text = [NSString stringWithUTF8String:getenv("RT_TYPE_TEXT")];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self postKeyCharacters:text]; });
     }
 
     if (getenv("RT_SYNTH_INPUT")) {

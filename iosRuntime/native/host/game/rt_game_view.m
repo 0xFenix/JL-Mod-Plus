@@ -162,6 +162,7 @@ static const int rt_keypad_cols = 3;
 @end
 
 @interface RTKeypadView ()
+@property(nonatomic, strong) UIStackView *column;
 @property(nonatomic, strong) NSMutableArray<RTKeyButton *> *buttons;
 @property(nonatomic, strong) UIImpactFeedbackGenerator *haptic;
 @end
@@ -174,30 +175,35 @@ static const int rt_keypad_cols = 3;
 
     self.haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
 
-    UIStackView *column = [[UIStackView alloc] init];
-    column.translatesAutoresizingMaskIntoConstraints = NO;
-    column.axis = UILayoutConstraintAxisVertical;
-    column.distribution = UIStackViewDistributionFillEqually;
-    column.spacing = 8;
-    [self addSubview:column];
+    self.column = [[UIStackView alloc] init];
+    self.column.translatesAutoresizingMaskIntoConstraints = NO;
+    self.column.axis = UILayoutConstraintAxisVertical;
+    self.column.distribution = UIStackViewDistributionFillEqually;
+    self.column.spacing = 8;
+    [self addSubview:self.column];
 
     [NSLayoutConstraint activateConstraints:@[
-        [column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
-        [column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
-        [column.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
-        [column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
+        [self.column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        [self.column.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
+        [self.column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
     ]];
 
     self.buttons = [NSMutableArray array];
-    NSDictionary *symbols = @{
-        @(-1): @"chevron.up",
-        @(-2): @"chevron.down",
-        @(-3): @"chevron.left",
-        @(-4): @"chevron.right",
-        @(-5): @"",
-    };
+    [self rebuild];
+    return self;
+}
 
+- (void)rebuild {
+    for (UIView *row in self.column.arrangedSubviews) {
+        [self.column removeArrangedSubview:row];
+        [row removeFromSuperview];
+    }
+    [self.buttons removeAllObjects];
+
+    const int *keys = rt_keypad_keys;
     int total = (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
+
     for (int row = 0; row * rt_keypad_cols < total; row++) {
         UIStackView *line = [[UIStackView alloc] init];
         line.axis = UILayoutConstraintAxisHorizontal;
@@ -206,50 +212,60 @@ static const int rt_keypad_cols = 3;
 
         for (int col = 0; col < rt_keypad_cols; col++) {
             int index = row * rt_keypad_cols + col;
-            int key = rt_keypad_keys[index];
-            RTKeyButton *button = [[RTKeyButton alloc] initWithFrame:CGRectZero];
-            button.midpKeyCode = key;
-            button.translatesAutoresizingMaskIntoConstraints = NO;
-            [button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
-
-            if (key == RT_KEY_FIRE) {
-                button.baseBackgroundColor = rt_color_accent();
-                button.backgroundColor = rt_color_accent();
-                [button setTitle:@"OK" forState:UIControlStateNormal];
-                [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
-                button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-                        scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightBold]];
-                button.detailLabel.hidden = YES;
-                button.symbolView.hidden = YES;
-            } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
-                button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
-                button.titleLabel.hidden = YES;
-                button.symbolView.hidden = YES;
-            } else if (key == '*' || key == '#') {
-                button.detailLabel.hidden = YES;
-                button.symbolView.hidden = YES;
-                [button setTitle:key == '*' ? @"*" : @"#" forState:UIControlStateNormal];
-                [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
-            } else {
-                button.detailLabel.hidden = YES;
-                button.titleLabel.hidden = YES;
-                button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
-            }
-
-            [button addTarget:self
-                        action:@selector(keyDown:)
-              forControlEvents:UIControlEventTouchDown];
-            [button addTarget:self
-                        action:@selector(keyUp:)
-              forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside |
-                               UIControlEventTouchCancel];
+            if (index >= total) break;
+            RTKeyButton *button = [self makeButtonForMIDPKey:keys[index]];
             [self.buttons addObject:button];
             [line addArrangedSubview:button];
         }
-        [column addArrangedSubview:line];
+        [self.column addArrangedSubview:line];
+    }
+}
+
+- (RTKeyButton *)makeButtonForMIDPKey:(int)key {
+    RTKeyButton *button = [[RTKeyButton alloc] initWithFrame:CGRectZero];
+    button.midpKeyCode = key;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+
+    if (key == RT_KEY_FIRE) {
+        button.baseBackgroundColor = rt_color_accent();
+        button.backgroundColor = rt_color_accent();
+        [button setTitle:@"OK" forState:UIControlStateNormal];
+        [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
+        button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightBold]];
+        button.detailLabel.hidden = YES;
+        button.symbolView.hidden = YES;
+    } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
+        button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
+        button.titleLabel.hidden = YES;
+        button.symbolView.hidden = YES;
+    } else if (key == RT_KEY_UP || key == RT_KEY_DOWN || key == RT_KEY_LEFT || key == RT_KEY_RIGHT) {
+        NSDictionary *symbols = @{
+            @(RT_KEY_UP): @"chevron.up",
+            @(RT_KEY_DOWN): @"chevron.down",
+            @(RT_KEY_LEFT): @"chevron.left",
+            @(RT_KEY_RIGHT): @"chevron.right",
+        };
+        button.detailLabel.hidden = YES;
+        button.titleLabel.hidden = YES;
+        button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
+    } else {
+        button.detailLabel.hidden = YES;
+        button.symbolView.hidden = YES;
+        NSString *title = [NSString stringWithFormat:@"%c", (char) key];
+        [button setTitle:title forState:UIControlStateNormal];
+        [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
     }
 
-    return self;
+    [button addTarget:self
+               action:@selector(keyDown:)
+     forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self
+               action:@selector(keyUp:)
+     forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside |
+                      UIControlEventTouchCancel];
+    return button;
 }
 
 - (void)keyDown:(RTKeyButton *)button {

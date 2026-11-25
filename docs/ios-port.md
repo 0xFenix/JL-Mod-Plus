@@ -255,6 +255,18 @@ instead of the strip. Verified on the simulator with five sessions: four cards
 fill the screen, the fifth is reachable by scrolling, and the active card is
 brought into view.
 
+### 12. System QWERTY input — 2026-11-25
+
+Games that draw their own text fields read characters from
+`Canvas.keyPressed`, so the top-bar keyboard button now raises the iOS QWERTY
+keyboard through a hidden `UITextField` in `rt_game_controller.m`. Each
+committed character is posted as a MIDP key press/release pair (return sends
+fire, backspace sends `KEY_CLEAR`), and the button turns amber while the field
+is first responder. The bottom pad stays the compact 3x3 layout; no digit keys
+were added. Verified with `InputProbe`: typing `5a` produced
+`keyPressed 53`/`97` plus their releases. `RT_SYSTEM_KEYBOARD=1` and
+`RT_TYPE_TEXT=abc` drive the same path from `run-sim.sh`.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →
