@@ -23,4 +23,7 @@ javac --release 8 -nowarn -cp <minijvm_rt.jar> -d /tmp/jr-classes $(find src -na
 `javax.microedition.io` deliberately does **not** live here: the miniJVM
 runtime jar ships its own implementation (including TLS) and bootclasspath
 classes win, so a second copy would be dead code. See
-`../README.md` (Networking).
+`../README.md` (Networking). `javax.microedition.io.file` follows the same
+rule for a different reason: `Connector` looks protocols up with the boot
+class loader, so the JSR-75 classes live in `patches/0003-file-protocol.patch`
+instead of this tree.

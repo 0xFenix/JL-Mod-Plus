@@ -47,6 +47,7 @@ patches/                      engine fixes applied to the miniJVM checkout
 | Native screen (Form/List/Alert) rendering | `host/forms/rt_form_panel.m` |
 | Colour, spacing, corner radius | `host/theme/rt_theme.h` |
 | Engine fix | `patches/` (never edit `~/dev/miniJVM` in place) |
+| New `Connector` protocol (needs the boot class loader) | `patches/` — see `0003-file-protocol.patch` |
 
 ## Build
 

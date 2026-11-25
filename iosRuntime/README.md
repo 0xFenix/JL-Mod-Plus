@@ -52,6 +52,7 @@ from upstream is redistributed. Patches currently present:
 | --- | --- |
 | `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
 | `0002-signal-handler-safe-shutdown.patch` | The engine's signal handler kept a pointer to the last created JVM, so after a slot was destroyed a later `SIGTERM` dereferenced freed memory and dumped threads twice, ending in a second `SIGSEGV`. It now clears that pointer on destroy, refuses to re-enter the dump, and terminates with `_Exit` instead of running exit handlers. |
+| `0003-file-protocol.patch` | Adds the JSR-75 `file://` protocol and `FileConnection` implementation to the runtime jar. `Connector` resolves protocol classes with the boot class loader, so a classpath copy is never found; `file:///root/` maps to `<Documents>/files`, traversal is rejected, and unimplementable size queries return 0. |
 
 ## Build and run
 
@@ -222,9 +223,10 @@ buttons and the pad would otherwise peek out around the sheet.
 
 - Four titles have been run (Avatar LAPRO, Avatar 2, Avatar AngelChip, Ninja
   School); deeper gameplay on the newer ones is still unverified.
-- `file://` has no protocol handler: the engine ships no
-  `javax.microedition.io.file` implementation and the interfaces alone cannot
-  open a stream.
+- `file://` is implemented (patch 0003) with a single sandboxed root:
+  `file:///root/...` maps to `<Documents>/files`, traversal is rejected, and
+  size queries the sandbox cannot answer return 0. Long-path and hidden-file
+  behaviour follows the device file system.
 
 - FPS is hidden behind the speedometer toggle by default (`RTShowFPS`).
 - The library reads the icon named by `MIDlet-1`; titles without one fall

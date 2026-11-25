@@ -1,0 +1,888 @@
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/ConnectionClosedException.java b/minijvm/java/src/main/java/javax/microedition/io/file/ConnectionClosedException.java
+new file mode 100644
+index 0000000..87d3d9a
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/ConnectionClosedException.java
+@@ -0,0 +1,53 @@
++/*
++ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
++ * licensed under the Apache License, Version 2.0. That project states its J2ME API
++ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
++ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
++ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
++ *
++ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
++ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
++ * outside the iOS runtime scope.
++ */
++/**
++ * MicroEmulator
++ * Copyright (C) 2006-2007 Bartek Teodorczyk <barteo@barteo.net>
++ * Copyright (C) 2006-2007 Vlad Skarzhevskyy
++ * <p>
++ * It is licensed under the following two licenses as alternatives:
++ * 1. GNU Lesser General Public License (the "LGPL") version 2.1 or any newer version
++ * 2. Apache License (the "AL") Version 2.0
++ * <p>
++ * You may not use this file except in compliance with at least one of
++ * the above two licenses.
++ * <p>
++ * You may obtain a copy of the LGPL at
++ * http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
++ * <p>
++ * You may obtain a copy of the AL at
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * <p>
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the LGPL or the AL for the specific language governing permissions and
++ * limitations.
++ *
++ * @version $Id$
++ */
++package javax.microedition.io.file;
++
++public class ConnectionClosedException extends RuntimeException {
++
++	private static final long serialVersionUID = 1L;
++
++	/*
++	 * TODO Add cause for location where it been closed.
++	 */
++	public ConnectionClosedException() {
++	}
++
++	public ConnectionClosedException(String detailMessage) {
++		super(detailMessage);
++	}
++}
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/FileConnection.java b/minijvm/java/src/main/java/javax/microedition/io/file/FileConnection.java
+new file mode 100644
+index 0000000..5f96cc3
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/FileConnection.java
+@@ -0,0 +1,116 @@
++/*
++ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
++ * licensed under the Apache License, Version 2.0. That project states its J2ME API
++ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
++ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
++ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
++ *
++ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
++ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
++ * outside the iOS runtime scope.
++ */
++/**
++ * MicroEmulator
++ * Copyright (C) 2006-2007 Bartek Teodorczyk <barteo@barteo.net>
++ * Copyright (C) 2006-2007 Vlad Skarzhevskyy
++ * <p>
++ * It is licensed under the following two licenses as alternatives:
++ * 1. GNU Lesser General Public License (the "LGPL") version 2.1 or any newer version
++ * 2. Apache License (the "AL") Version 2.0
++ * <p>
++ * You may not use this file except in compliance with at least one of
++ * the above two licenses.
++ * <p>
++ * You may obtain a copy of the LGPL at
++ * http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
++ * <p>
++ * You may obtain a copy of the AL at
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * <p>
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the LGPL or the AL for the specific language governing permissions and
++ * limitations.
++ *
++ * @version $Id$
++ */
++package javax.microedition.io.file;
++
++import java.io.DataInputStream;
++import java.io.DataOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.util.Enumeration;
++
++import javax.microedition.io.StreamConnection;
++
++public interface FileConnection extends StreamConnection {
++
++	public abstract boolean isOpen();
++
++	@Override
++	public abstract InputStream openInputStream() throws IOException;
++
++	@Override
++	public abstract DataInputStream openDataInputStream() throws IOException;
++
++	@Override
++	public abstract OutputStream openOutputStream() throws IOException;
++
++	@Override
++	public abstract DataOutputStream openDataOutputStream() throws IOException;
++
++	public abstract OutputStream openOutputStream(long byteOffset) throws IOException;
++
++	public abstract long totalSize();
++
++	public abstract long availableSize();
++
++	public abstract long usedSize();
++
++	public abstract long directorySize(boolean includeSubDirs) throws IOException;
++
++	public abstract long fileSize() throws IOException;
++
++	public abstract boolean canRead();
++
++	public abstract boolean canWrite();
++
++	public abstract boolean isHidden();
++
++	public abstract void setReadable(boolean readable) throws IOException;
++
++	public abstract void setWritable(boolean writable) throws IOException;
++
++	public abstract void setHidden(boolean hidden) throws IOException;
++
++	public abstract Enumeration list() throws IOException;
++
++	public abstract Enumeration list(String filter, boolean includeHidden) throws IOException;
++
++	public abstract void create() throws IOException;
++
++	public abstract void mkdir() throws IOException;
++
++	public abstract boolean exists();
++
++	public abstract boolean isDirectory();
++
++	public abstract void delete() throws IOException;
++
++	public abstract void rename(String newName) throws IOException;
++
++	public abstract void truncate(long byteOffset) throws IOException;
++
++	public abstract void setFileConnection(String s) throws IOException;
++
++	public abstract String getName();
++
++	public abstract String getPath();
++
++	public abstract String getURL();
++
++	public abstract long lastModified();
++}
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/FileConnectionImpl.java b/minijvm/java/src/main/java/javax/microedition/io/file/FileConnectionImpl.java
+new file mode 100644
+index 0000000..8c978ef
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/FileConnectionImpl.java
+@@ -0,0 +1,419 @@
++/*
++ * JL-Mod Plus — JSR-75 FileConnection implementation for the iOS runtime.
++ *
++ * Only the operations a MIDlet can actually observe are implemented; size
++ * queries the sandbox cannot answer (total/available/used) return 0, and
++ * permission setters are accepted as no-ops because the app sandbox grants
++ * everything inside its own directory.
++ */
++package javax.microedition.io.file;
++
++import java.io.DataInputStream;
++import java.io.DataOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.io.RandomAccessFile;
++import java.util.Enumeration;
++import java.util.Vector;
++
++import javax.microedition.io.Connector;
++
++public class FileConnectionImpl implements FileConnection {
++
++	private final File root;
++	private final int mode;
++	private File file;
++	private String relative;
++	private boolean directory;
++	private boolean open = true;
++
++	public FileConnectionImpl(File file, String relative, boolean directory, int mode) {
++		this.root = FileSystemRegistry.rootDirectory();
++		this.file = file;
++		this.relative = relative;
++		this.directory = directory || file.isDirectory();
++		this.mode = mode;
++	}
++
++	private void ensureOpen() throws IOException {
++		if (!open) {
++			throw new ConnectionClosedException("file connection is closed");
++		}
++	}
++
++	private void ensureFile() throws IOException {
++		ensureOpen();
++		if (directory) {
++			throw new IOException("operation not allowed on a directory: " + relative);
++		}
++		if (!file.exists()) {
++			throw new IOException("file does not exist: " + relative);
++		}
++	}
++
++	@Override
++	public boolean isOpen() {
++		return open;
++	}
++
++	@Override
++	public void close() {
++		open = false;
++	}
++
++	@Override
++	public InputStream openInputStream() throws IOException {
++		ensureFile();
++		return new FileInputStream(file);
++	}
++
++	@Override
++	public DataInputStream openDataInputStream() throws IOException {
++		return new DataInputStream(openInputStream());
++	}
++
++	@Override
++	public OutputStream openOutputStream() throws IOException {
++		ensureOpen();
++		if (directory) {
++			throw new IOException("operation not allowed on a directory: " + relative);
++		}
++		// FileOutputStream truncates, which is what the JSR-75 default overload
++		// promises for an existing file.
++		return new FileOutputStream(file);
++	}
++
++	@Override
++	public OutputStream openOutputStream(long byteOffset) throws IOException {
++		ensureOpen();
++		if (directory) {
++			throw new IOException("operation not allowed on a directory: " + relative);
++		}
++		final RandomAccessFile raf = new RandomAccessFile(file, "rw");
++		raf.seek(byteOffset);
++		return new OutputStream() {
++			@Override
++			public void write(int b) throws IOException {
++				raf.write(b);
++			}
++
++			@Override
++			public void write(byte[] buffer, int offset, int count) throws IOException {
++				raf.write(buffer, offset, count);
++			}
++
++			@Override
++			public void close() throws IOException {
++				raf.close();
++			}
++		};
++	}
++
++	@Override
++	public DataOutputStream openDataOutputStream() throws IOException {
++		return new DataOutputStream(openOutputStream());
++	}
++
++	@Override
++	public long totalSize() {
++		return 0;
++	}
++
++	@Override
++	public long availableSize() {
++		return 0;
++	}
++
++	@Override
++	public long usedSize() {
++		return 0;
++	}
++
++	@Override
++	public long directorySize(boolean includeSubDirs) throws IOException {
++		ensureOpen();
++		if (!directory) {
++			return file.length();
++		}
++		return sizeOf(file, includeSubDirs);
++	}
++
++	private static long sizeOf(File directory, boolean recursive) {
++		long total = 0;
++		File[] children = directory.listFiles();
++		if (children == null) {
++			return 0;
++		}
++		for (int i = 0; i < children.length; i++) {
++			File child = children[i];
++			if (child.isDirectory()) {
++				if (recursive) {
++					total += sizeOf(child, true);
++				}
++			} else {
++				total += child.length();
++			}
++		}
++		return total;
++	}
++
++	@Override
++	public long fileSize() throws IOException {
++		ensureFile();
++		return file.length();
++	}
++
++	@Override
++	public boolean canRead() {
++		return file.exists() ? file.canRead() : file.getParentFile().canRead();
++	}
++
++	@Override
++	public boolean canWrite() {
++		return file.exists() ? file.canWrite() : file.getParentFile().canWrite();
++	}
++
++	@Override
++	public boolean isHidden() {
++		return file.isHidden();
++	}
++
++	@Override
++	public void setReadable(boolean readable) throws IOException {
++		ensureOpen();
++	}
++
++	@Override
++	public void setWritable(boolean writable) throws IOException {
++		ensureOpen();
++	}
++
++	@Override
++	public void setHidden(boolean hidden) throws IOException {
++		ensureOpen();
++	}
++
++	@Override
++	public Enumeration list() throws IOException {
++		return list(null, false);
++	}
++
++	@Override
++	public Enumeration list(String filter, boolean includeHidden) throws IOException {
++		ensureOpen();
++		if (!directory) {
++			throw new IOException("not a directory: " + relative);
++		}
++		String[] names = file.list();
++		Vector entries = new Vector(names == null ? 0 : names.length);
++		if (names == null) {
++			return entries.elements();
++		}
++		for (int i = 0; i < names.length; i++) {
++			String child = names[i];
++			if (!includeHidden && child.startsWith(".")) {
++				continue;
++			}
++			File childFile = new File(file, child);
++			String entry = childFile.isDirectory() ? child + "/" : child;
++			if (filter != null && !matches(filter, entry)) {
++				continue;
++			}
++			entries.addElement(entry);
++		}
++		return entries.elements();
++	}
++
++	/** JSR-75 filters only understand '*' and '?'. */
++	private static boolean matches(String pattern, String value) {
++		int p = 0;
++		int v = 0;
++		int star = -1;
++		int mark = 0;
++		while (v < value.length()) {
++			if (p < pattern.length() && (pattern.charAt(p) == '?' || pattern.charAt(p) == value.charAt(v))) {
++				p++;
++				v++;
++			} else if (p < pattern.length() && pattern.charAt(p) == '*') {
++				star = p++;
++				mark = v;
++			} else if (star >= 0) {
++				p = star + 1;
++				v = ++mark;
++			} else {
++				return false;
++			}
++		}
++		while (p < pattern.length() && pattern.charAt(p) == '*') {
++			p++;
++		}
++		return p == pattern.length();
++	}
++
++	@Override
++	public void create() throws IOException {
++		ensureOpen();
++		if (file.exists()) {
++			throw new IOException("already exists: " + relative);
++		}
++		File parent = file.getParentFile();
++		if (parent != null && !parent.exists()) {
++			throw new IOException("parent directory does not exist: " + relative);
++		}
++		if (!file.createNewFile()) {
++			throw new IOException("cannot create: " + relative);
++		}
++		directory = false;
++	}
++
++	@Override
++	public void mkdir() throws IOException {
++		ensureOpen();
++		if (file.exists()) {
++			throw new IOException("already exists: " + relative);
++		}
++		if (!file.mkdir()) {
++			throw new IOException("cannot create directory: " + relative);
++		}
++		directory = true;
++	}
++
++	@Override
++	public boolean exists() {
++		return file.exists();
++	}
++
++	@Override
++	public boolean isDirectory() {
++		return file.isDirectory();
++	}
++
++	@Override
++	public void delete() throws IOException {
++		ensureOpen();
++		if (!file.exists()) {
++			throw new IOException("does not exist: " + relative);
++		}
++		String[] children = file.isDirectory() ? file.list() : null;
++		if (children != null && children.length > 0) {
++			throw new IOException("directory not empty: " + relative);
++		}
++		if (!file.delete()) {
++			throw new IOException("cannot delete: " + relative);
++		}
++	}
++
++	@Override
++	public void rename(String newName) throws IOException {
++		ensureOpen();
++		if (newName == null || newName.length() == 0
++				|| newName.indexOf('/') >= 0 || newName.indexOf('\\') >= 0) {
++			throw new IllegalArgumentException("invalid file name: " + newName);
++		}
++		File parent = file.getParentFile();
++		File target = new File(parent, newName);
++		if (target.exists()) {
++			throw new IOException("target exists: " + newName);
++		}
++		if (!file.renameTo(target)) {
++			throw new IOException("cannot rename: " + relative);
++		}
++		file = target;
++		relative = relativeToRoot(target);
++		directory = file.isDirectory();
++	}
++
++	@Override
++	public void truncate(long byteOffset) throws IOException {
++		ensureFile();
++		if (byteOffset < 0 || byteOffset > file.length()) {
++			throw new IOException("invalid truncate offset: " + byteOffset);
++		}
++		RandomAccessFile raf = new RandomAccessFile(file, "rw");
++		try {
++			raf.setLength(byteOffset);
++		} finally {
++			raf.close();
++		}
++	}
++
++	@Override
++	public void setFileConnection(String name) throws IOException {
++		ensureOpen();
++		File target;
++		if (name == null || name.equals("..")) {
++			target = file.getParentFile();
++			if (target == null || !isInsideRoot(target)) {
++				throw new IOException("cannot go above the root directory");
++			}
++		} else if (name.length() == 0 || name.equals(".")) {
++			target = file;
++		} else {
++			if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) {
++				throw new IOException("invalid child name: " + name);
++			}
++			target = new File(file, name);
++			if (!isInsideRoot(target)) {
++				throw new IOException("path escapes the root directory");
++			}
++		}
++		if (!target.exists()) {
++			throw new IOException("does not exist: " + name);
++		}
++		file = target;
++		relative = relativeToRoot(target);
++		directory = target.isDirectory();
++	}
++
++	private String canonicalPath(File candidate) {
++		try {
++			return candidate.getCanonicalPath();
++		} catch (IOException failure) {
++			return candidate.getAbsolutePath();
++		}
++	}
++
++	private boolean isInsideRoot(File candidate) {
++		String base = canonicalPath(root);
++		String path = canonicalPath(candidate);
++		return path.equals(base) || path.startsWith(base.endsWith(File.separator) ? base : base + File.separator);
++	}
++
++	/** Path relative to the root, with {@code ..} resolved by the file system. */
++	private String relativeToRoot(File candidate) {
++		String base = canonicalPath(root);
++		String path = canonicalPath(candidate);
++		if (path.equals(base)) {
++			return "";
++		}
++		if (path.startsWith(base.endsWith(File.separator) ? base : base + File.separator)) {
++			int start = base.length() + (base.endsWith(File.separator) ? 0 : 1);
++			return path.substring(start);
++		}
++		return path;
++	}
++
++	@Override
++	public String getName() {
++		return directory ? relative + "/" : relative;
++	}
++
++	@Override
++	public String getPath() {
++		return "/root/" + (directory && relative.length() > 0 ? relative + "/" : relative);
++	}
++
++	@Override
++	public String getURL() {
++		return "file:///root/" + (directory && relative.length() > 0 ? relative + "/" : relative);
++	}
++
++	@Override
++	public long lastModified() {
++		return file.lastModified();
++	}
++}
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemListener.java b/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemListener.java
+new file mode 100644
+index 0000000..b389e50
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemListener.java
+@@ -0,0 +1,48 @@
++/*
++ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
++ * licensed under the Apache License, Version 2.0. That project states its J2ME API
++ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
++ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
++ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
++ *
++ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
++ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
++ * outside the iOS runtime scope.
++ */
++/**
++ * MicroEmulator
++ * Copyright (C) 2006-2007 Bartek Teodorczyk <barteo@barteo.net>
++ * Copyright (C) 2006-2007 Vlad Skarzhevskyy
++ * <p>
++ * It is licensed under the following two licenses as alternatives:
++ * 1. GNU Lesser General Public License (the "LGPL") version 2.1 or any newer version
++ * 2. Apache License (the "AL") Version 2.0
++ * <p>
++ * You may not use this file except in compliance with at least one of
++ * the above two licenses.
++ * <p>
++ * You may obtain a copy of the LGPL at
++ * http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
++ * <p>
++ * You may obtain a copy of the AL at
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * <p>
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the LGPL or the AL for the specific language governing permissions and
++ * limitations.
++ *
++ * @version $Id$
++ */
++package javax.microedition.io.file;
++
++public interface FileSystemListener {
++
++	public static final int ROOT_ADDED = 0;
++
++	public static final int ROOT_REMOVED = 1;
++
++	public abstract void rootChanged(int i, String s);
++
++}
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemRegistry.java b/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemRegistry.java
+new file mode 100644
+index 0000000..b7007ef
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/FileSystemRegistry.java
+@@ -0,0 +1,63 @@
++/*
++ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
++ * licensed under the Apache License, Version 2.0. That project states its J2ME API
++ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
++ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
++ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
++ *
++ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
++ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
++ * outside the iOS runtime scope. The registry previously reported no roots; it now
++ * exposes one sandboxed root implemented by org.mini.net.file.Protocol.
++ */
++package javax.microedition.io.file;
++
++import java.io.File;
++import java.util.Enumeration;
++import java.util.Vector;
++
++/**
++ * Exposes a single {@code root} file system backed by a writable directory in
++ * the app sandbox. The sandbox path comes from the {@code app.save.root}
++ * property the bridge sets for RMS; files live in a sibling {@code files}
++ * directory so game data and record stores never mix.
++ */
++public class FileSystemRegistry {
++
++	private static File root;
++
++	public static boolean addFileSystemListener(FileSystemListener listener) {
++		// The sandbox never gains or loses roots at runtime.
++		return false;
++	}
++
++	public static boolean removeFileSystemListener(FileSystemListener listener) {
++		return false;
++	}
++
++	public static Enumeration listRoots() {
++		Vector roots = new Vector(1);
++		roots.addElement("root/");
++		return roots.elements();
++	}
++
++	/** Directory behind {@code file:///root/}; created on first use. */
++	public static File rootDirectory() {
++		if (root == null) {
++			File base = null;
++			String save = System.getProperty("app.save.root");
++			if (save != null && save.length() > 0) {
++				base = new File(save).getParentFile();
++			}
++			if (base == null) {
++				base = new File(".");
++			}
++			File files = new File(base, "files");
++			if (!files.exists()) {
++				files.mkdirs();
++			}
++			root = files;
++		}
++		return root;
++	}
++}
+diff --git a/minijvm/java/src/main/java/javax/microedition/io/file/IllegalModeException.java b/minijvm/java/src/main/java/javax/microedition/io/file/IllegalModeException.java
+new file mode 100644
+index 0000000..f69305d
+--- /dev/null
++++ b/minijvm/java/src/main/java/javax/microedition/io/file/IllegalModeException.java
+@@ -0,0 +1,50 @@
++/*
++ * Derived from J2ME-Decade (iOS Edition) <https://github.com/darkrose00x-ux/j2me-ios>,
++ * licensed under the Apache License, Version 2.0. That project states its J2ME API
++ * layer is ported from J2ME-Loader <https://github.com/nikita36078/J2ME-Loader>,
++ * whose javax.microedition sources are Copyright 2012 Kulikov Dmitriy,
++ * 2017-2020 Nikita Shakarun, 2019-2023 Yury Kharchenko, Apache License 2.0.
++ *
++ * JL-Mod Plus modifications: removed the M3G (javax.microedition.m3g), MascotCapsule
++ * micro3D, JBlend/Vodafone J3D, Bluetooth, Location and AMMS packages, which are
++ * outside the iOS runtime scope.
++ */
++/**
++ * MicroEmulator
++ * Copyright (C) 2006-2007 Bartek Teodorczyk <barteo@barteo.net>
++ * Copyright (C) 2006-2007 Vlad Skarzhevskyy
++ * <p>
++ * It is licensed under the following two licenses as alternatives:
++ * 1. GNU Lesser General Public License (the "LGPL") version 2.1 or any newer version
++ * 2. Apache License (the "AL") Version 2.0
++ * <p>
++ * You may not use this file except in compliance with at least one of
++ * the above two licenses.
++ * <p>
++ * You may obtain a copy of the LGPL at
++ * http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
++ * <p>
++ * You may obtain a copy of the AL at
++ * http://www.apache.org/licenses/LICENSE-2.0
++ * <p>
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the LGPL or the AL for the specific language governing permissions and
++ * limitations.
++ *
++ * @version $Id$
++ */
++package javax.microedition.io.file;
++
++public class IllegalModeException extends RuntimeException {
++
++	private static final long serialVersionUID = 1L;
++
++	public IllegalModeException() {
++	}
++
++	public IllegalModeException(String detailMessage) {
++		super(detailMessage);
++	}
++}
+diff --git a/minijvm/java/src/main/java/org/mini/net/file/Protocol.java b/minijvm/java/src/main/java/org/mini/net/file/Protocol.java
+new file mode 100644
+index 0000000..34ea52b
+--- /dev/null
++++ b/minijvm/java/src/main/java/org/mini/net/file/Protocol.java
+@@ -0,0 +1,97 @@
++/*
++ * JL-Mod Plus — JSR-75 file protocol for the iOS runtime.
++ *
++ * The miniJVM boot classpath owns javax.microedition.io.Connector and resolves
++ * a protocol by loading "<protocolpath>.<scheme>.Protocol" with Class.forName,
++ * so a classpath class in the same package path is enough: no engine patch and
++ * no jar rebuild is needed for file:// support.
++ */
++package org.mini.net.file;
++
++import com.sun.cldc.io.ConnectionBaseInterface;
++
++import java.io.File;
++import java.io.IOException;
++
++import javax.microedition.io.Connection;
++import javax.microedition.io.ConnectionNotFoundException;
++import javax.microedition.io.file.FileConnection;
++import javax.microedition.io.file.FileConnectionImpl;
++import javax.microedition.io.file.FileSystemRegistry;
++
++/**
++ * Handles {@code file:///root/...} URLs and maps the single {@code root} file
++ * system onto a writable directory inside the app sandbox.
++ */
++public class Protocol implements ConnectionBaseInterface {
++
++    public static final String ROOT_NAME = "root";
++
++    @Override
++    public Connection openPrim(String name, int mode, boolean timeouts) throws IOException {
++        if (name == null || !name.startsWith("//")) {
++            throw new IOException("bad file connection name: " + name);
++        }
++        // MIDP spells the URL file:///<root>/<path>, so Connector hands over
++        // "///<root>/<path>" with one separator more than a socket URL.
++        String rest = name.startsWith("///") ? name.substring(3) : name.substring(2);
++        int slash = rest.indexOf('/');
++        String rootName = slash < 0 ? rest : rest.substring(0, slash);
++        if (!ROOT_NAME.equalsIgnoreCase(rootName)) {
++            throw new ConnectionNotFoundException("unknown file root: " + rootName);
++        }
++        String path = slash < 0 ? "" : rest.substring(slash + 1);
++        path = decode(path);
++        if (!isSafe(path)) {
++            throw new IOException("invalid file path: " + path);
++        }
++        boolean directory = slash < 0 || path.length() == 0 || path.endsWith("/");
++        String clean = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
++
++        File target = clean.length() == 0
++                ? FileSystemRegistry.rootDirectory()
++                : new File(FileSystemRegistry.rootDirectory(), clean);
++        return new FileConnectionImpl(target, clean, directory, mode);
++    }
++
++    /** Rejects traversal so a game cannot walk out of the sandboxed root. */
++    private static boolean isSafe(String path) {
++        if (path.indexOf('\0') >= 0) {
++            return false;
++        }
++        int start = 0;
++        while (start <= path.length()) {
++            int end = path.indexOf('/', start);
++            if (end < 0) {
++                end = path.length();
++            }
++            String part = path.substring(start, end);
++            if (part.equals("..")) {
++                return false;
++            }
++            start = end + 1;
++        }
++        return true;
++    }
++
++    private static String decode(String value) {
++        if (value.indexOf('%') < 0) {
++            return value;
++        }
++        StringBuffer out = new StringBuffer(value.length());
++        for (int i = 0; i < value.length(); i++) {
++            char c = value.charAt(i);
++            if (c == '%' && i + 2 < value.length()) {
++                int hi = Character.digit(value.charAt(i + 1), 16);
++                int lo = Character.digit(value.charAt(i + 2), 16);
++                if (hi >= 0 && lo >= 0) {
++                    out.append((char) ((hi << 4) + lo));
++                    i += 2;
++                    continue;
++                }
++            }
++            out.append(c);
++        }
++        return out.toString();
++    }
++}

@@ -290,6 +290,28 @@ launch. Ninja School references `javax.microedition.io.file` and
 `com.nokia.mid.ui.FullCanvas`; the latter exists in `java/src`, the former
 still has no protocol handler (known gap) and was not exercised at boot.
 
+### 14. File protocol (`file://`) — 2026-11-25
+
+Ninja School references `javax.microedition.io.file`, so JSR-75 is now
+implemented. The discovery that shaped it: `Connector` resolves
+"<protocolpath>.<scheme>.Protocol" with `Class.forName`, and a boot-class
+caller gets the boot class loader, which cannot see the app classpath. A
+protocol class placed in `java/src` is therefore never found, and one that
+implements an app-side `FileConnection` would also fail the cast across two
+class loaders. The implementation ships inside the runtime jar through
+`iosRuntime/patches/0003-file-protocol.patch` (protocol plus the JSR-75
+interfaces and connection), and the five files were removed from
+`java/src`.
+
+Roots: `FileSystemRegistry.listRoots()` reports `root/`, and
+`file:///root/...` maps to `<Documents>/files` (sibling of `save`, so game
+files never mix with RMS). Paths containing `..` are rejected.
+
+Verified with `test/FileProbe.java` on the simulator and on the iPhone:
+create, write (12-byte UTF), read back, rename, directory listing, `mkdir`,
+`setFileConnection("..")` and delete all succeed. Avatar LAPRO still boots at
+18-20 fps afterwards, so the jar rebuild is not a regression.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →
