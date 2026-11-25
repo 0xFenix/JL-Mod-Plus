@@ -512,6 +512,43 @@
     [self launchGame:self.games[(NSUInteger) indexPath.row]];
 }
 
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView
+        trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    (void)tableView;
+    if (rt_host_running_count() > 0 && indexPath.section == 0) {
+        UIContextualAction *close = [UIContextualAction
+                contextualActionWithStyle:UIContextualActionStyleDestructive
+                                    title:@"Đóng tất cả"
+                                  handler:^(UIContextualAction *action, UIView *view,
+                                            void (^completion)(BOOL)) {
+                                      (void) action;
+                                      (void) view;
+                                      rt_host_close_all();
+                                      [self reloadGames];
+                                      completion(YES);
+                                  }];
+        UISwipeActionsConfiguration *config =
+                [UISwipeActionsConfiguration configurationWithActions:@[close]];
+        config.performsFirstActionWithFullSwipe = NO;
+        return config;
+    }
+    RTGameEntry *entry = self.games[(NSUInteger) indexPath.row];
+    UIContextualAction *delete = [UIContextualAction
+            contextualActionWithStyle:UIContextualActionStyleDestructive
+                                title:@"Xoá"
+                              handler:^(UIContextualAction *action, UIView *view,
+                                        void (^completion)(BOOL)) {
+                                  (void) action;
+                                  (void) view;
+                                  completion(YES);
+                                  [self confirmDeleteOfGame:entry];
+                              }];
+    UISwipeActionsConfiguration *config =
+            [UISwipeActionsConfiguration configurationWithActions:@[delete]];
+    config.performsFirstActionWithFullSwipe = NO;
+    return config;
+}
+
 - (void)tableView:(UITableView *)tableView
         commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
          forRowAtIndexPath:(NSIndexPath *)indexPath {

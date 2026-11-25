@@ -24,6 +24,10 @@ void *rt_host_controller(void);
 /// Number of sessions the host currently holds, running or finished.
 int rt_host_running_count(void);
 
+/// Closes every running game tab. The library uses it when the aggregate
+/// "running games" row is swiped away.
+void rt_host_close_all(void);
+
 /// Launch a title as a new tab: adds it to the shared host and pushes that host
 /// onto the library's navigation stack. `full_keyboard` selects the digit pad
 /// and `turbo` makes a held fire key repeat.

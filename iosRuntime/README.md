@@ -221,6 +221,14 @@ and `turbo`) and follow the focused tab, because one keypad serves every
 session. `RT_FULL_KEYBOARD=1` and `RT_TURBO=1` set the same flags for
 scripted single-game runs.
 
+## Closing running games from the library
+
+While games are running the library shows an "Đang chơi" section with one
+aggregate row. Swiping that row reveals **Đóng tất cả**, which asks every slot
+to stop; each run thread then destroys its own JVM (and patch 0004 closes the
+game's sockets). Swiping a game row still offers **Xoá**, with the usual
+confirmation. Full-swipe is disabled so a stray gesture cannot close a session.
+
 ## Save data per tab
 
 RMS data belongs to a tab, not to a JAR. The first tab of a game writes to

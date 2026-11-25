@@ -706,6 +706,24 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+// The library shows one aggregate row for running games; deleting it means
+// closing every tab. The run threads still own jvm_bridge_destroy_slot, so
+// this only drops the sessions and asks each slot to stop.
+- (void)closeAllSessions {
+    NSArray<RTGameSession *> *all = [self.sessions copy];
+    if (all.count == 0) {
+        return;
+    }
+    [self.sessions removeAllObjects];
+    for (RTGameSession *session in all) {
+        jvm_bridge_request_stop_slot(session.slot);
+    }
+    self.focusedSlot = -1;
+    self.gameView.currentImage = NULL;
+    [self updateStatus];
+    [self rebuildTabs];
+}
+
 - (void)closeSlot:(int)slot {
     RTGameSession *session = [self sessionForSlot:slot];
     if (!session) {
@@ -1080,6 +1098,15 @@ void *rt_host_controller(void) {
         g_controller = controller;
     }
     return (__bridge void *) g_controller;
+}
+
+void rt_host_close_all(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        RTViewController *host = g_controller;
+        if (host) {
+            [host closeAllSessions];
+        }
+    });
 }
 
 int rt_host_running_count(void) {

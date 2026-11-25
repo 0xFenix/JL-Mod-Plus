@@ -429,3 +429,17 @@ itself from the row count. Blank slots are real gaps, not disabled keys.
 Verified on the simulator: the editor renders every slot with its key name and
 the row controls; `RT_KEYS="-6,-1,-7"` produced the expected single row, and
 the six-row preset with digits still renders unchanged.
+
+### 21. Closing running games from the library — 2026-11-25
+
+The library's aggregate "Đang chơi" row used to show the system delete
+affordance, but its commit handler returned early, so the button did nothing.
+The row now has its own trailing swipe action, **Đóng tất cả**: it drops every
+session and calls `jvm_bridge_request_stop_slot` for each one, leaving the run
+threads to destroy their JVMs and socket fix-up to patch 0004. Game rows got an
+explicit **Xoá** action with the existing confirmation, and full-swipe is off
+for both so a stray gesture cannot destroy state.
+
+Verified on the simulator with two running tabs: the close-all path logged
+`[RT] closing all sessions`, then a stop request per slot and one
+`Destroying slot N JVM` per slot, with no crash.
