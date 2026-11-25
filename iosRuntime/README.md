@@ -218,6 +218,15 @@ and `turbo`) and follow the focused tab, because one keypad serves every
 session. `RT_FULL_KEYBOARD=1` and `RT_TURBO=1` set the same flags for
 scripted single-game runs.
 
+## Save data per tab
+
+RMS data belongs to a tab, not to a JAR. The first tab of a game writes to
+`<save>/<jar name>`; opening the same JAR in another tab takes the first free
+`<jar name> 2`, ` 3`, ... so two accounts never share RecordStores. The chosen
+directory is printed at start (`[RT] slot N save=...`) and every existing tab
+keeps its own directory until it is closed. Deleting a game from the library
+removes all of its `<jar name>` and `<jar name> N` directories.
+
 ## Opening JARs from Files
 
 The app declares a `jar` document type and an imported UTI

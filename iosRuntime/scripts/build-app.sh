@@ -140,7 +140,7 @@ cat > "$APP/Info.plist" <<PLIST
   <key>UTImportedTypeDeclarations</key><array><dict>
     <key>UTTypeIdentifier</key><string>io.github.0xfenix.jlmodplus.jar</string>
     <key>UTTypeDescription</key><string>J2ME Application</string>
-    <key>UTTypeConformsTo</key><array><string>public.data</string><string>com.pkware.zip-archive</string></array>
+    <key>UTTypeConformsTo</key><array><string>com.sun.java-archive</string><string>public.zip-archive</string><string>public.data</string></array>
     <key>UTTypeTagSpecification</key><dict>
       <key>public.filename-extension</key><array><string>jar</string></array>
       <key>public.mime-type</key><array><string>application/java-archive</string></array>
@@ -149,15 +149,17 @@ cat > "$APP/Info.plist" <<PLIST
   <key>CFBundleDocumentTypes</key><array>
     <dict>
       <key>CFBundleTypeName</key><string>J2ME Application</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
       <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
       <key>LSHandlerRank</key><string>Owner</string>
       <key>LSItemContentTypes</key><array><string>io.github.0xfenix.jlmodplus.jar</string></array>
     </dict>
     <dict>
-      <key>CFBundleTypeName</key><string>JAR archive</string>
+      <key>CFBundleTypeName</key><string>Java archive</string>
+      <key>CFBundleTypeRole</key><string>Viewer</string>
       <key>CFBundleTypeExtensions</key><array><string>jar</string></array>
-      <key>LSHandlerRank</key><string>Alternate</string>
-      <key>LSItemContentTypes</key><array><string>com.pkware.zip-archive</string></array>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>LSItemContentTypes</key><array><string>com.sun.java-archive</string><string>public.zip-archive</string><string>com.pkware.zip-archive</string></array>
     </dict>
   </array>
 </dict></plist>

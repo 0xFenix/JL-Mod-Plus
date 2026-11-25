@@ -46,6 +46,9 @@ static double rt_now(void) {
 @property(nonatomic) int slot;
 @property(nonatomic, copy) NSString *jarPath;
 @property(nonatomic, copy) NSString *title;
+// Directory name (inside the save root) this tab writes RMS data to. Two tabs
+// of the same JAR must never share it.
+@property(nonatomic, copy) NSString *saveDir;
 @property(nonatomic) int width;
 @property(nonatomic) int height;
 @property(nonatomic) int fpsLimit;
@@ -593,14 +596,35 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     fflush(stdout);
 }
 
-- (void)startSession:(RTGameSession *)session {
-    NSString *saveRoot = @(g_save_root);
+// RMS belongs to a tab, not to a JAR: launching the same game twice gives each
+// session its own directory so two accounts do not overwrite each other's
+// RecordStores. The first tab keeps the plain name, later ones take the first
+// free "<name> N".
+- (NSString *)claimSaveDirectoryForSession:(RTGameSession *)session {
     NSString *base = session.jarPath.lastPathComponent.stringByDeletingPathExtension;
-    saveRoot = [saveRoot stringByAppendingPathComponent:base];
-    [[NSFileManager defaultManager] createDirectoryAtPath:saveRoot
+    NSMutableSet<NSString *> *used = [NSMutableSet set];
+    for (RTGameSession *other in self.sessions) {
+        if (other != session && other.saveDir.length > 0) {
+            [used addObject:other.saveDir];
+        }
+    }
+    NSString *name = base;
+    for (int n = 2; [used containsObject:name]; n++) {
+        name = [NSString stringWithFormat:@"%@ %d", base, n];
+    }
+    session.saveDir = name;
+    NSString *directory = [@(g_save_root) stringByAppendingPathComponent:name];
+    [[NSFileManager defaultManager] createDirectoryAtPath:directory
                               withIntermediateDirectories:YES
                                                attributes:nil
                                                     error:NULL];
+    return directory;
+}
+
+- (void)startSession:(RTGameSession *)session {
+    NSString *saveRoot = [self claimSaveDirectoryForSession:session];
+    printf("[RT] slot %d save=%s\n", session.slot, saveRoot.lastPathComponent.UTF8String);
+    fflush(stdout);
 
     NSString *jar = session.jarPath;
     int slot = session.slot;

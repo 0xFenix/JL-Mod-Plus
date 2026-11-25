@@ -396,3 +396,18 @@ copied the file into `Documents/games/rotate2.jar` and the library listed it as
 alert over the running game (screenshot read); a normal library launch shows
 the top bar with back chevron, title, keyboard, speedometer and `!`
 (screenshot read).
+
+### 19. Save data per tab — 2026-11-25
+
+A JAR used to own one save directory, so launching the same title in a second
+tab made both tabs share their RecordStores. Save directories are now claimed
+per session: the first tab keeps `<save>/<jar name>`, later tabs take the first
+free `<jar name> 2`, ` 3`, and so on, chosen against the directories of the
+tabs that are currently open. The choice is logged as
+`[RT] slot N save=<dir>`. Deleting a game removes the base directory and every
+`<jar name> N` sibling, so an account created in a second tab is cleaned up
+with the title.
+
+Verified on the simulator by opening Avatar LAPRO twice: slot 0 logged
+`save=game`, slot 1 logged `save=game 2`, both rendered concurrently, and the
+two directories contained independent `rms/*.rsh` files.

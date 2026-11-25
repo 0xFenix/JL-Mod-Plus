@@ -627,9 +627,17 @@
 - (void)deleteGame:(RTGameEntry *)entry {
     NSFileManager *manager = [NSFileManager defaultManager];
     [manager removeItemAtPath:entry.path error:NULL];
-    NSString *saveDirectory = [rt_saves_directory()
-            stringByAppendingPathComponent:entry.file.stringByDeletingPathExtension];
-    [manager removeItemAtPath:saveDirectory error:NULL];
+    // A game can own several save directories: one per tab that ever ran it
+    // ("<name>", "<name> 2", ...). They all belong to this JAR.
+    NSString *saveRoot = rt_saves_directory();
+    NSString *base = entry.file.stringByDeletingPathExtension;
+    [manager removeItemAtPath:[saveRoot stringByAppendingPathComponent:base] error:NULL];
+    NSString *prefix = [base stringByAppendingString:@" "];
+    for (NSString *name in [manager contentsOfDirectoryAtPath:saveRoot error:NULL]) {
+        if ([name hasPrefix:prefix]) {
+            [manager removeItemAtPath:[saveRoot stringByAppendingPathComponent:name] error:NULL];
+        }
+    }
     rt_forget_game(entry.file);
     [self reloadGames];
 }
