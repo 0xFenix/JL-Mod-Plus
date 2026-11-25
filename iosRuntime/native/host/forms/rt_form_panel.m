@@ -245,10 +245,35 @@ static void (*g_visibility_callback)(int visible) = NULL;
         if (title && title[0]) {
             [stack addArrangedSubview:[self makeTitleLabel:@(title)]];
         }
+        // Long lists scroll in their own view so the command buttons stay on
+        // screen instead of being pushed below dozens of rows.
+        UIScrollView *listScroll = [[UIScrollView alloc] init];
+        listScroll.translatesAutoresizingMaskIntoConstraints = NO;
+        listScroll.showsVerticalScrollIndicator = YES;
+        listScroll.alwaysBounceVertical = YES;
+
+        UIStackView *listStack = [[UIStackView alloc] init];
+        listStack.translatesAutoresizingMaskIntoConstraints = NO;
+        listStack.axis = UILayoutConstraintAxisVertical;
+        [listScroll addSubview:listStack];
+        [NSLayoutConstraint activateConstraints:@[
+            [listStack.leadingAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.leadingAnchor],
+            [listStack.trailingAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.trailingAnchor],
+            [listStack.topAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.topAnchor],
+            [listStack.bottomAnchor constraintEqualToAnchor:listScroll.contentLayoutGuide.bottomAnchor],
+            [listStack.widthAnchor constraintEqualToAnchor:listScroll.frameLayoutGuide.widthAnchor],
+            [listScroll.heightAnchor constraintLessThanOrEqualToConstant:360],
+        ]];
+        // Shrink to the rows while they fit; the <=360 above wins when they do not.
+        NSLayoutConstraint *fit = [listScroll.heightAnchor
+                constraintEqualToAnchor:listStack.heightAnchor];
+        fit.priority = 750;
+        fit.active = YES;
+
         int count = j2me_ui_get_list_item_count();
         for (int i = 0; i < count; i++) {
-            if (stack.arrangedSubviews.count > 0) {
-                [self addSeparatorToStack:stack after:nil];
+            if (listStack.arrangedSubviews.count > 0) {
+                [self addSeparatorToStack:listStack after:nil];
             }
             const char *item = j2me_ui_get_list_item(i);
             NSString *titleText = item ? @(item) : @"";
@@ -258,8 +283,9 @@ static void (*g_visibility_callback)(int visible) = NULL;
             UIButton *row = [self makeChoiceRowWithTitle:titleText selected:NO];
             row.tag = i;
             [row addTarget:self action:@selector(selectListRow:) forControlEvents:UIControlEventTouchUpInside];
-            [stack addArrangedSubview:row];
+            [listStack addArrangedSubview:row];
         }
+        [stack addArrangedSubview:listScroll];
         [self.stackView addArrangedSubview:card];
         [self addCommandButtons];
         return;

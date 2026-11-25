@@ -467,3 +467,15 @@ the original `J2ME_UI_COMMAND_ACTION` id, so MIDlets are unaffected.
 Verified on the simulator with `test/CommandProbe.java` (six commands): the
 screen shows 'Chọn' as primary, 'Quay lại' / 'Lưu' side by side and
 'Tùy chọn (3)'.
+
+### 24. Long lists scroll so commands stay visible — 2026-11-26
+
+A List with more items than fit used to grow the panel until the command
+buttons were pushed below the screen. Rows now live in an inner scroll view
+capped at 360 pt (short lists still shrink to their content), and the command
+buttons are laid out after the card, so they remain visible while the list
+scrolls.
+
+Verified on the simulator with `test/ListProbe.java` (30 items): the panel
+showed the title, rows 1–8 inside the bounded card and both commands right
+below it.

@@ -1,0 +1,6 @@
+MIDlet-Name: ListProbe
+MIDlet-Version: 1.0
+MIDlet-Vendor: JL
+MIDlet-1: ListProbe, /icon.png, ListProbe
+MicroEdition-Profile: MIDP-2.0
+MicroEdition-Configuration: CLDC-1.1

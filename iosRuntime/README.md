@@ -245,6 +245,13 @@ directory is printed at start (`[RT] slot N save=...`) and every existing tab
 keeps its own directory until it is closed. Deleting a game from the library
 removes all of its `<jar name>` and `<jar name> N` directories.
 
+### Long lists
+
+A list with many items scrolls inside its own card (capped at 360 pt) instead of
+pushing the command buttons off the panel, so the commands stay reachable while
+the rows scroll. `test/ListProbe.java` (30 items) is the fixture
+(`make-test-jar.sh` -> `build/list-probe.jar`).
+
 ### Commands on a screen
 
 A MIDlet may attach any number of commands to a form or list, more than a phone
