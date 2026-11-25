@@ -354,3 +354,23 @@ after an interruption ends.
 Verification on the simulator: with Avatar LAPRO running, launching Settings
 did not suspend the app — frame logging continued from `frames=60 3.3s` to
 `frames=300 16.4s` and then `frames=690 39.5s` while Settings was on screen.
+
+### 17. Closing a tab really disconnects — 2026-11-25
+
+Closing a tab stopped the MIDlet and destroyed its JVM, but the character
+stayed online. A game normally relies on the process exiting to close its
+socket, so a title that never calls `Socket.close()` left an ESTABLISHED TCP
+connection behind; with several slots in one process that fd lived until the
+app quit. `lsof` on the simulator showed the connection surviving the slot
+destroy and sitting in `CLOSE_WAIT` after the server gave up.
+
+`patches/0004-close-sockets-on-jvm-destroy.patch` tracks every socket created
+by `org.mini.net.SocketNative` against its JVM (`bind0`, `connect0`, `accept0`,
+untracked in `close0`) and, in `jvm_destroy`, shuts the surviving fds down
+before waiting for threads and closes them once the threads are gone.
+Verified from a clean engine checkout (patches 0002 and 0004 applied by
+`build-app.sh`, `git status` left with only the expected files): the game's
+connection to its server was `ESTABLISHED` before the close and gone entirely
+after `Destroying slot 0 JVM`, while single-session play still runs at
+~18.6 fps.
+

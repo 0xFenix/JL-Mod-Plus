@@ -1,0 +1,158 @@
+diff --git a/minijvm/c/jvm/jni_io.c b/minijvm/c/jvm/jni_io.c
+index 1ddccb9..fb4195b 100644
+--- a/minijvm/c/jvm/jni_io.c
++++ b/minijvm/c/jvm/jni_io.c
+@@ -93,6 +93,86 @@ typedef struct _VmSock {
+     char hostport[6]; //port the max is 65535
+ } VmSock;
+ 
++
++// --- per-JVM socket tracking ---------------------------------------------
++// A MIDlet normally relies on the process exiting to close its connection, so
++// a game that never calls Socket.close() leaves an established TCP connection
++// behind when its JVM is destroyed. On a multi-slot host that fd survives until
++// the whole app quits, which keeps the character online on the game server.
++// Every socket created here is therefore recorded against its JVM and closed
++// when that JVM is destroyed.
++#define JNI_IO_MAX_TRACKED_SOCKS 256
++static struct {
++    MiniJVM *jvm;
++    int fd;
++} g_tracked_socks[JNI_IO_MAX_TRACKED_SOCKS];
++static mtx_t g_tracked_lock;
++
++static void sock_track_init(void) {
++    static int inited = 0;
++    if (!inited) {
++        for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
++            g_tracked_socks[i].fd = -1;
++            g_tracked_socks[i].jvm = NULL;
++        }
++        mtx_init(&g_tracked_lock, mtx_plain);
++        inited = 1;
++    }
++}
++
++static void sock_track(MiniJVM *jvm, int fd) {
++    if (fd < 0) return;
++    sock_track_init();
++    mtx_lock(&g_tracked_lock);
++    for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
++        if (g_tracked_socks[i].fd < 0) {
++            g_tracked_socks[i].jvm = jvm;
++            g_tracked_socks[i].fd = fd;
++            break;
++        }
++    }
++    mtx_unlock(&g_tracked_lock);
++}
++
++static void sock_untrack(int fd) {
++    if (fd < 0) return;
++    sock_track_init();
++    mtx_lock(&g_tracked_lock);
++    for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
++        if (g_tracked_socks[i].fd == fd) {
++            g_tracked_socks[i].fd = -1;
++            g_tracked_socks[i].jvm = NULL;
++        }
++    }
++    mtx_unlock(&g_tracked_lock);
++}
++
++// Wakes any thread blocked in recv() so JVM shutdown cannot wait on the network.
++void jni_io_shutdown_sockets_for_jvm(MiniJVM *jvm) {
++    sock_track_init();
++    mtx_lock(&g_tracked_lock);
++    for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
++        if (g_tracked_socks[i].fd >= 0 && g_tracked_socks[i].jvm == jvm) {
++            shutdown(g_tracked_socks[i].fd, SHUT_RDWR);
++        }
++    }
++    mtx_unlock(&g_tracked_lock);
++}
++
++// Closes whatever the MIDlet left open. Called once the JVM's threads are gone.
++void jni_io_close_sockets_for_jvm(MiniJVM *jvm) {
++    sock_track_init();
++    mtx_lock(&g_tracked_lock);
++    for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
++        if (g_tracked_socks[i].fd >= 0 && g_tracked_socks[i].jvm == jvm) {
++            close(g_tracked_socks[i].fd);
++            g_tracked_socks[i].fd = -1;
++            g_tracked_socks[i].jvm = NULL;
++        }
++    }
++    mtx_unlock(&g_tracked_lock);
++}
++
+ //=================================  socket  ====================================
+ s32 sock_option(VmSock *vmsock, s32 opType, s32 opValue, s32 opValue2) {
+     s32 ret = 0;
+@@ -311,6 +391,7 @@ s32 org_mini_net_SocketNative_bind0(Runtime *runtime, JClass *clazz) {
+         jvm_printf("org_mini_net_SocketNative_open0  \n");
+ #endif
+     }
++    if (ret >= 0) sock_track(runtime->jvm, ((VmSock *) jarray_body(vmarr))->contex.fd);
+     push_int(stack, ret < 0 ? -1 : 0);
+     return 0;
+ }
+@@ -341,6 +422,7 @@ s32 org_mini_net_SocketNative_accept0(Runtime *runtime, JClass *clazz) {
+                 ret = -1;
+                 break;
+             } else {
++                sock_track(runtime->jvm, cltsock->contex.fd);
+                 break;
+             }
+         }
+@@ -378,6 +460,7 @@ s32 org_mini_net_SocketNative_connect0(Runtime *runtime, JClass *clazz) {
+         jthread_block_enter(runtime);
+         ret = mbedtls_net_connect(ctx, jarray_body(host), jarray_body(port), proto);
+         jthread_block_exit(runtime);
++        if (ret >= 0) sock_track(runtime->jvm, ctx->fd);
+ #if _JVM_DEBUG_LOG_LEVEL > 5
+         invoke_deepth(runtime);
+         jvm_printf("org_mini_net_SocketNative_open0  \n");
+@@ -542,6 +625,7 @@ s32 org_mini_net_SocketNative_close0(Runtime *runtime, JClass *clazz) {
+     Instance *vmarr = localvar_getRefer(runtime->localvar, 0);
+     VmSock *vmsock = (VmSock *) jarray_body(vmarr);
+     mbedtls_net_context *ctx = &vmsock->contex;
++    sock_untrack(ctx->fd);
+     mbedtls_net_free(ctx);
+ #if _JVM_DEBUG_LOG_LEVEL > 5
+     invoke_deepth(runtime);
+diff --git a/minijvm/c/jvm/jvm_util.h b/minijvm/c/jvm/jvm_util.h
+index 4ac8f3c..b5c1a30 100644
+--- a/minijvm/c/jvm/jvm_util.h
++++ b/minijvm/c/jvm/jvm_util.h
+@@ -69,6 +69,10 @@ s64 nanoTime(void);
+ 
+ s64 threadSleep(s64 ms);
+ 
++// jni_io.c: sockets a MIDlet left open when its JVM is destroyed.
++void jni_io_shutdown_sockets_for_jvm(MiniJVM *jvm);
++void jni_io_close_sockets_for_jvm(MiniJVM *jvm);
++
+ s32 sys_properties_load(MiniJVM *jvm);
+ 
+ void sys_properties_dispose(MiniJVM *jvm);
+diff --git a/minijvm/c/jvm/jvm.c b/minijvm/c/jvm/jvm.c
+index 28c0fbb..bc2c8e9 100644
+--- a/minijvm/c/jvm/jvm.c
++++ b/minijvm/c/jvm/jvm.c
+@@ -1094,6 +1105,7 @@ void jvm_destroy(MiniJVM *jvm) {
+         thrd_t t = jthread_start(inst, parent);
+         thrd_join(t, NULL);
+     }
++    jni_io_shutdown_sockets_for_jvm(jvm);
+     runtime_destroy(parent);
+     parent = NULL;
+     while (threadlist_count_none_daemon(jvm) > 0 && !jvm->collector->exit_flag) {
+@@ -1111,6 +1123,7 @@ void jvm_destroy(MiniJVM *jvm) {
+         threadSleep(20);
+     }
+ 
++    jni_io_close_sockets_for_jvm(jvm);
+     jdwp_stop_server(jvm);
+     //
+     gc_destroy(jvm);

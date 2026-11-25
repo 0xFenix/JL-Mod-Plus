@@ -52,6 +52,7 @@ from upstream is redistributed. Patches currently present:
 | --- | --- |
 | `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
 | `0002-signal-handler-safe-shutdown.patch` | The engine's signal handler kept a pointer to the last created JVM, so after a slot was destroyed a later `SIGTERM` dereferenced freed memory and dumped threads twice, ending in a second `SIGSEGV`. It now clears that pointer on destroy, refuses to re-enter the dump, and terminates with `_Exit` instead of running exit handlers. |
+| `0004-close-sockets-on-jvm-destroy.patch` | Close TCP sockets a MIDlet left open when its JVM is destroyed, so closing a tab really disconnects the character. |
 | `0003-file-protocol.patch` | Adds the JSR-75 `file://` protocol and `FileConnection` implementation to the runtime jar. `Connector` resolves protocol classes with the boot class loader, so a classpath copy is never found; `file:///root/` maps to `<Documents>/files`, traversal is rejected, and unimplementable size queries return 0. |
 
 ## Build and run
@@ -252,6 +253,18 @@ appearance and the `Sắp xếp` action changes the order.
 While a non-Canvas screen (Form, List, Alert, TextBox) is up, the panel dims
 the game and hides the keypad, because those screens bring their own command
 buttons and the pad would otherwise peek out around the sheet.
+
+## Socket lifetime when a tab closes
+
+A MIDlet normally relies on the process exiting to close its connection, so a
+game that never calls `Socket.close()` leaves an established TCP connection
+behind. On a multi-slot host that fd survives until the whole app quits, which
+keeps the character online on the game server after its tab is closed.
+`patches/0004-close-sockets-on-jvm-destroy.patch` records every socket the
+engine opens against its JVM and shuts it down (then closes it) when that JVM
+is destroyed. Closing a tab is therefore a real disconnect: the connection
+leaves `ESTABLISHED` immediately. `RT_CLOSE_FOCUSED=<seconds>` closes the
+focused session during automated runs, which is how this was verified.
 
 ## Known gaps
 

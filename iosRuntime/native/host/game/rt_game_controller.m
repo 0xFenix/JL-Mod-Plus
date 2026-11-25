@@ -735,6 +735,19 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                        dispatch_get_main_queue(), ^{ [self postKeyCharacters:text]; });
     }
 
+    if (getenv("RT_CLOSE_FOCUSED")) {
+        double delay = atof(getenv("RT_CLOSE_FOCUSED"));
+        if (delay > 0.2) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t) (delay * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                               RTGameSession *focused = [self sessionForSlot:self.focusedSlot];
+                               if (focused) {
+                                   [self closeSlot:focused.slot];
+                               }
+                           });
+        }
+    }
+
     if (getenv("RT_SYNTH_INPUT")) {
         [self scheduleSyntheticEvents];
     }
