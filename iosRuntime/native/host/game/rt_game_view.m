@@ -98,6 +98,9 @@ static const int rt_keypad_cols = 3;
 @property(nonatomic) int midpKeyCode;
 @property(nonatomic, strong) UILabel *detailLabel;
 @property(nonatomic, strong) UIImageView *symbolView;
+/// Colour shown when the key is not pressed; highlight derives from it so the
+/// amber OK key keeps its identity while pressed.
+@property(nonatomic, strong) UIColor *baseBackgroundColor;
 @end
 
 @implementation RTKeyButton
@@ -105,7 +108,8 @@ static const int rt_keypad_cols = 3;
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = rt_color_surface_raised();
+        self.baseBackgroundColor = rt_color_surface_raised();
+        self.backgroundColor = self.baseBackgroundColor;
         self.layer.cornerRadius = 14.0;
         self.layer.cornerCurve = kCACornerCurveContinuous;
         self.clipsToBounds = YES;
@@ -131,16 +135,18 @@ static const int rt_keypad_cols = 3;
         [self addSubview:sub];
         self.detailLabel = sub;
 
+        // Both the caption and the glyph are centred in the key so the pad
+        // reads as one grid instead of labels floating at the top edge.
         [NSLayoutConstraint activateConstraints:@[
-            [sub.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
-            [sub.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-            [sub.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
+            [sub.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [sub.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [sub.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.leadingAnchor constant:4],
+            [sub.trailingAnchor constraintLessThanOrEqualToAnchor:self.trailingAnchor constant:-4],
 
-            [symbol.topAnchor constraintEqualToAnchor:sub.bottomAnchor constant:-2],
             [symbol.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [symbol.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
             [symbol.widthAnchor constraintEqualToConstant:22],
             [symbol.heightAnchor constraintEqualToConstant:22],
-            [symbol.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-4],
         ]];
     }
     return self;
@@ -149,8 +155,8 @@ static const int rt_keypad_cols = 3;
 - (void)setHighlighted:(BOOL)highlighted {
     [super setHighlighted:highlighted];
     self.backgroundColor = highlighted
-            ? [rt_color_text_primary() colorWithAlphaComponent:0.14]
-            : rt_color_surface_raised();
+            ? [self.baseBackgroundColor colorWithAlphaComponent:0.72]
+            : self.baseBackgroundColor;
 }
 
 @end
@@ -189,8 +195,6 @@ static const int rt_keypad_cols = 3;
         @(-3): @"chevron.left",
         @(-4): @"chevron.right",
         @(-5): @"",
-        @(-6): @"chevron.left",
-        @(-7): @"chevron.right",
     };
 
     int total = (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
@@ -209,6 +213,7 @@ static const int rt_keypad_cols = 3;
             [button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
 
             if (key == RT_KEY_FIRE) {
+                button.baseBackgroundColor = rt_color_accent();
                 button.backgroundColor = rt_color_accent();
                 [button setTitle:@"OK" forState:UIControlStateNormal];
                 [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
@@ -219,8 +224,7 @@ static const int rt_keypad_cols = 3;
             } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
                 button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
                 button.titleLabel.hidden = YES;
-                button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
-                button.symbolView.tintColor = rt_color_text_secondary();
+                button.symbolView.hidden = YES;
             } else if (key == '*' || key == '#') {
                 button.detailLabel.hidden = YES;
                 button.symbolView.hidden = YES;
@@ -244,6 +248,7 @@ static const int rt_keypad_cols = 3;
         }
         [column addArrangedSubview:line];
     }
+
     return self;
 }
 
