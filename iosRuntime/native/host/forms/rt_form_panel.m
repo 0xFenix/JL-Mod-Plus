@@ -280,9 +280,16 @@ static void (*g_visibility_callback)(int visible) = NULL;
             if (j2me_ui_is_list_item_running(i)) {
                 titleText = [titleText stringByAppendingString:@"  ▶"];
             }
-            UIButton *row = [self makeChoiceRowWithTitle:titleText selected:NO];
+            UIButton *row = [self makeListRowWithTitle:titleText];
             row.tag = i;
             [row addTarget:self action:@selector(selectListRow:) forControlEvents:UIControlEventTouchUpInside];
+            // Long-pressing an item opens the command menu, like a handset's
+            // context menu; the tapped row becomes the selected one first.
+            UILongPressGestureRecognizer *hold =
+                    [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                                  action:@selector(holdListRow:)];
+            hold.minimumPressDuration = 0.35;
+            [row addGestureRecognizer:hold];
             [listStack addArrangedSubview:row];
         }
         [stack addArrangedSubview:listScroll];
@@ -371,6 +378,20 @@ static void (*g_visibility_callback)(int visible) = NULL;
         [label.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
     ]];
 
+    return row;
+}
+
+- (UIButton *)makeListRowWithTitle:(NSString *)title {
+    UIButton *row = [UIButton buttonWithType:UIButtonTypeSystem];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [row setTitle:title ?: @"" forState:UIControlStateNormal];
+    [row setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
+    row.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+            scaledFontForFont:[UIFont systemFontOfSize:16 weight:UIFontWeightRegular]];
+    row.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    row.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    row.contentEdgeInsets = UIEdgeInsetsMake(0, 4, 0, 4);
+    [row.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     return row;
 }
 
@@ -466,59 +487,53 @@ static void (*g_visibility_callback)(int visible) = NULL;
     return button;
 }
 
-// A MIDlet can attach any number of commands to a screen, far more than a
-// handset could show as buttons. Keep the first three (primary plus two) and
-// group the rest behind one menu, the way feature phones put them under
-// "Tuỳ chọn".
+// A MIDlet can attach any number of commands to a screen. A single command
+// stays a plain button; two or more collapse into one menu button that lists
+// them all, the way J2ME Loader does it, so the panel never grows a wall of
+// buttons.
 - (void)addCommandButtons {
     int count = j2me_ui_get_command_count();
     if (count == 0) return;
     UIView *card = [self makeCard];
     UIStackView *stack = [self makeCardStack:card];
 
-    const char *firstLabel = j2me_ui_get_command_label(0);
-    UIButton *primary = [self makePrimaryButton:(firstLabel ? @(firstLabel) : @"OK")
-                                         action:@selector(fireCommand:)];
-    primary.tag = j2me_ui_get_command_id(0);
-    [stack addArrangedSubview:primary];
-
-    int secondaryCount = MIN(count - 1, 2);
-    if (secondaryCount > 0) {
-        UIStackView *row = [[UIStackView alloc] init];
-        row.axis = UILayoutConstraintAxisHorizontal;
-        row.distribution = UIStackViewDistributionFillEqually;
-        row.spacing = 10;
-        for (int i = 1; i <= secondaryCount; i++) {
-            const char *label = j2me_ui_get_command_label(i);
-            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"OK")
-                                                  action:@selector(fireCommand:)];
-            button.tag = j2me_ui_get_command_id(i);
-            [row addArrangedSubview:button];
-        }
-        [stack setCustomSpacing:10 afterView:primary];
-        [stack addArrangedSubview:row];
-    }
-
-    if (count > 3) {
-        UIButton *more = [self makeSecondaryButton:
-                [NSString stringWithFormat:@"Tùy chọn (%d)", count - 3]
-                                            action:@selector(showCommandMenu:)];
-        [stack setCustomSpacing:10 afterView:stack.arrangedSubviews.lastObject];
-        [stack addArrangedSubview:more];
+    if (count == 1) {
+        const char *label = j2me_ui_get_command_label(0);
+        UIButton *primary = [self makePrimaryButton:(label ? @(label) : @"OK")
+                                             action:@selector(fireCommand:)];
+        primary.tag = j2me_ui_get_command_id(0);
+        [stack addArrangedSubview:primary];
+    } else {
+        UIButton *menu = [self makePrimaryButton:
+                [NSString stringWithFormat:@"Menu (%d)", count]
+                                          action:@selector(showCommandMenu:)];
+        [stack addArrangedSubview:menu];
     }
     [self.stackView addArrangedSubview:card];
 }
 
-- (void)showCommandMenu:(UIButton *)sender {
+- (void)showCommandMenu:(UIView *)sender {
+    [self presentCommandMenuFrom:sender firstCommand:0];
+}
+
+- (void)holdListRow:(UILongPressGestureRecognizer *)hold {
+    if (hold.state != UIGestureRecognizerStateBegan) return;
+    UIView *row = hold.view;
+    j2me_input_post_ui_event(J2ME_UI_LIST_SET_INDEX, (int) row.tag);
+    [self presentCommandMenuFrom:row firstCommand:0];
+}
+
+- (void)presentCommandMenuFrom:(UIView *)anchor firstCommand:(int)first {
+    int count = j2me_ui_get_command_count();
+    if (count <= first) return;
     UIViewController *host = self.window.rootViewController;
     while (host.presentedViewController) {
         host = host.presentedViewController;
     }
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Tùy chọn"
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Menu"
                                                                   message:nil
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    int count = j2me_ui_get_command_count();
-    for (int i = 3; i < count; i++) {
+    for (int i = first; i < count; i++) {
         const char *label = j2me_ui_get_command_label(i);
         int commandId = j2me_ui_get_command_id(i);
         [sheet addAction:[UIAlertAction actionWithTitle:(label ? @(label) : @"OK")
@@ -530,8 +545,8 @@ static void (*g_visibility_callback)(int visible) = NULL;
     [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ"
                                              style:UIAlertActionStyleCancel
                                            handler:nil]];
-    sheet.popoverPresentationController.sourceView = sender;
-    sheet.popoverPresentationController.sourceRect = sender.bounds;
+    sheet.popoverPresentationController.sourceView = anchor;
+    sheet.popoverPresentationController.sourceRect = anchor.bounds;
     [host presentViewController:sheet animated:YES completion:nil];
 }
 
