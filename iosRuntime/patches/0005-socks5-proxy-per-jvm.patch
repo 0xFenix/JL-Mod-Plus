@@ -1,6 +1,6 @@
 --- a/minijvm/c/jvm/jni_io.c
 +++ b/minijvm/c/jvm/jni_io.c
-@@ -94,6 +94,225 @@
+@@ -94,6 +94,231 @@
  } VmSock;
  
  
@@ -134,6 +134,12 @@
 +    unsigned char buf[600];
 +    int has_auth = user && user[0];
 +
++    // The engine hands over a NUL-terminated byte array, so a CONNECT would
++    // announce the wrong domain length and the proxy drops the request.
++    while (host_len > 0 && host[host_len - 1] == '\0') {
++        host_len--;
++    }
++
 +    int n = 0;
 +    buf[n++] = 5;
 +    if (has_auth) {
@@ -226,7 +232,7 @@
  // --- per-JVM socket tracking ---------------------------------------------
  // A MIDlet normally relies on the process exiting to close its connection, so
  // a game that never calls Socket.close() leaves an established TCP connection
-@@ -161,6 +380,7 @@
+@@ -161,6 +386,7 @@
  
  // Closes whatever the MIDlet left open. Called once the JVM's threads are gone.
  void jni_io_close_sockets_for_jvm(MiniJVM *jvm) {
@@ -234,7 +240,7 @@
      sock_track_init();
      mtx_lock(&g_tracked_lock);
      for (int i = 0; i < JNI_IO_MAX_TRACKED_SOCKS; i++) {
-@@ -457,8 +677,35 @@
+@@ -457,8 +683,35 @@
          }
          memcpy(&vmsock->hostname, jarray_body(host), hostlen); //copy with 0
          memcpy(&vmsock->hostport, jarray_body(port), jarray_length(port));

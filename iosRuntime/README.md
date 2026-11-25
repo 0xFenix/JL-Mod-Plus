@@ -257,6 +257,11 @@ pinned to the top of the panel and scrolls when it overflows; the scroll view
 ends at the keyboard guide, so opening the system keyboard shrinks the visible
 area instead of covering the field being edited.
 
+The engine hands the tunnel a NUL-terminated host array, so the CONNECT
+request used to announce one byte too many and the proxy dropped it; the patch
+trims trailing zero bytes before building the request, which is what made plain
+`http://` work through a proxy again while sockets already did.
+
 ## SOCKS5 proxy for online games
 
 Some titles only reach their server from a proxy in the server's region, and a

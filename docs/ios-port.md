@@ -614,3 +614,16 @@ an unused proxy was removed — it made a plain second tab diverge from the game
 saved proxy. Verified on the simulator by opening the same JAR twice: both slots
 logged the game's saved proxy.
 
+### 32. HTTP through a proxy works again — 2026-11-26
+
+With a proxy selected, games logged in over their socket but every `http://`
+request failed with `Socket connect error` (reproduced on the iPhone and on the
+simulator with a real proxy). The tunnel was sending the CONNECT request with
+`host_len` counting the NUL the engine appends to the host byte array, so the
+proxy saw a domain one byte too long and closed the connection — no reply code,
+hence the silent failure. `socks5_tunnel` now trims trailing zero bytes before
+building the request. curl through the same proxy always worked, which is what
+pointed at our request rather than the proxy. Verified from a clean engine
+checkout: patches 0002/0004/0005 applied in order, `[HTTP] code=200` through
+`113.160.166.35:35944`, Avatar still at ~18 fps.
+
