@@ -455,3 +455,15 @@ the visible area instead of covering the field.
 
 Verified on the simulator with FormProbe: the login form renders title, fields,
 choice rows and the OK button from the top of the panel.
+
+### 23. Commands grouped when there are many — 2026-11-26
+
+A MIDlet can attach more commands to a screen than the panel could show as
+buttons. `addCommandButtons` in `rt_form_panel.m` now renders the first command
+as the amber primary, the next two as a secondary row, and hides the remainder
+behind a `Tùy chọn (n)` button that presents an action sheet. Every entry posts
+the original `J2ME_UI_COMMAND_ACTION` id, so MIDlets are unaffected.
+
+Verified on the simulator with `test/CommandProbe.java` (six commands): the
+screen shows 'Chọn' as primary, 'Quay lại' / 'Lưu' side by side and
+'Tùy chọn (3)'.
