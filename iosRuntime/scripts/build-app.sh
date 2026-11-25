@@ -36,7 +36,7 @@ BUILD="$ROOT/build"
 CSRC="$MINIJVM_DIR/minijvm/c"
 RT_JAR="$MINIJVM_DIR/binary/lib/minijvm_rt.jar"
 APP="$APP_DIR/RuntimeApp.app"
-BUNDLE_ID="io.github.h3nb.jlmodplus.runtime"
+BUNDLE_ID="io.github.0xfenix.jlmodplus"
 
 : "${JAVA_HOME:?set JAVA_HOME to a JDK 17+}"
 PATH="$JAVA_HOME/bin:$PATH"
@@ -122,7 +122,8 @@ cat > "$APP/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>RuntimeApp</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-  <key>CFBundleName</key><string>JLModPlusRuntime</string>
+  <key>CFBundleName</key><string>JL-Next</string>
+  <key>CFBundleDisplayName</key><string>JL-Next</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
@@ -141,6 +142,22 @@ cat > "$APP/Info.plist" <<PLIST
   </dict></array>
 </dict></plist>
 PLIST
+
+# App icon: compile the single-size 1024 asset into Assets.car and merge the
+# icon keys actool writes (CFBundleIcons) into the Info.plist above.
+ICON_PLIST="$(mktemp -t rt-icon).plist"
+if xcrun actool "$ROOT/assets/Assets.xcassets" \
+        --compile "$APP" \
+        --platform "$SDK" \
+        --minimum-deployment-target 17.0 \
+        --app-icon AppIcon \
+        --target-device iphone --target-device ipad \
+        --output-partial-info-plist "$ICON_PLIST" >/dev/null 2>&1; then
+    /usr/libexec/PlistBuddy -c "Merge $ICON_PLIST" "$APP/Info.plist" >/dev/null 2>&1 || true
+else
+    echo "warning: actool failed; the app will use the default icon" >&2
+fi
+rm -f "$ICON_PLIST"
 
 if [ "$TARGET" = sim ]; then
     codesign -f -s - --timestamp=none "$APP" >/dev/null 2>&1 || true

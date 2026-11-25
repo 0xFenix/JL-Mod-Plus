@@ -33,7 +33,7 @@ JAR="${URL#file://}/jars/game.jar"
 echo "jar=$JAR"
 
 ( xcrun devicectl device process launch --device "$UDID" --terminate-existing --console \
-    -e "{\"RT_MIDLET_JAR\":\"$JAR\"}" io.github.h3nb.jlmodplus.runtime \
+    -e "{\"RT_MIDLET_JAR\":\"$JAR\"}" io.github.0xfenix.jlmodplus \
     > build/device/net.log 2>&1 & echo $! > /tmp/devnet.pid )
 sleep 30
 kill "$(cat /tmp/devnet.pid)" 2>/dev/null || true

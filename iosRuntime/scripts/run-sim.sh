@@ -7,7 +7,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SECS="${1:-40}"
 DEVICE="${SPIKE_DEVICE:-SpikePhone}"
-BUNDLE_ID="io.github.h3nb.jlmodplus.runtime"
+BUNDLE_ID="io.github.0xfenix.jlmodplus"
 APP="$ROOT/build/RuntimeApp.app"
 LOG="$ROOT/build/run.log"
 

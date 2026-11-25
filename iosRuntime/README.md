@@ -75,7 +75,7 @@ For a real iPhone, `./scripts/build-device.sh` compiles the same sources for
 
 ```sh
 xcrun devicectl device install app --device <UDID> build/device/RuntimeApp.app
-xcrun devicectl device process launch --device <UDID> --console io.github.h3nb.jlmodplus.runtime
+xcrun devicectl device process launch --device <UDID> --console io.github.0xfenix.jlmodplus
 ```
 
 The device needs a profile that lists its UDID; let Xcode register the device
@@ -89,9 +89,9 @@ already renders. Pass the app's `Documents` path (the harness prints its
 ```sh
 xcrun devicectl device process launch --device <UDID> --console \
   -e '{"RT_MIDLET_JAR":"<bundle>/jars/game.jar","RT_SNAPSHOT_DIR":"<Documents>/snaps","RT_SNAPSHOT_INTERVAL":"150"}' \
-  io.github.h3nb.jlmodplus.runtime
+  io.github.0xfenix.jlmodplus
 xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer \
-  --domain-identifier io.github.h3nb.jlmodplus.runtime \
+  --domain-identifier io.github.0xfenix.jlmodplus \
   --source Documents/snaps --destination /tmp/devsnaps
 ```
 
