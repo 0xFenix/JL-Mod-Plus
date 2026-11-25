@@ -580,6 +580,28 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self presentViewController:grid animated:YES completion:nil];
 }
 
+// A single IP can hold only a couple of accounts, so a new tab must not inherit
+// a proxy another running tab already uses: take the requested one when it is
+// free, otherwise the first saved proxy nobody holds, otherwise go direct.
+- (NSString *)proxyIdForNewSession:(NSString *)requested {
+    NSMutableSet<NSString *> *used = [NSMutableSet set];
+    for (RTGameSession *session in self.sessions) {
+        if (session.proxyId.length > 0) {
+            [used addObject:session.proxyId];
+        }
+    }
+    if (requested.length > 0 && ![used containsObject:requested]) {
+        return requested;
+    }
+    for (NSDictionary *proxy in rt_proxies()) {
+        NSString *identifier = proxy[@"id"];
+        if (identifier.length > 0 && ![used containsObject:identifier]) {
+            return identifier;
+        }
+    }
+    return @"";
+}
+
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
            fps:(int)fpsLimit title:(NSString *)title
   fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo
@@ -606,7 +628,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.fullKeyboard = fullKeyboard;
     session.turbo = turbo;
     session.keyCodes = keyCodes;
-    session.proxyId = proxyId ?: @"";
+    session.proxyId = [self proxyIdForNewSession:proxyId ?: @""];
     session.running = YES;
     [self.sessions addObject:session];
     [self focusSlot:slot];

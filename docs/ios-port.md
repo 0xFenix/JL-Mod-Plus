@@ -603,3 +603,16 @@ after, and the library subtitle shows `qua host:port` ahead of the last-played
 phrase, so truncation cuts the date first. `test/ListProbe`/`NetworkProbe` rows
 are unaffected.
 
+### 31. Proxy belongs to the tab, not the game — 2026-11-26
+
+One IP keeps only a couple of accounts online, so two tabs of the same game on
+the same proxy is exactly what a multi-account player cannot use. A new session
+now resolves its proxy through `-proxyIdForNewSession:`: the requested id (the
+game's saved one) when no running tab holds it, otherwise the first saved proxy
+nobody holds, otherwise direct. Picking by hand still wins and may be shared.
+Verified on the simulator by launching the same JAR twice with two saved
+proxies: slot 0 logged `proxy=127.0.0.1:1080:`, slot 1
+`proxy=127.0.0.1:1081:game` with `[SOCKS] proxy set to 127.0.0.1:1081 (auth)`,
+both rendering at ~20 fps. The per-game value stays only as the seed for the
+first tab and as the library hint.
+
