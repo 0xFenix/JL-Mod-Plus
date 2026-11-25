@@ -46,29 +46,40 @@ static void (*g_visibility_callback)(int visible) = NULL;
         _scrollView.alwaysBounceVertical = YES;
         [self addSubview:_scrollView];
 
+        // The stack needs a container: the container always fills at least the
+        // visible area, while the stack itself stays pinned to its top so short
+        // forms read from the top down instead of floating at the bottom.
+        UIView *container = [[UIView alloc] init];
+        container.translatesAutoresizingMaskIntoConstraints = NO;
+        [_scrollView addSubview:container];
+
         _stackView = [[UIStackView alloc] init];
         _stackView.translatesAutoresizingMaskIntoConstraints = NO;
         _stackView.axis = UILayoutConstraintAxisVertical;
         _stackView.spacing = 12;
-        [_scrollView addSubview:_stackView];
+        [container addSubview:_stackView];
 
         UILayoutGuide *safe = self.safeAreaLayoutGuide;
+        UILayoutGuide *content = _scrollView.contentLayoutGuide;
+        UILayoutGuide *frame = _scrollView.frameLayoutGuide;
         [NSLayoutConstraint activateConstraints:@[
             [_scrollView.topAnchor constraintEqualToAnchor:safe.topAnchor],
             [_scrollView.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
             [_scrollView.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-            [_scrollView.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
+            // Stop above the keyboard so the field being edited stays visible.
+            [_scrollView.bottomAnchor constraintEqualToAnchor:self.keyboardLayoutGuide.topAnchor],
 
-            // Bottom-anchored like a sheet: short forms sit above the home
-            // indicator, long ones grow upward and scroll.
-            [_stackView.topAnchor constraintGreaterThanOrEqualToAnchor:_scrollView.contentLayoutGuide.topAnchor
-                                                              constant:16],
-            [_stackView.leadingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.leadingAnchor constant:16],
-            [_stackView.trailingAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.trailingAnchor constant:-16],
-            [_stackView.bottomAnchor constraintEqualToAnchor:_scrollView.contentLayoutGuide.bottomAnchor constant:-16],
-            [_stackView.widthAnchor constraintEqualToAnchor:_scrollView.frameLayoutGuide.widthAnchor constant:-32],
-            [_scrollView.contentLayoutGuide.heightAnchor
-                    constraintGreaterThanOrEqualToAnchor:_scrollView.frameLayoutGuide.heightAnchor],
+            [container.topAnchor constraintEqualToAnchor:content.topAnchor],
+            [container.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+            [container.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+            [container.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
+            [container.widthAnchor constraintEqualToAnchor:frame.widthAnchor],
+            [container.heightAnchor constraintGreaterThanOrEqualToAnchor:frame.heightAnchor],
+
+            [_stackView.topAnchor constraintEqualToAnchor:container.topAnchor constant:16],
+            [_stackView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:16],
+            [_stackView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-16],
+            [_stackView.bottomAnchor constraintLessThanOrEqualToAnchor:container.bottomAnchor constant:-16],
         ]];
     }
     return self;
