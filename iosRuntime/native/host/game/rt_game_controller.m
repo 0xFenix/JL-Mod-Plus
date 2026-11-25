@@ -83,8 +83,10 @@ static double rt_now(void) {
 @property(nonatomic, strong) UILabel *titleLabel;
 @property(nonatomic, strong) UIButton *fpsButton;
 @property(nonatomic, strong) UIButton *tabsButton;
+@property(nonatomic, strong) UIButton *keyboardButton;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
+@property(nonatomic, strong) NSLayoutConstraint *keypadHeight;
 @property(nonatomic, strong) NSMutableArray<RTGameSession *> *sessions;
 @property(nonatomic) int focusedSlot;
 @property(nonatomic) BOOL midletStarted;
@@ -107,6 +109,7 @@ static void rt_set_keypad_visible(int visible) {
     controller.statusPill.hidden = visible != 0;
 }
 static NSString *const RTShowFPSDefaultsKey = @"RTShowFPS";
+static NSString *const RTFullKeyboardDefaultsKey = @"RTFullKeyboard";
 static int g_slot_frames[JVM_BRIDGE_MAX_SLOTS];
 static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
@@ -189,6 +192,18 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
              forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.fpsButton];
 
+    self.keyboardButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.keyboardButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.keyboardButton.tintColor = rt_color_text_secondary();
+    self.keyboardButton.accessibilityLabel = @"Bàn phím số";
+    [self.keyboardButton setImage:[[UIImage systemImageNamed:@"keyboard"]
+            imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                         forState:UIControlStateNormal];
+    [self.keyboardButton addTarget:self
+                            action:@selector(toggleKeyboard:)
+                  forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.keyboardButton];
+
     self.tabsButton = [UIButton buttonWithType:UIButtonTypeCustom];
     self.tabsButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.tabsButton.tintColor = rt_color_text_secondary();
@@ -246,10 +261,16 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     self.keypad = [[RTKeypadView alloc] init];
     self.keypad.translatesAutoresizingMaskIntoConstraints = NO;
+    self.keypad.fullKeyboard = [[NSUserDefaults standardUserDefaults]
+            boolForKey:RTFullKeyboardDefaultsKey];
+    self.keyboardButton.tintColor = self.keypad.fullKeyboard ? rt_color_accent()
+                                                             : rt_color_text_secondary();
     [self.keypadContainer addSubview:self.keypad];
 
     UILayoutGuide *safe = self.view.safeAreaLayoutGuide;
     self.topBarHeight = [self.topBar.heightAnchor constraintEqualToConstant:0];
+    self.keypadHeight = [self.keypadContainer.heightAnchor
+            constraintEqualToConstant:self.keypad.preferredHeight];
     [NSLayoutConstraint activateConstraints:@[
         [self.topBar.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [self.topBar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
@@ -283,7 +304,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:4],
         [self.titleLabel.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
-        [self.tabsButton.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-2],
+        [self.keyboardButton.trailingAnchor constraintEqualToAnchor:self.fpsButton.leadingAnchor constant:-2],
+        [self.keyboardButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.keyboardButton.widthAnchor constraintEqualToConstant:40],
+        [self.keyboardButton.heightAnchor constraintEqualToConstant:40],
+
+        [self.tabsButton.trailingAnchor constraintEqualToAnchor:self.keyboardButton.leadingAnchor constant:-2],
         [self.tabsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
         [self.tabsButton.heightAnchor constraintEqualToConstant:36],
 
@@ -312,7 +338,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         [self.keypadContainer.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [self.keypadContainer.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [self.keypadContainer.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor],
-        [self.keypadContainer.heightAnchor constraintEqualToConstant:190],
+        self.keypadHeight,
 
         [self.keypad.topAnchor constraintEqualToAnchor:self.keypadContainer.topAnchor],
         [self.keypad.leadingAnchor constraintEqualToAnchor:self.keypadContainer.leadingAnchor],
@@ -356,6 +382,23 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [[NSUserDefaults standardUserDefaults] setBool:self.showsFPS forKey:RTShowFPSDefaultsKey];
     self.fpsButton.tintColor = self.showsFPS ? rt_color_accent() : rt_color_text_secondary();
     [self updateStatus];
+}
+
+- (void)toggleKeyboard:(id)sender {
+    (void)sender;
+    self.keypad.fullKeyboard = !self.keypad.fullKeyboard;
+    self.keyboardButton.tintColor = self.keypad.fullKeyboard ? rt_color_accent()
+                                                             : rt_color_text_secondary();
+    [[NSUserDefaults standardUserDefaults] setBool:self.keypad.fullKeyboard
+                                            forKey:RTFullKeyboardDefaultsKey];
+    self.keypadHeight.constant = self.keypad.preferredHeight;
+    [UIView animateWithDuration:0.22
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseInOut
+                     animations:^{
+                         [self.view layoutIfNeeded];
+                     }
+                     completion:nil];
 }
 
 - (void)rebuildTabs {
@@ -602,6 +645,10 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                height:self.canvasHeight > 0 ? self.canvasHeight : g_height
                   fps:self.fpsLimit > 0 ? self.fpsLimit : g_fps_limit
                 title:nil];
+    }
+
+    if (getenv("RT_FULL_KEYBOARD") && !self.keypad.fullKeyboard) {
+        [self toggleKeyboard:nil];
     }
 
     if (getenv("RT_SYNTH_INPUT")) {

@@ -255,6 +255,15 @@ instead of the strip. Verified on the simulator with five sessions: four cards
 fill the screen, the fifth is reachable by scrolling, and the active card is
 brought into view.
 
+### 12. Built-in numeric keypad — 2026-11-25
+
+`RTKeypadView` gained a second layout behind the top-bar keyboard button,
+persisted as `RTFullKeyboard`: the compact 3x3 pad stays the default, and the
+full phone pad adds `0`–`9` below the soft keys and D-pad for games whose menus
+expect digits. The pad container grows from 190 to 340 pt and the canvas
+shrinks accordingly. `RT_FULL_KEYBOARD=1` drives the switch from scripts for
+screenshots.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →
