@@ -104,7 +104,10 @@ maps touches to key and pointer events through `j2me_input`.
 The bottom pad is the fixed 3x3 layout (soft keys, arrows, OK, `*`, `#`).
 The keyboard button in the top bar instead raises the iOS QWERTY keyboard:
 every typed character is posted to the focused MIDlet as a MIDP key
-press/release pair (return sends fire, delete sends the right soft key), which is how
+press/release pair (return sends fire, delete sends the right soft key). The
+hidden field owns `insertText:`/`deleteBackward:` directly because UIKit skips
+the delegate for a backspace on an empty field, which is why the built-in
+keyboard used to drop deletes while third-party keyboards did not. This is how
 games that draw their own name fields receive text. Forms, lists and text
 boxes keep using their native fields and the system keyboard.
 `RT_SYSTEM_KEYBOARD=1` opens the keyboard and `RT_TYPE_TEXT=abc` types a string

@@ -69,6 +69,35 @@ static double rt_now(void) {
 
 @end
 
+// UIKit only consults the delegate while there is text to change, so a
+// backspace on the empty hidden field never reached us with the built-in
+// keyboard (installed third-party keyboards send the event anyway). Owning the
+// UIKeyInput methods instead makes every keystroke arrive for every keyboard.
+@interface RTKeyboardField : UITextField
+@end
+
+@implementation RTKeyboardField
+
+- (void)insertText:(NSString *)text {
+    for (NSUInteger i = 0; i < text.length; i++) {
+        unichar ch = [text characterAtIndex:i];
+        if (ch == '\n' || ch == '\r') {
+            j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -5);
+            j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -5);
+            continue;
+        }
+        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, (int) ch);
+        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, (int) ch);
+    }
+}
+
+- (void)deleteBackward {
+    j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -7);
+    j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -7);
+}
+
+@end
+
 @interface RTViewController : UIViewController
 @property(nonatomic, strong) RTGameView *gameView;
 @property(nonatomic, strong) UIView *canvasContainer;
@@ -207,7 +236,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 
     // Off-screen responder that owns the system keyboard; it never shows text
     // itself, it only forwards keystrokes to the MIDlet.
-    self.keyboardField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+    self.keyboardField = [[RTKeyboardField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
     self.keyboardField.delegate = self;
     self.keyboardField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.keyboardField.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -418,20 +447,6 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, (int) ch);
         j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, (int) ch);
     }
-}
-
-- (BOOL)textField:(UITextField *)textField
-        shouldChangeCharactersInRange:(NSRange)range
-                    replacementString:(NSString *)string {
-    if (string.length == 0) {
-        // Games that draw their own text fields erase with the right soft key
-        // rather than MIDP KEY_CLEAR, so the system delete key sends RSK.
-        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -7);
-        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -7);
-    } else {
-        [self postKeyCharacters:string];
-    }
-    return NO;
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
