@@ -17,21 +17,10 @@
 #define RT_KEY_SOFT1 (-6)
 #define RT_KEY_SOFT2 (-7)
 
-static const int rt_keypad_compact[] = {
+static const int rt_keypad_keys[] = {
     RT_KEY_SOFT1, RT_KEY_UP, RT_KEY_SOFT2,
     RT_KEY_LEFT, RT_KEY_FIRE, RT_KEY_RIGHT,
     '*', RT_KEY_DOWN, '#',
-};
-
-/// Full phone keypad: the compact controls plus the twelve dial keys, so
-/// games that ask for digits can be played without leaving the canvas.
-static const int rt_keypad_full[] = {
-    RT_KEY_SOFT1, RT_KEY_UP, RT_KEY_SOFT2,
-    RT_KEY_LEFT, RT_KEY_FIRE, RT_KEY_RIGHT,
-    '1', '2', '3',
-    '4', '5', '6',
-    '7', '8', '9',
-    '*', '0', '#',
 };
 
 static const int rt_keypad_cols = 3;
@@ -173,10 +162,8 @@ static const int rt_keypad_cols = 3;
 @end
 
 @interface RTKeypadView ()
-@property(nonatomic, strong) UIStackView *column;
 @property(nonatomic, strong) NSMutableArray<RTKeyButton *> *buttons;
 @property(nonatomic, strong) UIImpactFeedbackGenerator *haptic;
-@property(nonatomic, readwrite) BOOL fullKeyboard;
 @end
 
 @implementation RTKeypadView
@@ -187,47 +174,30 @@ static const int rt_keypad_cols = 3;
 
     self.haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
 
-    self.column = [[UIStackView alloc] init];
-    self.column.translatesAutoresizingMaskIntoConstraints = NO;
-    self.column.axis = UILayoutConstraintAxisVertical;
-    self.column.distribution = UIStackViewDistributionFillEqually;
-    self.column.spacing = 8;
-    [self addSubview:self.column];
+    UIStackView *column = [[UIStackView alloc] init];
+    column.translatesAutoresizingMaskIntoConstraints = NO;
+    column.axis = UILayoutConstraintAxisVertical;
+    column.distribution = UIStackViewDistributionFillEqually;
+    column.spacing = 8;
+    [self addSubview:column];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
-        [self.column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
-        [self.column.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
-        [self.column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
+        [column.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [column.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        [column.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
+        [column.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
     ]];
 
     self.buttons = [NSMutableArray array];
-    [self rebuild];
-    return self;
-}
+    NSDictionary *symbols = @{
+        @(-1): @"chevron.up",
+        @(-2): @"chevron.down",
+        @(-3): @"chevron.left",
+        @(-4): @"chevron.right",
+        @(-5): @"",
+    };
 
-- (CGFloat)preferredHeight {
-    return self.fullKeyboard ? 340.0 : 190.0;
-}
-
-- (void)setFullKeyboard:(BOOL)full {
-    if (_fullKeyboard == full) return;
-    _fullKeyboard = full;
-    [self rebuild];
-}
-
-- (void)rebuild {
-    for (UIView *row in self.column.arrangedSubviews) {
-        [self.column removeArrangedSubview:row];
-        [row removeFromSuperview];
-    }
-    [self.buttons removeAllObjects];
-
-    const int *keys = self.fullKeyboard ? rt_keypad_full : rt_keypad_compact;
-    int total = self.fullKeyboard
-            ? (int) (sizeof(rt_keypad_full) / sizeof(rt_keypad_full[0]))
-            : (int) (sizeof(rt_keypad_compact) / sizeof(rt_keypad_compact[0]));
-
+    int total = (int) (sizeof(rt_keypad_keys) / sizeof(rt_keypad_keys[0]));
     for (int row = 0; row * rt_keypad_cols < total; row++) {
         UIStackView *line = [[UIStackView alloc] init];
         line.axis = UILayoutConstraintAxisHorizontal;
@@ -236,60 +206,50 @@ static const int rt_keypad_cols = 3;
 
         for (int col = 0; col < rt_keypad_cols; col++) {
             int index = row * rt_keypad_cols + col;
-            if (index >= total) break;
-            RTKeyButton *button = [self makeButtonForMIDPKey:keys[index]];
+            int key = rt_keypad_keys[index];
+            RTKeyButton *button = [[RTKeyButton alloc] initWithFrame:CGRectZero];
+            button.midpKeyCode = key;
+            button.translatesAutoresizingMaskIntoConstraints = NO;
+            [button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
+
+            if (key == RT_KEY_FIRE) {
+                button.baseBackgroundColor = rt_color_accent();
+                button.backgroundColor = rt_color_accent();
+                [button setTitle:@"OK" forState:UIControlStateNormal];
+                [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
+                button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
+                        scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightBold]];
+                button.detailLabel.hidden = YES;
+                button.symbolView.hidden = YES;
+            } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
+                button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
+                button.titleLabel.hidden = YES;
+                button.symbolView.hidden = YES;
+            } else if (key == '*' || key == '#') {
+                button.detailLabel.hidden = YES;
+                button.symbolView.hidden = YES;
+                [button setTitle:key == '*' ? @"*" : @"#" forState:UIControlStateNormal];
+                [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
+            } else {
+                button.detailLabel.hidden = YES;
+                button.titleLabel.hidden = YES;
+                button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
+            }
+
+            [button addTarget:self
+                        action:@selector(keyDown:)
+              forControlEvents:UIControlEventTouchDown];
+            [button addTarget:self
+                        action:@selector(keyUp:)
+              forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside |
+                               UIControlEventTouchCancel];
             [self.buttons addObject:button];
             [line addArrangedSubview:button];
         }
-        [self.column addArrangedSubview:line];
-    }
-}
-
-- (RTKeyButton *)makeButtonForMIDPKey:(int)key {
-    RTKeyButton *button = [[RTKeyButton alloc] initWithFrame:CGRectZero];
-    button.midpKeyCode = key;
-    button.translatesAutoresizingMaskIntoConstraints = NO;
-    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
-
-    if (key == RT_KEY_FIRE) {
-        button.baseBackgroundColor = rt_color_accent();
-        button.backgroundColor = rt_color_accent();
-        [button setTitle:@"OK" forState:UIControlStateNormal];
-        [button setTitleColor:rt_color_ink() forState:UIControlStateNormal];
-        button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleBody]
-                scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightBold]];
-        button.detailLabel.hidden = YES;
-        button.symbolView.hidden = YES;
-    } else if (key == RT_KEY_SOFT1 || key == RT_KEY_SOFT2) {
-        button.detailLabel.text = key == RT_KEY_SOFT1 ? @"LSK" : @"RSK";
-        button.titleLabel.hidden = YES;
-        button.symbolView.hidden = YES;
-    } else if (key == RT_KEY_UP || key == RT_KEY_DOWN || key == RT_KEY_LEFT || key == RT_KEY_RIGHT) {
-        NSDictionary *symbols = @{
-            @(RT_KEY_UP): @"chevron.up",
-            @(RT_KEY_DOWN): @"chevron.down",
-            @(RT_KEY_LEFT): @"chevron.left",
-            @(RT_KEY_RIGHT): @"chevron.right",
-        };
-        button.detailLabel.hidden = YES;
-        button.titleLabel.hidden = YES;
-        button.symbolView.image = [UIImage systemImageNamed:symbols[@(key)]];
-    } else {
-        button.detailLabel.hidden = YES;
-        button.symbolView.hidden = YES;
-        NSString *title = [NSString stringWithFormat:@"%c", (char) key];
-        [button setTitle:title forState:UIControlStateNormal];
-        [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
+        [column addArrangedSubview:line];
     }
 
-    [button addTarget:self
-               action:@selector(keyDown:)
-     forControlEvents:UIControlEventTouchDown];
-    [button addTarget:self
-               action:@selector(keyUp:)
-     forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside |
-                      UIControlEventTouchCancel];
-    return button;
+    return self;
 }
 
 - (void)keyDown:(RTKeyButton *)button {

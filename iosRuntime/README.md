@@ -99,14 +99,7 @@ xcrun devicectl device copy from --device <UDID> --domain-type appDataContainer 
 `jvm_bridge_run_midlet_slot`. By default it runs the UIKit host
 (`native/host/game/rt_game_controller.m` drives the sessions, `rt_game_view.m`
 presents the frame in a `CALayer` with the touch keypad), which
-maps touches to key and pointer events through `j2me_input`.
-
-The keypad has two layouts, switched by the keyboard button in the top bar and
-remembered as `RTFullKeyboard`: the compact 3x3 pad (soft keys, arrows, OK,
-`*`, `#`) and the full phone keypad that adds `0`–`9` for games that ask for
-digits. The full layout is six rows tall, so the canvas shrinks to make room;
-`RT_FULL_KEYBOARD=1` forces it on for scripted runs. Forms and list screens
-still hide the pad and use the system keyboard for their text fields. Setting
+maps touches to key and pointer events through `j2me_input`. Setting
 `RT_HEADLESS=1` runs the snapshot harness instead: it creates no window,
 writes a PNG every 60 frames, and is what automated runs use.
 
