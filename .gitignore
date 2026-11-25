@@ -46,3 +46,5 @@ debug.keystore
 /.kotlin/
 
 .slim/deepwork/
+
+.vscode/
