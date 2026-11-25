@@ -238,6 +238,10 @@ to stop; each run thread then destroys its own JVM (and patch 0004 closes the
 game's sockets). Swiping a game row still offers **Xoá**, with the usual
 confirmation. Full-swipe is disabled so a stray gesture cannot close a session.
 
+An untouched engine slot reports no screen action yet (0), so the panel is
+removed for anything below `SHOW_FORM`; earlier that state built an empty card
+that showed up as a stray dark strip across the top of a freshly opened tab.
+
 ## Screen forms
 
 Form, List, Alert and TextBox render as a dark panel over the canvas. Content is

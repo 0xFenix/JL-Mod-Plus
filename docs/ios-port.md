@@ -580,3 +580,15 @@ even though it can still carry the game's traffic.
 
 `RT_PROXY_TEST=1` opens the list and runs the probe automatically for scripted
 runs (simctl cannot tap).
+
+### 29. No empty card on a fresh tab — 2026-11-26
+
+Opening a second tab drew a stray rounded dark strip across the top of the game
+chrome until the MIDlet painted. `-focusSlot:` asks the bridge for that slot's
+active screen action, and a slot that has not shown anything yet reports 0;
+`rt_form_ui_present` only removed the panel for `SHOW_CANVAS` (1), so 0 fell
+through to `rebuildForAction:` where no branch matched and an empty surface card
+was left in the stack. The guard is now `action < J2ME_UI_ACTION_SHOW_FORM`,
+which clears the panel for 0 and for Canvas alike. Verified on the simulator by
+opening two tabs and reading the screenshot: normal chrome, no strip.
+

@@ -48,6 +48,12 @@ static void (*g_visibility_callback)(int visible) = NULL;
         _scrollView = [[UIScrollView alloc] initWithFrame:self.bounds];
         _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
         _scrollView.alwaysBounceVertical = YES;
+        // iOS 26 draws a floating glass strip along a scroll view's edge; over
+        // the game chrome it reads as a stray dark bar across the top.
+        if (@available(iOS 26.0, *)) {
+            _scrollView.topEdgeEffect.hidden = YES;
+            _scrollView.bottomEdgeEffect.hidden = YES;
+        }
         [self addSubview:_scrollView];
 
         // The stack needs a container: the container always fills at least the
@@ -757,7 +763,9 @@ void rt_form_ui_present(int action) {
         return;
     }
 
-    if (action == J2ME_UI_ACTION_SHOW_CANVAS) {
+    // A slot that has not shown a screen yet reports action 0; treating that
+    // as a form left an empty card drawn over a fresh tab's canvas.
+    if (action < J2ME_UI_ACTION_SHOW_FORM) {
         if (g_panel) {
             [g_panel removeFromSuperview];
             g_panel = nil;
