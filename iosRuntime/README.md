@@ -220,6 +220,8 @@ buttons and the pad would otherwise peek out around the sheet.
 
 ## Known gaps
 
+- Four titles have been run (Avatar LAPRO, Avatar 2, Avatar AngelChip, Ninja
+  School); deeper gameplay on the newer ones is still unverified.
 - `file://` has no protocol handler: the engine ships no
   `javax.microedition.io.file` implementation and the interfaces alone cannot
   open a stream.

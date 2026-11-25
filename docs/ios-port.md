@@ -267,6 +267,29 @@ were added. Verified with `InputProbe`: typing `5a` produced
 `keyPressed 53`/`97` plus their releases. `RT_SYSTEM_KEYBOARD=1` and
 `RT_TYPE_TEXT=abc` drive the same path from `run-sim.sh`.
 
+### 13. Compatibility round — 2026-11-25
+
+Three more titles were supplied and run unmodified: `Avatar2x_2.7.4_2211_TX`
+(`main.DebugToDeath`), `avatar_angelchip_build11` (`main.AngelChip`) and
+`NSO_1-49_ZangVPS` (`MrQuyet.MrQuyet`, Ninja School). All three reach
+`startApp`, render their menus and keep painting; no missing MIDP class was
+reported and no engine change was needed.
+
+| Title | Simulator | Real iPhone |
+| --- | --- | --- |
+| Avatar 2 (2.7.4) | ~28 fps | 29.6 fps |
+| Avatar AngelChip (build 11) | ~22.5 fps | not run |
+| Ninja School (NSO 1-49) | ~22.9 fps | 18.5-18.8 fps |
+| Avatar LAPRO (earlier) | ~18.6 fps | 18.3 fps |
+
+AngelChip and Ninja School both pull a live ticker from their server, so the
+online path covers more than one title. The only log noise is the expected
+first-run `RecordStoreNotFoundException` / `openRecordStore: not found` for
+their own stores, which the games handle and which disappear on the second
+launch. Ninja School references `javax.microedition.io.file` and
+`com.nokia.mid.ui.FullCanvas`; the latter exists in `java/src`, the former
+still has no protocol handler (known gap) and was not exercised at boot.
+
 ## Reference build flow (for `iosApp/README.md` later)
 
 macOS + Xcode 26+ + JDK 17+: `miniJVM-2.0.0/binary/build_jar.sh` (one-time) →
