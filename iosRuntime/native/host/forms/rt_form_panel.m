@@ -553,20 +553,29 @@ static BOOL rt_command_is_primary_type(int type) {
     primary.tag = j2me_ui_get_command_id(primaryIndex);
     [stack addArrangedSubview:primary];
 
+    // Two buttons per row, so each keeps half the width instead of shrinking as
+    // commands are added.
     if (outside.count > 0) {
-        UIStackView *row = [[UIStackView alloc] init];
-        row.axis = UILayoutConstraintAxisHorizontal;
-        row.distribution = UIStackViewDistributionFillEqually;
-        row.spacing = 10;
-        for (NSNumber *boxed in outside) {
-            int index = boxed.intValue;
+        UIStackView *row = nil;
+        for (NSUInteger i = 0; i < outside.count; i++) {
+            if (i % 2 == 0) {
+                row = [[UIStackView alloc] init];
+                row.axis = UILayoutConstraintAxisHorizontal;
+                row.distribution = UIStackViewDistributionFillEqually;
+                row.spacing = 10;
+                [stack addArrangedSubview:row];
+            }
+            int index = outside[i].intValue;
             const char *label = j2me_ui_get_command_label(index);
             UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"")
                                                   action:@selector(fireCommand:)];
             button.tag = j2me_ui_get_command_id(index);
             [row addArrangedSubview:button];
+            if (i % 2 == 0 && i + 1 == outside.count) {
+                // Keep a lone button at half width instead of stretching it.
+                [row addArrangedSubview:[[UIView alloc] init]];
+            }
         }
-        [stack addArrangedSubview:row];
     }
 
     if (inside.count > 0) {

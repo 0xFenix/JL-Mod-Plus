@@ -461,7 +461,8 @@ choice rows and the OK button from the top of the panel.
 A MIDlet can attach any number of commands. The types a handset keeps on
 screen — `Command.OK`, `BACK`, `CANCEL`, `EXIT` — are rendered as buttons: OK
 (or the first of them when there is no OK) takes the amber full-width slot and
-the remaining soft commands share one fill-equally row. Every other type
+the remaining soft commands sit two per fill-equally row at half width, with a
+blank slot when the count is odd so a lone button does not stretch. Every other type
 (`SCREEN`, `ITEM`, `HELP`, `STOP`) folds into a `Tùy chọn (n)` button that
 opens an action sheet, matching J2ME Loader. A screen with only ordinary
 commands keeps the previous behaviour: one command is a plain button, several
@@ -470,8 +471,8 @@ selected index (`J2ME_UI_LIST_SET_INDEX`) and then opens a menu with every
 command, so commands act on the held item.
 
 Verified on the simulator with `test/CommandProbe.java` (OK, Back, Cancel,
-Exit, Help, Save): the panel showed `Chọn` full width, `Quay lại` / `Huỷ` /
-`Thoát` in one row and `Tùy chọn (2)`.
+Exit, Help, Save): the panel showed `Chọn` full width, `Quay lại` / `Huỷ` at
+half width, `Thoát` at half width on its own row and `Tùy chọn (2)`.
 
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 
