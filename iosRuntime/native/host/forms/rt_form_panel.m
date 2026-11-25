@@ -419,27 +419,103 @@ static void (*g_visibility_callback)(int visible) = NULL;
     [self rebuildForAction:J2ME_UI_ACTION_SHOW_FORM];
 }
 
+- (UIButton *)makeSecondaryButton:(NSString *)title action:(SEL)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    [button setTitle:title ?: @"OK" forState:UIControlStateNormal];
+    [button setTitleColor:rt_color_text_primary() forState:UIControlStateNormal];
+    button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline]
+            scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightMedium]];
+    button.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    button.backgroundColor = rt_color_surface_raised();
+    button.layer.cornerRadius = 12.0;
+    button.layer.cornerCurve = kCACornerCurveContinuous;
+    button.layer.borderWidth = 1.0;
+    button.layer.borderColor = rt_color_hairline().CGColor;
+    button.contentEdgeInsets = UIEdgeInsetsMake(14, 12, 14, 12);
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
+    if (action) {
+        [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    }
+    return button;
+}
+
+// A MIDlet can attach any number of commands to a screen, far more than a
+// handset could show as buttons. Keep the first three (primary plus two) and
+// group the rest behind one menu, the way feature phones put them under
+// "Tuỳ chọn".
 - (void)addCommandButtons {
     int count = j2me_ui_get_command_count();
     if (count == 0) return;
     UIView *card = [self makeCard];
     UIStackView *stack = [self makeCardStack:card];
-    for (int i = 0; i < count; i++) {
-        const char *label = j2me_ui_get_command_label(i);
-        UIButton *button = [self makePrimaryButton:(label ? @(label) : @"OK")
-                                            action:@selector(fireCommand:)];
-        button.tag = j2me_ui_get_command_id(i);
-        if (i > 0) {
-            [stack setCustomSpacing:10 afterView:stack.arrangedSubviews.lastObject];
+
+    const char *firstLabel = j2me_ui_get_command_label(0);
+    UIButton *primary = [self makePrimaryButton:(firstLabel ? @(firstLabel) : @"OK")
+                                         action:@selector(fireCommand:)];
+    primary.tag = j2me_ui_get_command_id(0);
+    [stack addArrangedSubview:primary];
+
+    int secondaryCount = MIN(count - 1, 2);
+    if (secondaryCount > 0) {
+        UIStackView *row = [[UIStackView alloc] init];
+        row.axis = UILayoutConstraintAxisHorizontal;
+        row.distribution = UIStackViewDistributionFillEqually;
+        row.spacing = 10;
+        for (int i = 1; i <= secondaryCount; i++) {
+            const char *label = j2me_ui_get_command_label(i);
+            UIButton *button = [self makeSecondaryButton:(label ? @(label) : @"OK")
+                                                  action:@selector(fireCommand:)];
+            button.tag = j2me_ui_get_command_id(i);
+            [row addArrangedSubview:button];
         }
-        [stack addArrangedSubview:button];
+        [stack setCustomSpacing:10 afterView:primary];
+        [stack addArrangedSubview:row];
+    }
+
+    if (count > 3) {
+        UIButton *more = [self makeSecondaryButton:
+                [NSString stringWithFormat:@"Tùy chọn (%d)", count - 3]
+                                            action:@selector(showCommandMenu:)];
+        [stack setCustomSpacing:10 afterView:stack.arrangedSubviews.lastObject];
+        [stack addArrangedSubview:more];
     }
     [self.stackView addArrangedSubview:card];
 }
 
-- (void)fireCommand:(UIButton *)sender {
+- (void)showCommandMenu:(UIButton *)sender {
+    UIViewController *host = self.window.rootViewController;
+    while (host.presentedViewController) {
+        host = host.presentedViewController;
+    }
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"Tùy chọn"
+                                                                  message:nil
+                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+    int count = j2me_ui_get_command_count();
+    for (int i = 3; i < count; i++) {
+        const char *label = j2me_ui_get_command_label(i);
+        int commandId = j2me_ui_get_command_id(i);
+        [sheet addAction:[UIAlertAction actionWithTitle:(label ? @(label) : @"OK")
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *action) {
+                                                   [self fireCommandId:commandId];
+                                               }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+    sheet.popoverPresentationController.sourceView = sender;
+    sheet.popoverPresentationController.sourceRect = sender.bounds;
+    [host presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)fireCommandId:(int)commandId {
     [self endEditing:YES];
-    j2me_input_post_ui_event(J2ME_UI_COMMAND_ACTION, (int) sender.tag);
+    j2me_input_post_ui_event(J2ME_UI_COMMAND_ACTION, commandId);
+}
+
+- (void)fireCommand:(UIButton *)sender {
+    [self fireCommandId:(int) sender.tag];
 }
 
 - (void)selectListRow:(UIButton *)sender {

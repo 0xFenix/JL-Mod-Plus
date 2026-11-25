@@ -13,6 +13,7 @@ MANIFEST="${1:-$ROOT/test/manifest.mf}"
 case "$MANIFEST" in
     *network-probe.mf) OUT="$ROOT/build/network-probe.jar" ;;
     *form-probe.mf) OUT="$ROOT/build/form-probe.jar" ;;
+    *command-probe.mf) OUT="$ROOT/build/command-probe.jar" ;;
     *http-probe.mf) OUT="$ROOT/build/http-probe.jar" ;;
     *file-probe.mf) OUT="$ROOT/build/file-probe.jar" ;;
     *) OUT="$ROOT/build/test.jar" ;;

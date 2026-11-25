@@ -1,0 +1,6 @@
+MIDlet-Name: CommandProbe
+MIDlet-Version: 1.0
+MIDlet-Vendor: JL
+MIDlet-1: CommandProbe, /icon.png, CommandProbe
+MicroEdition-Profile: MIDP-2.0
+MicroEdition-Configuration: CLDC-1.1

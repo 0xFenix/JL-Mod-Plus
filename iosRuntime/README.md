@@ -245,6 +245,16 @@ directory is printed at start (`[RT] slot N save=...`) and every existing tab
 keeps its own directory until it is closed. Deleting a game from the library
 removes all of its `<jar name>` and `<jar name> N` directories.
 
+### Commands on a screen
+
+A MIDlet may attach any number of commands to a form or list, more than a phone
+would show as buttons. The panel keeps the first command as the amber primary
+button, the next two as side-by-side secondary buttons, and groups everything
+else behind one `Tùy chọn (n)` button that opens an action sheet, the way
+feature phones filed extra commands under "Tuỳ chọn". Commands still fire as
+`J2ME_UI_COMMAND_ACTION` with their original id, so the MIDlet cannot tell the
+difference. `test/CommandProbe.java` (six commands) is the fixture.
+
 ## Opening JARs from Files
 
 The app declares a `jar` document type and an imported UTI
