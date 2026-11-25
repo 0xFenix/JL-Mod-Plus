@@ -17,6 +17,7 @@
 #include "j2me_input.h"
 #include "j2me_ui.h"
 #include "rt_form_panel.h"
+#include "rt_background.h"
 #include "rt_library_vc.h"
 #include "rt_theme.h"
 #include "rt_host.h"
@@ -1005,6 +1006,7 @@ int rt_run_ui(int argc, char **argv, const char *res_root, const char *save_root
 
     j2me_render_set_flush_callback(rt_on_flush);
     j2me_render_set_slot_flush_callback(rt_on_slot_flush);
+    rt_background_install();
 
     @autoreleasepool {
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([RTAppDelegate class]));

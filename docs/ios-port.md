@@ -338,3 +338,19 @@ Verification: simulator run of `build/test.jar` with both flags logged
 `[RT] keypad full=1 turbo=1`, the screenshot showed the six-row pad including
 digits, and a temporary 1 s synthetic hold produced 14 `keyPressed -5` lines
 in InputProbe, i.e. the repeat timer works.
+
+### 16. Background keep-alive for socket games — 2026-11-25
+
+Socket titles hold one TCP connection for the whole session, and iOS suspends a
+normal app seconds after it leaves the foreground. The app now declares
+`UIBackgroundModes = [audio]` and `native/host/app/rt_background.m` plays
+half a second of 16-bit silence in a loop (`AVAudioSessionCategoryPlayback` +
+`MixWithOthers`). Audio keeps the process running in the background, so the
+socket, JVM threads and render loop survive app switching and screen lock while
+nothing is audible. `beginBackgroundTaskWithName:` is also started on
+`didEnterBackground` to cover the transition, and the session is reactivated
+after an interruption ends.
+
+Verification on the simulator: with Avatar LAPRO running, launching Settings
+did not suspend the app — frame logging continued from `frames=60 3.3s` to
+`frames=300 16.4s` and then `frames=690 39.5s` while Settings was on screen.

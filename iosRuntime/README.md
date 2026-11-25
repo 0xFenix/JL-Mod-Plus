@@ -217,6 +217,23 @@ and `turbo`) and follow the focused tab, because one keypad serves every
 session. `RT_FULL_KEYBOARD=1` and `RT_TURBO=1` set the same flags for
 scripted single-game runs.
 
+## Background keep-alive
+
+A J2ME title keeps one TCP socket open for the whole session, and iOS suspends
+a normal app seconds after it leaves the foreground, which freezes that socket
+and drops the game offline. The host therefore runs `rt_background.m`: an
+`AVAudioPlayer` loops half a second of inaudible PCM under the `playback`
+category with `MixWithOthers`, and the Info.plist declares `audio` in
+`UIBackgroundModes`. Audio keeps the process eligible for background execution,
+so the socket, the JVM threads and the render loop all keep running while the
+user switches apps or locks the screen; nothing is audible and other apps are
+not interrupted. A background task is also begun on `didEnterBackground` as a
+belt-and-braces window during the transition.
+
+The cost is battery: the app stays fully active in the background. If a title
+does not need a persistent connection, closing its tab still tears the JVM down
+immediately.
+
 ## Visual design
 
 The host chrome is a dark console around the frame: near-black ink, quiet

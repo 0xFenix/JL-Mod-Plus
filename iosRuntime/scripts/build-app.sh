@@ -77,7 +77,7 @@ find "$ROOT/java/src" -name '*.java' > "$BUILD/sources.txt"
 javac --release 8 -nowarn -cp "$RT_JAR" -d "$BUILD/classes" @"$BUILD/sources.txt"
 jar cf "$BUILD/j2me_api.jar" -C "$BUILD/classes" .
 
-INCS="-I$CSRC -I$CSRC/jvm -I$CSRC/utils -I$CSRC/utils/https -I$CSRC/utils/https/mbedtls/include -I$CSRC/utils/mimalloc/include -I$ROOT/native/bridge -I$ROOT/native/host/api -I$ROOT/native/host/theme -I$ROOT/native/host/library -I$ROOT/native/host/game -I$ROOT/native/host/forms"
+INCS="-I$CSRC -I$CSRC/jvm -I$CSRC/utils -I$CSRC/utils/https -I$CSRC/utils/https/mbedtls/include -I$CSRC/utils/mimalloc/include -I$ROOT/native/bridge -I$ROOT/native/host/api -I$ROOT/native/host/app -I$ROOT/native/host/theme -I$ROOT/native/host/library -I$ROOT/native/host/game -I$ROOT/native/host/forms"
 
 echo "compiling runtime app ($TARGET)"
 CC="xcrun -sdk $SDK clang $ARCH_FLAGS -O2 -fobjc-arc -Wno-everything"
@@ -98,6 +98,7 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/bridge/j2me_input.c" \
     "$ROOT/native/bridge/j2me_audio.m" \
     "$ROOT/native/host/app/rt_main.c" \
+    "$ROOT/native/host/app/rt_background.m" \
     "$ROOT/native/host/library/rt_jar_manifest.c" \
     "$ROOT/native/host/library/rt_game_store.m" \
     "$ROOT/native/host/library/rt_library_vc.m" \
@@ -131,6 +132,7 @@ cat > "$APP/Info.plist" <<PLIST
   <key>MinimumOSVersion</key><string>17.0</string>
   <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
   <key>UILaunchScreen</key><dict/>
+  <key>UIBackgroundModes</key><array><string>audio</string></array>
   <key>UIUserInterfaceStyle</key><string>Dark</string>
   <key>NSLocalNetworkUsageDescription</key><string>Kết nối tới máy chủ game trong mạng nội bộ.</string>
   <key>UIFileSharingEnabled</key><true/>
