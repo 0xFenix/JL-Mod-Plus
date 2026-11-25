@@ -57,7 +57,8 @@ NSDictionary *rt_game_config(NSString *file) {
     if (config) {
         return config;
     }
-    return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0, @"keys": @""};
+    return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0,
+             @"keys": @"", @"proxy": @""};
 }
 
 void rt_store_game_config(NSString *file, NSDictionary *config) {
@@ -71,6 +72,12 @@ void rt_store_game_config(NSString *file, NSDictionary *config) {
 void rt_set_game_keys(NSString *file, NSString *keys) {
     NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
     config[@"keys"] = keys ?: @"";
+    rt_store_game_config(file, config);
+}
+
+void rt_set_game_proxy(NSString *file, NSString *proxyId) {
+    NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
+    config[@"proxy"] = proxyId ?: @"";
     rt_store_game_config(file, config);
 }
 

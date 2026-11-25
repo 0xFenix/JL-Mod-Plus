@@ -53,6 +53,7 @@ from upstream is redistributed. Patches currently present:
 | `0001-http-content-length-case-insensitive.patch` | A MIDlet setting `Content-length` (lowercase) made the engine add a second `Content-Length`, which servers answer with `400 Bad Request` — the boot-time POST of online games failed on iOS while the same JAR worked on Android. |
 | `0002-signal-handler-safe-shutdown.patch` | The engine's signal handler kept a pointer to the last created JVM, so after a slot was destroyed a later `SIGTERM` dereferenced freed memory and dumped threads twice, ending in a second `SIGSEGV`. It now clears that pointer on destroy, refuses to re-enter the dump, and terminates with `_Exit` instead of running exit handlers. |
 | `0004-close-sockets-on-jvm-destroy.patch` | Close TCP sockets a MIDlet left open when its JVM is destroyed, so closing a tab really disconnects the character. |
+| `0005-socks5-proxy-per-jvm.patch` | Adds an optional per-JVM SOCKS5 proxy in `connect0`, so an online game can reach a server through a proxy without the MIDlet knowing. The host sets it per slot; an empty host disables it. |
 | `0003-file-protocol.patch` | Adds the JSR-75 `file://` protocol and `FileConnection` implementation to the runtime jar. `Connector` resolves protocol classes with the boot class loader, so a classpath copy is never found; `file:///root/` maps to `<Documents>/files`, traversal is rejected, and unimplementable size queries return 0. |
 
 ## Build and run
@@ -243,6 +244,35 @@ Form, List, Alert and TextBox render as a dark panel over the canvas. Content is
 pinned to the top of the panel and scrolls when it overflows; the scroll view
 ends at the keyboard guide, so opening the system keyboard shrinks the visible
 area instead of covering the field being edited.
+
+## SOCKS5 proxy for online games
+
+Some titles only reach their server from a proxy in the server's region, and a
+MIDlet has no API to configure one. The library therefore keeps a list of saved
+SOCKS5 proxies behind the globe button in its navigation bar: **+** adds one,
+either through four fields (address, port, optional user and password) or by
+pasting `ip:port:user:pass` lines, and rows swipe away to delete. Only SOCKS5 is
+supported because an online game's own protocol never goes through an HTTP
+proxy.
+
+Each tab then picks its proxy from the same list: the network button left of
+About opens a sheet where the proxy in use is marked with ✓, and "Không dùng
+proxy" returns to a direct connection. The choice is stored per JAR, so the next
+launch of that game reuses it, and switching it while a tab runs applies to its
+next connection.
+
+`native/bridge/jvm_bridge.c` keeps the choice per slot and hands it to
+`jni_io_set_proxy_for_jvm`; `patches/0005-socks5-proxy-per-jvm.patch` performs
+the RFC 1928 handshake (with RFC 1929 user/password when configured) inside
+`connect0`, right after the TCP connect to the proxy. Domain names are sent to
+the proxy so it resolves them in its own region. TLS opened by
+`sslc_connect` builds its own connection and is not proxied.
+
+Saved credentials live in the app's `NSUserDefaults`, i.e. in the app sandbox,
+and are not encrypted. For scripted runs `RT_PROXY_SEED="host:port:user:pass"`
+adds entries on launch and `RT_PROXY=<id>` preselects one; `scripts/socks-fixture.sh
+start` runs two local proxies (1080 anonymous, 1081 `game`/`secret`) that print
+every CONNECT.
 
 ## Save data per tab
 

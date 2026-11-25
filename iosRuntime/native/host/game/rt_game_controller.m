@@ -19,6 +19,7 @@
 #include "rt_form_panel.h"
 #include "rt_background.h"
 #include "rt_keys.h"
+#include "rt_proxy_store.h"
 #include "rt_library_vc.h"
 #include "rt_theme.h"
 #include "rt_host.h"
@@ -57,6 +58,8 @@ static double rt_now(void) {
 @property(nonatomic) BOOL fullKeyboard;
 @property(nonatomic) BOOL turbo;
 @property(nonatomic, copy) NSArray<NSNumber *> *keyCodes;
+// Saved proxy id this tab connects through; empty means a direct connection.
+@property(nonatomic, copy) NSString *proxyId;
 @property(nonatomic) CGImageRef lastImage;
 @end
 
@@ -93,6 +96,7 @@ static double rt_now(void) {
 @property(nonatomic, strong) UIButton *tabsButton;
 @property(nonatomic, strong) UIButton *keyboardButton;
 @property(nonatomic, strong) UIButton *aboutButton;
+@property(nonatomic, strong) UIButton *proxyButton;
 @property(nonatomic, strong) UITextField *keyboardField;
 @property(nonatomic, strong) UIView *keypadContainer;
 @property(nonatomic, strong) RTKeypadView *keypad;
@@ -229,6 +233,19 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                forControlEvents:UIControlEventTouchUpInside];
     [self.topBar addSubview:self.aboutButton];
 
+    // The proxy button sits next to About, as the last per-tab setting.
+    self.proxyButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.proxyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.proxyButton.tintColor = rt_color_text_secondary();
+    self.proxyButton.accessibilityLabel = @"Proxy của tab này";
+    [self.proxyButton setImage:[[UIImage systemImageNamed:@"network"]
+            imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate]
+                      forState:UIControlStateNormal];
+    [self.proxyButton addTarget:self
+                         action:@selector(showProxyPicker:)
+               forControlEvents:UIControlEventTouchUpInside];
+    [self.topBar addSubview:self.proxyButton];
+
     // Off-screen responder that owns the system keyboard; it never shows text
     // itself, it only forwards keystrokes to the MIDlet.
     self.keyboardField = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
@@ -341,7 +358,12 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
         [self.aboutButton.widthAnchor constraintEqualToConstant:40],
         [self.aboutButton.heightAnchor constraintEqualToConstant:40],
 
-        [self.fpsButton.trailingAnchor constraintEqualToAnchor:self.aboutButton.leadingAnchor constant:-2],
+        [self.proxyButton.trailingAnchor constraintEqualToAnchor:self.aboutButton.leadingAnchor constant:-2],
+        [self.proxyButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
+        [self.proxyButton.widthAnchor constraintEqualToConstant:40],
+        [self.proxyButton.heightAnchor constraintEqualToConstant:40],
+
+        [self.fpsButton.trailingAnchor constraintEqualToAnchor:self.proxyButton.leadingAnchor constant:-2],
         [self.fpsButton.centerYAnchor constraintEqualToAnchor:self.topBar.centerYAnchor],
         [self.fpsButton.widthAnchor constraintEqualToConstant:44],
         [self.fpsButton.heightAnchor constraintEqualToConstant:44],
@@ -561,7 +583,8 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 - (int)addGame:(NSString *)jarPath width:(int)width height:(int)height
            fps:(int)fpsLimit title:(NSString *)title
   fullKeyboard:(BOOL)fullKeyboard turbo:(BOOL)turbo
-      keyCodes:(NSArray<NSNumber *> *)keyCodes {
+      keyCodes:(NSArray<NSNumber *> *)keyCodes
+       proxyId:(NSString *)proxyId {
     int slot = -1;
     for (int candidate = 0; candidate < JVM_BRIDGE_MAX_SLOTS; candidate++) {
         if (![self sessionForSlot:candidate]) {
@@ -583,6 +606,7 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.fullKeyboard = fullKeyboard;
     session.turbo = turbo;
     session.keyCodes = keyCodes;
+    session.proxyId = proxyId ?: @"";
     session.running = YES;
     [self.sessions addObject:session];
     [self focusSlot:slot];
@@ -597,8 +621,13 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     self.keypad.turboEnabled = session ? session.turbo : NO;
     self.keypad.keyCodes = session.keyCodes;
     self.keypadHeight.constant = self.keypad.preferredHeight;
-    printf("[RT] keypad full=%d turbo=%d keys=%lu\n", self.keypad.fullKeyboard,
-           self.keypad.turboEnabled, (unsigned long) self.keypad.keyCodes.count);
+    self.proxyButton.tintColor = session.proxyId.length > 0
+            ? rt_color_accent()
+            : rt_color_text_secondary();
+    self.proxyButton.accessibilityValue = session.proxyId.length > 0 ? @"đang dùng proxy" : @"trực tiếp";
+    printf("[RT] keypad full=%d turbo=%d keys=%lu proxy=%s\n", self.keypad.fullKeyboard,
+           self.keypad.turboEnabled, (unsigned long) self.keypad.keyCodes.count,
+           session.proxyId.length > 0 ? session.proxyId.UTF8String : "-");
     fflush(stdout);
 }
 
@@ -638,7 +667,17 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     int height = session.height;
     int fpsLimit = session.fpsLimit;
 
+    NSDictionary *proxy = rt_proxy_with_id(session.proxyId);
+    NSString *proxyHost = proxy[@"host"] ?: @"";
+    int proxyPort = [proxy[@"port"] intValue];
+    NSString *proxyUser = proxy[@"user"] ?: @"";
+    NSString *proxyPass = proxy[@"pass"] ?: @"";
+
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        // Before the JVM exists: the bridge keeps the choice and applies it
+        // once init succeeds, so the first socket already tunnels.
+        jvm_bridge_set_slot_proxy(slot, proxyHost.UTF8String, proxyPort,
+                                  proxyUser.UTF8String, proxyPass.UTF8String);
         printf("[RT] slot %d initializing %s\n", slot, jar.UTF8String);
         fflush(stdout);
         if (jvm_bridge_init_slot(slot, g_res_root, saveRoot.UTF8String, jar.UTF8String,
@@ -688,6 +727,59 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     [self updateStatus];
     rt_form_ui_present(j2me_ui_get_slot_active_action(slot));
     [self rebuildTabs];
+}
+
+- (void)showProxyPicker:(id)sender {
+    UIButton *senderButton = (UIButton *) sender;
+    UIAlertController *sheet =
+            [UIAlertController alertControllerWithTitle:@"Proxy cho tab này"
+                                                message:nil
+                                         preferredStyle:UIAlertControllerStyleActionSheet];
+    RTGameSession *session = [self sessionForSlot:self.focusedSlot];
+    NSString *current = session.proxyId ?: @"";
+
+    NSString *directTitle = current.length == 0 ? @"✓  Không dùng proxy" : @"Không dùng proxy";
+    UIAlertAction *direct = [UIAlertAction actionWithTitle:directTitle
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:^(UIAlertAction *action) {
+        [self applyProxyId:@"" forSession:session];
+    }];
+    [sheet addAction:direct];
+
+    for (NSDictionary *proxy in rt_proxies()) {
+        NSString *identifier = proxy[@"id"];
+        BOOL selected = [identifier isEqualToString:current];
+        NSString *title = [NSString stringWithFormat:@"%@%@  ·  %@",
+                                                     selected ? @"✓  " : @"",
+                                                     rt_proxy_label(proxy),
+                                                     rt_proxy_detail(proxy)];
+        UIAlertAction *action = [UIAlertAction actionWithTitle:title
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *chosen) {
+            [self applyProxyId:identifier forSession:session];
+        }];
+        [sheet addAction:action];
+    }
+
+    [sheet addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = senderButton;
+    sheet.popoverPresentationController.sourceRect = senderButton.bounds;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)applyProxyId:(NSString *)proxyId forSession:(RTGameSession *)session {
+    if (!session) return;
+    session.proxyId = proxyId ?: @"";
+    NSDictionary *proxy = rt_proxy_with_id(session.proxyId);
+    jvm_bridge_set_slot_proxy(session.slot,
+                              proxy ? [proxy[@"host"] UTF8String] : "",
+                              proxy ? [proxy[@"port"] intValue] : 0,
+                              proxy ? [proxy[@"user"] UTF8String] : "",
+                              proxy ? [proxy[@"pass"] UTF8String] : "");
+    rt_set_game_proxy(session.jarPath.lastPathComponent, session.proxyId);
+    if (session.slot == self.focusedSlot) {
+        [self applySessionControls:session];
+    }
 }
 
 - (void)showAbout:(id)sender {
@@ -809,7 +901,8 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                 title:nil
          fullKeyboard:kb
                 turbo:turbo
-             keyCodes:keysEnv.length ? rt_key_codes_from_string(keysEnv) : nil];
+             keyCodes:keysEnv.length ? rt_key_codes_from_string(keysEnv) : nil
+              proxyId:getenv("RT_PROXY") ? @(getenv("RT_PROXY")) : @""];
     }
 
     if (getenv("RT_SYSTEM_KEYBOARD")) {
@@ -1115,7 +1208,7 @@ int rt_host_running_count(void) {
 
 void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
                      const char *title, int full_keyboard, int turbo,
-                     const char *keys) {
+                     const char *keys, const char *proxy_id) {
     if (!jar_path || !jar_path[0]) return;
     NSString *jar = @(jar_path);
     NSString *name = (title && title[0]) ? @(title) : jar.lastPathComponent;
@@ -1129,8 +1222,13 @@ void rt_present_game(const char *jar_path, int width, int height, int fps_limit,
             host.showsBackButton = YES;
             g_controller = host;
         }
+        NSString *chosenProxy = proxy_id && proxy_id[0] ? @(proxy_id) : @"";
+        if (chosenProxy.length == 0 && getenv("RT_PROXY")) {
+            chosenProxy = @(getenv("RT_PROXY"));
+        }
         [host addGame:jar width:width height:height fps:fps_limit title:name
-      fullKeyboard:full_keyboard turbo:turbo keyCodes:keyCodes];
+      fullKeyboard:full_keyboard turbo:turbo keyCodes:keyCodes
+           proxyId:chosenProxy];
         UINavigationController *nav = rt_active_navigation_controller();
         if (nav && ![nav.viewControllers containsObject:host]) {
             [nav pushViewController:host animated:YES];

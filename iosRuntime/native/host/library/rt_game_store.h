@@ -36,6 +36,8 @@ NSDictionary *rt_game_config(NSString *file);
 void rt_store_game_config(NSString *file, NSDictionary *config);
 /// Stores only the custom keypad layout, leaving the rest of the config alone.
 void rt_set_game_keys(NSString *file, NSString *keys);
+/// Stores the chosen SOCKS5 proxy id; empty means "no proxy".
+void rt_set_game_proxy(NSString *file, NSString *proxyId);
 NSString *rt_custom_name(NSString *file);
 void rt_set_custom_name(NSString *file, NSString *name);
 NSTimeInterval rt_last_played(NSString *file);

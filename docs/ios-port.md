@@ -532,3 +532,29 @@ scrolls.
 Verified on the simulator with `test/ListProbe.java` (30 items): the panel
 showed the title, rows 1–8 inside the bounded card and both commands right
 below it.
+
+### 27. Per-tab SOCKS5 proxy — 2026-11-26
+
+The target titles are online and some only accept connections from their
+region, while a MIDlet has no proxy API. The engine now offers a SOCKS5 tunnel
+per JVM: `patches/0005-socks5-proxy-per-jvm.patch` stores one proxy per
+`MiniJVM`, and `connect0` connects to the proxy instead of the target, performs
+the RFC 1928 handshake (RFC 1929 when user/password are set), then returns the
+socket to the guest. Domain targets are sent as domains so the proxy resolves
+them. `sslc_connect` (https) builds its own connection and stays direct.
+
+The host keeps proxies in `NSUserDefaults` (`RTProxies`) with a stable
+`host:port:user` id and offers two add flows in the library: a four-field form
+and a bulk paste of `ip:port:user:pass` lines (blank user/password allowed).
+Each tab picks from that list with the network button next to About; the active
+one is marked ✓ and the choice is saved per JAR in `RTGameConfig`, so it is
+reapplied on the next launch. Changing it on a running tab calls
+`jvm_bridge_set_slot_proxy`, which applies immediately for new connections.
+
+Verified on the simulator against `scripts/socks-fixture.sh` (anonymous 1080 and
+authenticated 1081): with a proxy selected the fixture logged
+`CONNECT 127.0.0.1:9099 via 1080` / `via 1081` and the network probe still got
+`[NET] socket echo=ECHO PING` and `[NET] http code=200`; Avatar LAPRO logged
+`CONNECT upxu.net:80 via 1080` and kept rendering at ~18.6 fps, i.e. its own
+online traffic went through the tunnel. The patch was validated from a clean
+engine checkout (0002, 0004 and 0005 applied in order).

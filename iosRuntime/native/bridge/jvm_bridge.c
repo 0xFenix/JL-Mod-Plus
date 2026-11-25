@@ -21,6 +21,12 @@ typedef struct {
     atomic_int is_running;
     char jar_path[1024];
     char save_root[1024];
+    // Kept per slot so a proxy chosen outside the game survives init order:
+    // init_slot applies it once the JVM exists.
+    char proxy_host[256];
+    int proxy_port;
+    char proxy_user[128];
+    char proxy_pass[128];
 } SlotSessionNative;
 
 static SlotSessionNative g_slots[JVM_BRIDGE_MAX_SLOTS];
@@ -38,6 +44,22 @@ void jvm_bridge_set_focused_slot(int slot) {
 
 int jvm_bridge_get_focused_slot(void) {
     return atomic_load(&g_focused_slot);
+}
+
+void jvm_bridge_set_slot_proxy(int slot, const char *host, int port,
+                               const char *user, const char *pass) {
+    if (slot < 0 || slot >= JVM_BRIDGE_MAX_SLOTS) return;
+    pthread_mutex_lock(&g_slots_lock);
+    snprintf(g_slots[slot].proxy_host, sizeof(g_slots[slot].proxy_host), "%s", host ? host : "");
+    g_slots[slot].proxy_port = (host && host[0]) ? port : 0;
+    snprintf(g_slots[slot].proxy_user, sizeof(g_slots[slot].proxy_user), "%s", user ? user : "");
+    snprintf(g_slots[slot].proxy_pass, sizeof(g_slots[slot].proxy_pass), "%s", pass ? pass : "");
+    MiniJVM *jvm = g_slots[slot].jvm;
+    pthread_mutex_unlock(&g_slots_lock);
+    if (jvm) {
+        jni_io_set_proxy_for_jvm(jvm, g_slots[slot].proxy_host, g_slots[slot].proxy_port,
+                                 g_slots[slot].proxy_user, g_slots[slot].proxy_pass);
+    }
 }
 
 int jvm_bridge_get_jvm_slot(void *jvm_ptr) {
@@ -90,6 +112,10 @@ int jvm_bridge_init_slot(int slot, const char *res_root, const char *save_root, 
     jvm->heap_overload_percent = 70;
 
     s32 ret = jvm_init(jvm, (c8 *)bootclasspath, (c8 *)classpath);
+    if (!ret && g_slots[slot].proxy_host[0] && g_slots[slot].proxy_port > 0) {
+        jni_io_set_proxy_for_jvm(jvm, g_slots[slot].proxy_host, g_slots[slot].proxy_port,
+                                 g_slots[slot].proxy_user, g_slots[slot].proxy_pass);
+    }
     if (ret) {
         printf("[JVM Bridge] ERROR: jvm_init() failed for slot %d (code %d)\n", slot, ret);
         jvm_destroy(jvm);

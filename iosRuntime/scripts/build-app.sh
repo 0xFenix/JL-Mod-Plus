@@ -51,7 +51,10 @@ fi
 # Engine fixes live as patches against a clean checkout, not as a vendored
 # fork: the runtime jar carries GPL-2.0 files, so only our diff is stored.
 REBUILD_RT=0
+# While editing the engine for the next patch the checkout no longer matches
+# the stored patches; RT_SKIP_PATCHES=1 builds whatever is checked out.
 for patch in "$ROOT"/patches/*.patch; do
+    [ "${RT_SKIP_PATCHES:-}" = "1" ] && break
     [ -e "$patch" ] || continue
     if ( cd "$MINIJVM_DIR" && git apply --reverse --check "$patch" >/dev/null 2>&1 ); then
         continue
@@ -103,6 +106,8 @@ $CC -o "$BUILD/RuntimeApp" $INCS \
     "$ROOT/native/host/library/rt_game_store.m" \
     "$ROOT/native/host/library/rt_library_vc.m" \
     "$ROOT/native/host/library/rt_keypad_editor.m" \
+            "$ROOT/native/host/library/rt_proxy_store.m" \
+            "$ROOT/native/host/library/rt_proxy_list.m" \
     "$ROOT/native/host/game/rt_game_view.m" \
     "$ROOT/native/host/game/rt_keys.m" \
     "$ROOT/native/host/game/rt_game_controller.m" \
