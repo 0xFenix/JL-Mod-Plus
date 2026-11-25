@@ -255,12 +255,12 @@ the rows scroll. `test/ListProbe.java` (30 items) is the fixture
 ### Commands on a screen
 
 A MIDlet may attach any number of commands to a form or list, more than a phone
-would show as buttons. The panel keeps the first command as the amber primary
-button, the next two as side-by-side secondary buttons, and groups everything
-else behind one `Tùy chọn (n)` button that opens an action sheet, the way
-feature phones filed extra commands under "Tuỳ chọn". Commands still fire as
-`J2ME_UI_COMMAND_ACTION` with their original id, so the MIDlet cannot tell the
-difference. `test/CommandProbe.java` (six commands) is the fixture.
+would show as buttons. One command stays a plain button; two or more collapse
+into a single amber `Menu (n)` button that lists them all in an action sheet,
+the way J2ME Loader does it. Long-pressing a list row selects that row and opens
+the same menu. Commands still fire as `J2ME_UI_COMMAND_ACTION` with their
+original id, so the MIDlet cannot tell the difference.
+`test/CommandProbe.java` (six commands) is the fixture.
 
 ## Opening JARs from Files
 

@@ -456,17 +456,20 @@ the visible area instead of covering the field.
 Verified on the simulator with FormProbe: the login form renders title, fields,
 choice rows and the OK button from the top of the panel.
 
-### 23. Commands grouped when there are many — 2026-11-26
+### 23. Commands behind one menu — 2026-11-26
 
-A MIDlet can attach more commands to a screen than the panel could show as
-buttons. `addCommandButtons` in `rt_form_panel.m` now renders the first command
-as the amber primary, the next two as a secondary row, and hides the remainder
-behind a `Tùy chọn (n)` button that presents an action sheet. Every entry posts
-the original `J2ME_UI_COMMAND_ACTION` id, so MIDlets are unaffected.
+MIDlets attach commands without any limit, and showing each as its own button
+hid the content. The panel now renders a single amber `Menu (n)` button listing
+every command in an action sheet; a screen with exactly one command keeps it as
+a plain button. Long-pressing a list row first sets that row as the selected
+index (`J2ME_UI_LIST_SET_INDEX`) and then opens the same menu, so commands act
+on the item the user held — the behaviour of J2ME Loader and of handset context
+menus. Form, List and Alert share `fireCommandId:`.
 
-Verified on the simulator with `test/CommandProbe.java` (six commands): the
-screen shows 'Chọn' as primary, 'Quay lại' / 'Lưu' side by side and
-'Tùy chọn (3)'.
+Verified on the simulator with `test/CommandProbe.java` (six commands ->
+`Menu (6)`) and `test/ListProbe.java` (-> `Menu (2)`). An earlier revision used
+a primary button plus two secondary buttons with the rest behind "Tuỳ chọn";
+that layout was replaced.
 
 ### 24. Long lists scroll so commands stay visible — 2026-11-26
 
