@@ -423,10 +423,11 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
 - (BOOL)textField:(UITextField *)textField
         shouldChangeCharactersInRange:(NSRange)range
                     replacementString:(NSString *)string {
-    if (!textField.text.length && range.length == 1 && string.length == 0) {
-        // Backspace has no printable character; a handset reports KEY_CLEAR.
-        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -8);
-        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -8);
+    if (range.length > 0 && string.length == 0) {
+        // Games that draw their own text fields erase with the right soft key
+        // rather than MIDP KEY_CLEAR, so the system delete key sends RSK.
+        j2me_input_post_key(J2ME_INPUT_KEY_PRESSED, -7);
+        j2me_input_post_key(J2ME_INPUT_KEY_RELEASED, -7);
     } else {
         [self postKeyCharacters:string];
     }
