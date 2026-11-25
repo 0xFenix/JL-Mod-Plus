@@ -261,6 +261,14 @@ proxy" returns to a direct connection. The choice is stored per JAR, so the next
 launch of that game reuses it, and switching it while a tab runs applies to its
 next connection.
 
+The first row of the list, **Kiểm tra tất cả**, probes every saved proxy at
+once: it opens a TCP connection to the proxy, runs the same greeting/authentication
+handshake the engine uses, asks the proxy to CONNECT to `1.1.1.1:80`, and puts the
+verdict under each row — `Sống · 48ms` in amber or `Chết · <reason>` in grey — with a
+`N sống · M chết` summary on the row itself. Probes run on background queues, so a
+dead host cannot freeze the list; a proxy that filters `1.1.1.1` reads as dead even
+when it would still reach the game's own server.
+
 `native/bridge/jvm_bridge.c` keeps the choice per slot and hands it to
 `jni_io_set_proxy_for_jvm`; `patches/0005-socks5-proxy-per-jvm.patch` performs
 the RFC 1928 handshake (with RFC 1929 user/password when configured) inside

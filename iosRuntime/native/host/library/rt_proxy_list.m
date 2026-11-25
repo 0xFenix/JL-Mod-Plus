@@ -2,6 +2,17 @@
 // bulk paste of "ip:port:user:pass" lines.
 #import <UIKit/UIKit.h>
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <stdlib.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
 #import "rt_proxy_list.h"
 #import "rt_proxy_store.h"
 #import "rt_theme.h"
@@ -225,10 +236,171 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
 
 @end
 
+
+#pragma mark - Liveness probe
+
+// shortcut: the probe CONNECTs to 1.1.1.1:80, which needs only a TCP
+// handshake. A proxy that filters that address reads as dead even when it
+// still works for the game's own server.
+
+static BOOL rt_connect_with_deadline(int fd, const struct sockaddr *addr, socklen_t len, int ms) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (connect(fd, addr, len) != 0) {
+        if (errno != EINPROGRESS) return NO;
+        fd_set writable;
+        FD_ZERO(&writable);
+        FD_SET(fd, &writable);
+        struct timeval tv = {ms / 1000, (ms % 1000) * 1000};
+        if (select(fd + 1, NULL, &writable, NULL, &tv) <= 0) return NO;
+        int error = 0;
+        socklen_t error_len = sizeof error;
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_len) != 0 || error != 0) return NO;
+    }
+    fcntl(fd, F_SETFL, flags);
+    return YES;
+}
+
+static BOOL rt_send_all(int fd, const unsigned char *bytes, size_t length) {
+    while (length > 0) {
+        ssize_t sent = send(fd, bytes, length, 0);
+        if (sent <= 0) return NO;
+        bytes += sent;
+        length -= (size_t) sent;
+    }
+    return YES;
+}
+
+static BOOL rt_recv_all(int fd, unsigned char *bytes, size_t length) {
+    while (length > 0) {
+        ssize_t got = recv(fd, bytes, length, 0);
+        if (got <= 0) return NO;
+        bytes += got;
+        length -= (size_t) got;
+    }
+    return YES;
+}
+
+/// Runs an RFC 1928 handshake through the proxy. Returns a short Vietnamese
+/// verdict for the list row.
+static NSString *rt_probe_proxy(NSDictionary *proxy) {
+    NSString *host = proxy[@"host"];
+    int port = [proxy[@"port"] intValue];
+    NSString *user = proxy[@"user"] ?: @"";
+    NSString *pass = proxy[@"pass"] ?: @"";
+    NSDate *started = [NSDate date];
+
+    char service[8];
+    snprintf(service, sizeof service, "%d", port);
+    struct addrinfo hints = {0};
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_family = AF_UNSPEC;
+    struct addrinfo *info = NULL;
+    if (getaddrinfo(host.UTF8String, service, &hints, &info) != 0 || info == NULL) {
+        return @"Chết · không tìm thấy máy chủ";
+    }
+
+    int fd = -1;
+    for (struct addrinfo *it = info; it != NULL; it = it->ai_next) {
+        int candidate = socket(it->ai_family, it->ai_socktype, 0);
+        if (candidate < 0) continue;
+        if (rt_connect_with_deadline(candidate, it->ai_addr, it->ai_addrlen, 4000)) {
+            fd = candidate;
+            break;
+        }
+        close(candidate);
+    }
+    freeaddrinfo(info);
+    if (fd < 0) return @"Chết · không kết nối được";
+
+    struct timeval timeout = {5, 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
+
+    NSString *verdict = nil;
+    do {
+        unsigned char greeting[4] = {5, 1, 0, 0};
+        if (user.length > 0) {
+            greeting[1] = 2;
+            greeting[3] = 2;
+        }
+        unsigned char chosen[2] = {0, 0};
+        size_t greetingLength = 2 + greeting[1];
+        if (!rt_send_all(fd, greeting, greetingLength) || !rt_recv_all(fd, chosen, 2)) {
+            verdict = @"Chết · proxy không trả lời";
+            break;
+        }
+        if (chosen[0] != 5 || chosen[1] == 0xFF) {
+            verdict = @"Chết · proxy từ chối kết nối";
+            break;
+        }
+        if (chosen[1] == 2) {
+            NSData *userBytes = [user dataUsingEncoding:NSUTF8StringEncoding];
+            NSData *passBytes = [pass dataUsingEncoding:NSUTF8StringEncoding];
+            if (userBytes.length > 255 || passBytes.length > 255) {
+                verdict = @"Chết · tài khoản quá dài";
+                break;
+            }
+            if (user.length == 0) {
+                verdict = @"Chết · cần đăng nhập";
+                break;
+            }
+            unsigned char auth[3 + 255 + 255];
+            size_t length = 0;
+            auth[length++] = 1;
+            auth[length++] = (unsigned char) userBytes.length;
+            memcpy(auth + length, userBytes.bytes, userBytes.length);
+            length += userBytes.length;
+            auth[length++] = (unsigned char) passBytes.length;
+            memcpy(auth + length, passBytes.bytes, passBytes.length);
+            length += passBytes.length;
+            unsigned char reply[2] = {0, 0};
+            if (!rt_send_all(fd, auth, length) || !rt_recv_all(fd, reply, 2)) {
+                verdict = @"Chết · proxy không trả lời";
+                break;
+            }
+            if (reply[1] != 0) {
+                verdict = @"Chết · sai tên đăng nhập hoặc mật khẩu";
+                break;
+            }
+        }
+
+        // CONNECT to a public address through the proxy.
+        unsigned char request[10] = {5, 1, 0, 1, 1, 1, 1, 1, 0, 80};
+        unsigned char head[4] = {0, 0, 0, 0};
+        if (!rt_send_all(fd, request, sizeof request) || !rt_recv_all(fd, head, 4)) {
+            verdict = @"Chết · proxy không trả lời";
+            break;
+        }
+        if (head[0] != 5 || head[1] != 0) {
+            verdict = [NSString stringWithFormat:@"Chết · CONNECT bị từ chối (%d)", head[1]];
+            break;
+        }
+        // Drain the bound address so the socket closes cleanly.
+        unsigned char tail[64];
+        size_t tailLength = 0;
+        if (head[3] == 1) tailLength = 6;
+        else if (head[3] == 4) tailLength = 18;
+        else if (head[3] == 3) {
+            unsigned char nameLength = 0;
+            if (rt_recv_all(fd, &nameLength, 1)) tailLength = (size_t) nameLength + 2;
+        }
+        if (tailLength > 0 && tailLength <= sizeof tail) rt_recv_all(fd, tail, tailLength);
+
+        NSTimeInterval elapsed = -[started timeIntervalSinceNow];
+        verdict = [NSString stringWithFormat:@"Sống · %ldms", (long) (elapsed * 1000)];
+    } while (0);
+
+    close(fd);
+    return verdict;
+}
+
 #pragma mark - List
 
 @interface RTProxyListController : UITableViewController
 @property(nonatomic, copy) NSArray<NSDictionary *> *proxies;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *verdicts;
+@property(nonatomic) BOOL testing;
 @end
 
 @implementation RTProxyListController
@@ -242,6 +414,7 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
     [super viewDidLoad];
     rt_style_table(self, @"Proxy SOCKS5");
     self.tableView.rowHeight = 56;
+    self.verdicts = [NSMutableDictionary dictionary];
     self.navigationItem.rightBarButtonItem =
             [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"]
                                              style:UIBarButtonItemStylePlain
@@ -255,6 +428,15 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reload];
+    // Test hook: simctl cannot tap, so RT_PROXY_TEST runs the probe for every
+    // saved proxy and the [PROXY] log lines are the evidence.
+    if (getenv("RT_PROXY_TEST") && self.proxies.count > 0) {
+        static BOOL tested = NO;
+        if (!tested) {
+            tested = YES;
+            [self runTests];
+        }
+    }
 }
 
 - (void)reload {
@@ -277,7 +459,7 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.proxies.count;
+    return self.proxies.count == 0 ? 0 : self.proxies.count + 1;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -288,8 +470,34 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
     return @"Proxy áp dụng cho mọi kết nối của game. Hỗ trợ SOCKS5; proxy HTTP không dùng được cho game online.";
 }
 
+- (NSString *)testSummary {
+    if (self.testing) return @"Đang kiểm tra…";
+    if (self.proxies.count == 0) return nil;
+    NSInteger alive = 0;
+    NSInteger dead = 0;
+    for (NSDictionary *proxy in self.proxies) {
+        NSString *verdict = self.verdicts[proxy[@"id"]];
+        if (verdict == nil) continue;
+        if ([verdict hasPrefix:@"Sống"]) alive++;
+        else dead++;
+    }
+    if (alive + dead == 0) return @"Chưa kiểm tra";
+    return [NSString stringWithFormat:@"%ld sống · %ld chết", (long) alive, (long) dead];
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *proxy = self.proxies[indexPath.row];
+    if (indexPath.row == 0) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                                       reuseIdentifier:nil];
+        cell.backgroundColor = rt_color_surface();
+        cell.textLabel.text = @"Kiểm tra tất cả";
+        cell.textLabel.textColor = rt_color_accent();
+        cell.detailTextLabel.text = [self testSummary];
+        cell.detailTextLabel.textColor = rt_color_text_secondary();
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        return cell;
+    }
+    NSDictionary *proxy = self.proxies[indexPath.row - 1];
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
                                                    reuseIdentifier:nil];
     cell.backgroundColor = rt_color_surface();
@@ -298,7 +506,50 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
     cell.detailTextLabel.text = rt_proxy_detail(proxy);
     cell.detailTextLabel.textColor = rt_color_text_secondary();
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+    // The verdict replaces the detail line: an accessory would squeeze both
+    // texts on a narrow phone.
+    NSString *verdict = self.verdicts[proxy[@"id"]];
+    if (verdict.length > 0) {
+        cell.detailTextLabel.text = verdict;
+        cell.detailTextLabel.textColor = [verdict hasPrefix:@"Sống"] ? rt_color_accent()
+                                                                    : rt_color_text_tertiary();
+    }
     return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.row == 0) [self runTests];
+}
+
+- (void)runTests {
+    if (self.testing || self.proxies.count == 0) return;
+    self.testing = YES;
+    NSArray<NSDictionary *> *batch = self.proxies;
+    for (NSDictionary *proxy in batch) {
+        self.verdicts[proxy[@"id"]] = @"Đang kiểm tra…";
+    }
+    [self.tableView reloadData];
+    printf("[PROXY] testing %lu proxies\n", (unsigned long) batch.count);
+    fflush(stdout);
+
+    dispatch_group_t group = dispatch_group_create();
+    for (NSDictionary *proxy in batch) {
+        dispatch_group_async(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            NSString *verdict = rt_probe_proxy(proxy);
+            printf("[PROXY] test %s -> %s\n", rt_proxy_label(proxy).UTF8String, verdict.UTF8String);
+            fflush(stdout);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.verdicts[proxy[@"id"]] = verdict;
+                [self.tableView reloadData];
+            });
+        });
+    }
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        self.testing = NO;
+        [self.tableView reloadData];
+    });
 }
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView
@@ -309,7 +560,7 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
                                                   handler:^(UIContextualAction *action,
                                                           UIView *sourceView,
                                                           void (^completion)(BOOL)) {
-        NSDictionary *proxy = self.proxies[indexPath.row];
+        NSDictionary *proxy = self.proxies[indexPath.row - 1];
         UIAlertController *confirm =
                 [UIAlertController alertControllerWithTitle:@"Xoá proxy?"
                                                     message:rt_proxy_label(proxy)
@@ -318,6 +569,7 @@ static void rt_style_table(UITableViewController *controller, NSString *title) {
         [confirm addAction:[UIAlertAction actionWithTitle:@"Xoá"
                                                     style:UIAlertActionStyleDestructive
                                                   handler:^(UIAlertAction *chosen) {
+            [self.verdicts removeObjectForKey:proxy[@"id"]];
             rt_proxy_remove(proxy[@"id"]);
             [self reload];
         }]];

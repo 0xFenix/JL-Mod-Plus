@@ -337,6 +337,12 @@
         unsetenv("RT_PROXY_SEED");
     }
     [self reloadGames];
+    static BOOL proxiesOpened = NO;
+    if (!proxiesOpened && getenv("RT_PROXY_TEST")) {
+        proxiesOpened = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ rt_present_proxy_list(self); });
+    }
     static BOOL openedOnce = NO;
     const char *open_path = getenv("RT_OPEN_JAR");
     if (!openedOnce && open_path && open_path[0]) {
