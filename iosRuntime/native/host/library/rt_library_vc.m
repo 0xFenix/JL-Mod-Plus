@@ -651,7 +651,9 @@
                     [config[@"kb"] intValue],
                     [config[@"turbo"] intValue],
                     [config[@"keys"] UTF8String],
-                    [(config[@"proxy"] ?: @"") UTF8String]);
+                    // A tab starts on its own saved slot proxy only; a game-wide
+                    // default would put a fresh tab back on an older proxy.
+                    "");
 }
 
 #pragma mark - Options
@@ -792,7 +794,7 @@
     rt_store_game_config(file, @{@"w": @(width), @"h": @(height), @"fps": @(fps),
                                  @"kb": @(kb), @"turbo": @(turbo),
                                  @"keys": rt_game_config(file)[@"keys"] ?: @"",
-                                 @"proxy": rt_game_config(file)[@"proxy"] ?: @""});
+                                 });
     [self reloadGames];
 }
 

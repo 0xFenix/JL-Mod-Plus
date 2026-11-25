@@ -622,7 +622,8 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
     session.fullKeyboard = fullKeyboard;
     session.turbo = turbo;
     session.keyCodes = keyCodes;
-    // Slots keep their own proxy, and sharing one between slots is fine.
+    // Each tab uses the proxy saved for its own slot; when that slot has none
+    // the tab goes direct rather than inheriting an older proxy.
     NSArray<NSString *> *slotProxies = rt_game_slot_proxies(jarPath.lastPathComponent);
     NSUInteger tabIndex = 0;
     for (RTGameSession *other in self.sessions) {
@@ -803,7 +804,6 @@ static double g_slot_started[JVM_BRIDGE_MAX_SLOTS];
                               proxy ? [proxy[@"pass"] UTF8String] : "");
     NSString *file = session.jarPath.lastPathComponent;
     rt_set_game_slot_proxy(file, [self tabIndexForSession:session], session.proxyId);
-    rt_set_game_proxy(file, session.proxyId);
     if (session.slot == self.focusedSlot) {
         [self applySessionControls:session];
     }

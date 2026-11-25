@@ -59,7 +59,7 @@ NSDictionary *rt_game_config(NSString *file) {
         return config;
     }
     return @{@"w": @240, @"h": @320, @"fps": @0, @"kb": @0, @"turbo": @0,
-             @"keys": @"", @"proxy": @""};
+             @"keys": @""};
 }
 
 void rt_store_game_config(NSString *file, NSDictionary *config) {
@@ -75,12 +75,6 @@ void rt_store_game_config(NSString *file, NSDictionary *config) {
 void rt_set_game_keys(NSString *file, NSString *keys) {
     NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
     config[@"keys"] = keys ?: @"";
-    rt_store_game_config(file, config);
-}
-
-void rt_set_game_proxy(NSString *file, NSString *proxyId) {
-    NSMutableDictionary *config = [rt_game_config(file) mutableCopy];
-    config[@"proxy"] = proxyId ?: @"";
     rt_store_game_config(file, config);
 }
 
@@ -233,18 +227,9 @@ NSArray<RTGameEntry *> *rt_load_games(RTGameSortMode mode) {
         NSString *fpsPart = [config[@"fps"] intValue] > 0
                 ? [NSString stringWithFormat:@", %@ fps", config[@"fps"]]
                 : @"";
-        NSString *proxyPart = @"";
-        NSDictionary *proxy = [config[@"proxy"] length] > 0
-                ? rt_proxy_with_id(config[@"proxy"])
-                : nil;
-        if (proxy) {
-            // Ahead of the last-played phrase: the proxy is a setting the row
-            // must still show when the subtitle truncates.
-            proxyPart = [NSString stringWithFormat:@", qua %@", rt_proxy_label(proxy)];
-        }
-        entry.detail = [NSString stringWithFormat:@"%@×%@%@%@, %@",
+        entry.detail = [NSString stringWithFormat:@"%@×%@%@, %@",
                                                   config[@"w"], config[@"h"],
-                                                  fpsPart, proxyPart,
+                                                  fpsPart,
                                                   rt_last_played_phrase(entry.lastPlayed)];
         [entries addObject:entry];
     }

@@ -638,3 +638,15 @@ the same JAR twice and picked 1080 for tab 1 and 1081 for tab 2; run 2 launched
 a fresh process with no picks and logged `proxy=127.0.0.1:1080:` for slot 0 and
 `proxy=127.0.0.1:1081:game` for slot 1.
 
+### 34. A slot without a proxy goes direct — 2026-11-26
+
+Launching a tab used to fall back to the game's last picked proxy, so a fresh
+slot silently reused an IP another slot had chosen. `launchGame:` now passes an
+empty proxy and `addGame:` only adopts the value saved for its own tab number;
+everything else connects directly. The per-game `proxy` key and the `qua
+host:port` library hint were dropped with it — a row no longer claims a proxy
+the game may not use. Environment runs still select one through `RT_PROXY`.
+Verified on the simulator: `test.jar` has no saved slot proxy and logged
+`proxy=-` with no `[SOCKS]` line, while an earlier tab of another game kept its
+saved `127.0.0.1:1080:`.
+

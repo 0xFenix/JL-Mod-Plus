@@ -244,12 +244,11 @@ that showed up as a stray dark strip across the top of a freshly opened tab.
 
 Each running tab holds its own proxy, and two tabs may share one when you want
 that. Tabs of the same game are numbered by the order you open them, and the
-picker stores the choice per game and per that number (`RTGameConfig[slots]`,
-written to disk immediately). Open the same game twice after a restart and tab
-1 and tab 2 come back on the proxies you gave them; a number without a stored
-proxy falls back to the game's last pick, which the library row shows as `qua
-host:port`. Tabs themselves are not restored after a restart — only which proxy
-each launch slot of a game uses.
+picker stores the choice against that number (`RTGameConfig[slots]`, written to
+disk immediately). Open the same game twice after a restart and tab 1 and tab 2
+come back on the proxies you gave them. A slot with no saved proxy goes direct —
+it never inherits a proxy another slot used. Tabs themselves are not restored
+after a restart; only which proxy each launch slot of a game uses.
 
 ## Screen forms
 
