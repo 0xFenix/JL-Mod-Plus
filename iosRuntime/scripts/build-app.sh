@@ -59,6 +59,14 @@ for patch in "$ROOT"/patches/*.patch; do
     if ( cd "$MINIJVM_DIR" && git apply --reverse --check "$patch" >/dev/null 2>&1 ); then
         continue
     fi
+    # A later patch can sit inside an earlier patch's context, which defeats
+    # the reverse check above. Fall back to looking for one line the patch
+    # adds: if the checkout already contains it, the patch is applied.
+    applied_target=$(awk '/^\+\+\+ b\//{f=$2; sub("^b/", "", f)} /^\+[^+]/{l=substr($0,2); if (length(l) > 20) {print f; exit}}' "$patch")
+    applied_marker=$(awk '/^\+\+\+ b\//{f=$2; sub("^b/", "", f)} /^\+[^+]/{l=substr($0,2); if (length(l) > 20) {print l; exit}}' "$patch")
+    if [ -n "$applied_target" ] && [ -n "$applied_marker" ] && grep -Fq -- "$applied_marker" "$MINIJVM_DIR/$applied_target"; then
+        continue
+    fi
     echo "applying $(basename "$patch")"
     ( cd "$MINIJVM_DIR" && git apply "$patch" ) || { echo "patch failed: $patch" >&2; exit 1; }
     # Only a patch that touches Java sources needs the runtime jar rebuilt; C
