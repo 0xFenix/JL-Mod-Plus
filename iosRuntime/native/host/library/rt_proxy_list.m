@@ -401,6 +401,8 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
 @property(nonatomic, copy) NSArray<NSDictionary *> *proxies;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *verdicts;
 @property(nonatomic) BOOL testing;
+@property(nonatomic, strong) UIView *testHeader;
+@property(nonatomic, strong) UILabel *testSummaryLabel;
 @end
 
 @implementation RTProxyListController
@@ -415,6 +417,7 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
     rt_style_table(self, @"Proxy SOCKS5");
     self.tableView.rowHeight = 56;
     self.verdicts = [NSMutableDictionary dictionary];
+    self.testHeader = [self buildTestHeader];
     self.navigationItem.rightBarButtonItem =
             [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"plus"]
                                              style:UIBarButtonItemStylePlain
@@ -439,8 +442,66 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
     }
 }
 
+- (UIView *)buildTestHeader {
+    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 0, 92)];
+
+    UIButton *card = [UIButton buttonWithType:UIButtonTypeSystem];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = [rt_color_accent() colorWithAlphaComponent:0.12];
+    card.layer.cornerRadius = rt_radius_card();
+    card.layer.borderWidth = 1;
+    card.layer.borderColor = [rt_color_accent() colorWithAlphaComponent:0.35].CGColor;
+    [card addTarget:self action:@selector(runTests) forControlEvents:UIControlEventTouchUpInside];
+    card.accessibilityLabel = @"Kiểm tra tất cả proxy";
+    [container addSubview:card];
+
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"bolt.horizontal.circle"]];
+    icon.tintColor = rt_color_accent();
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:icon];
+
+    UILabel *title = [[UILabel alloc] init];
+    title.text = @"Kiểm tra tất cả";
+    title.textColor = rt_color_accent();
+    title.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline]
+            scaledFontForFont:[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold]];
+
+    UILabel *summary = [[UILabel alloc] init];
+    summary.textColor = rt_color_text_secondary();
+    summary.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote]
+            scaledFontForFont:[UIFont systemFontOfSize:13 weight:UIFontWeightRegular]];
+    self.testSummaryLabel = summary;
+
+    UIStackView *text = [[UIStackView alloc] initWithArrangedSubviews:@[title, summary]];
+    text.axis = UILayoutConstraintAxisVertical;
+    text.spacing = 2;
+    text.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:text];
+
+    UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
+    chevron.tintColor = rt_color_text_tertiary();
+    chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:chevron];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [card.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:20],
+        [card.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-20],
+        [card.topAnchor constraintEqualToAnchor:container.topAnchor constant:8],
+        [card.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-8],
+        [icon.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16],
+        [icon.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+        [text.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:12],
+        [text.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+        [text.trailingAnchor constraintLessThanOrEqualToAnchor:chevron.leadingAnchor constant:-8],
+        [chevron.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16],
+        [chevron.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+    ]];
+    return container;
+}
+
 - (void)reload {
     self.proxies = rt_proxies();
+    [self refreshTestHeader];
 
     if (self.proxies.count == 0) {
         UILabel *empty = [[UILabel alloc] init];
@@ -455,11 +516,16 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
     } else {
         self.tableView.backgroundView = nil;
     }
+    self.tableView.tableHeaderView = self.proxies.count > 0 ? self.testHeader : nil;
     [self.tableView reloadData];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.proxies.count == 0 ? 0 : self.proxies.count + 1;
+    return self.proxies.count;
+}
+
+- (void)refreshTestHeader {
+    self.testSummaryLabel.text = [self testSummary] ?: @"";
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -486,18 +552,7 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == 0) {
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                                       reuseIdentifier:nil];
-        cell.backgroundColor = rt_color_surface();
-        cell.textLabel.text = @"Kiểm tra tất cả";
-        cell.textLabel.textColor = rt_color_accent();
-        cell.detailTextLabel.text = [self testSummary];
-        cell.detailTextLabel.textColor = rt_color_text_secondary();
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-        return cell;
-    }
-    NSDictionary *proxy = self.proxies[indexPath.row - 1];
+    NSDictionary *proxy = self.proxies[indexPath.row];
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
                                                    reuseIdentifier:nil];
     cell.backgroundColor = rt_color_surface();
@@ -512,15 +567,10 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
     NSString *verdict = self.verdicts[proxy[@"id"]];
     if (verdict.length > 0) {
         cell.detailTextLabel.text = verdict;
-        cell.detailTextLabel.textColor = [verdict hasPrefix:@"Sống"] ? rt_color_accent()
-                                                                    : rt_color_text_tertiary();
+        cell.detailTextLabel.textColor = [verdict hasPrefix:@"Sống"] ? [UIColor systemGreenColor]
+                                                                    : [UIColor systemRedColor];
     }
     return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.row == 0) [self runTests];
 }
 
 - (void)runTests {
@@ -530,6 +580,7 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
     for (NSDictionary *proxy in batch) {
         self.verdicts[proxy[@"id"]] = @"Đang kiểm tra…";
     }
+    [self refreshTestHeader];
     [self.tableView reloadData];
     printf("[PROXY] testing %lu proxies\n", (unsigned long) batch.count);
     fflush(stdout);
@@ -542,12 +593,14 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
             fflush(stdout);
             dispatch_async(dispatch_get_main_queue(), ^{
                 self.verdicts[proxy[@"id"]] = verdict;
+                [self refreshTestHeader];
                 [self.tableView reloadData];
             });
         });
     }
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
         self.testing = NO;
+        [self refreshTestHeader];
         [self.tableView reloadData];
     });
 }
@@ -560,7 +613,7 @@ static NSString *rt_probe_proxy(NSDictionary *proxy) {
                                                   handler:^(UIContextualAction *action,
                                                           UIView *sourceView,
                                                           void (^completion)(BOOL)) {
-        NSDictionary *proxy = self.proxies[indexPath.row - 1];
+        NSDictionary *proxy = self.proxies[indexPath.row];
         UIAlertController *confirm =
                 [UIAlertController alertControllerWithTitle:@"Xoá proxy?"
                                                     message:rt_proxy_label(proxy)

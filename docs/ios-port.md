@@ -561,20 +561,19 @@ engine checkout (0002, 0004 and 0005 applied in order).
 
 ### 28. Proxy liveness test — 2026-11-26
 
-The proxy list gained a first row, **Kiểm tra tất cả**, that probes every saved
-proxy. The host opens a TCP connection with a 4 s connect deadline, sends the
+The proxy list gained an amber **Kiểm tra tất cả** card above the rows that probes
+every saved proxy. The host opens a TCP connection with a 4 s connect deadline, sends the
 RFC 1928 greeting (offering no-auth and, when a user is set, username/password),
 answers RFC 1929 when the proxy asks for it, then asks the proxy to CONNECT to
 `1.1.1.1:80`; the reply code decides the verdict. Each row shows `Sống · <ms>` in
-amber or `Chết · <reason>` in grey, and the action row summarises `N sống · M
-chết`. Probes run concurrently on a global queue so a black-holed host cannot
+green or `Chết · <reason>` in red, and the card summarises `N sống · M chết`. Probes run concurrently on a global queue so a black-holed host cannot
 stall the list, and both socket timeouts are 5 s.
 
 Verified on the simulator with `socks-fixture.sh` (anonymous 127.0.0.1:1080,
 user/password 127.0.0.1:1081) plus a closed port 127.0.0.1:1099: the log printed
 `[PROXY] test 127.0.0.1:1080 -> Sống · 48ms`, `…1081 -> Sống · 49ms`,
-`…1099 -> Chết · không kết nối được`, and the screenshot showed the two amber
-verdicts and the grey failure with `2 sống · 1 chết`.
+`…1099 -> Chết · không kết nối được`, and the screenshot showed the two green
+verdicts, the red failure and the amber action card reading `2 sống · 1 chết`.
 
 The probe target is a compromise: a proxy that filters `1.1.1.1` reports dead
 even though it can still carry the game's traffic.
