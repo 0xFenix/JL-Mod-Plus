@@ -37,6 +37,14 @@ JAR stay per installed suite — two tabs are still one install.
 Slot order is open order, so closing tab 1 and opening another gives the new tab slot 2 and its
 proxy/save directory. Clearing a game's data clears every `<storageKey>#N` directory beside it.
 
+The runtime and the Library run in different processes (the runtime is `:midlet`), so the Library
+learns about a live session through `io.github.h3nb.jlmodplus.runtime.RuntimeSessionMarker`, a small
+JSON file in the shared files directory written on tab add/select/close and on host lifecycle
+events. The Library shows a `Playing (n)` row above the game grid; tapping it brings `MicroActivity`
+back with `FLAG_ACTIVITY_REORDER_TO_FRONT`, and the suite path in the intent lets a torn-down host
+relaunch that game instead of showing an invalid-intent error. A hard process kill can leave a
+stale marker (`// shortcut:` in the marker class); tapping it then reopens the last suite.
+
 ## Per-slot SOCKS5 proxy
 
 Guest sockets are Java (`org.microemu.cldc.socket.SocketConnection`), so the proxy lives above
