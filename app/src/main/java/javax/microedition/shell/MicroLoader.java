@@ -151,12 +151,22 @@ public class MicroLoader {
 
 	private static final java.util.HashMap<Integer, SuiteKeys> TAB_SUITES =
 			new java.util.HashMap<>();
+	private static final java.util.HashMap<Integer, Integer> TAB_SLOTS =
+			new java.util.HashMap<>();
 
 	/** Installed suite path running on a tab, or null when the tab has none. */
 	public static String suitePathForTab(int tabId) {
 		synchronized (MicroLoader.class) {
 			SuiteKeys keys = TAB_SUITES.get(tabId);
 			return keys == null ? null : keys.appPath;
+		}
+	}
+
+	/** Launch-slot index of a running tab, or -1 when it is unknown. */
+	public static int slotIndexForTab(int tabId) {
+		synchronized (MicroLoader.class) {
+			Integer index = TAB_SLOTS.get(tabId);
+			return index == null ? -1 : index;
 		}
 	}
 
@@ -421,6 +431,7 @@ public class MicroLoader {
 	private void clearOwnSuiteSession() {
 		synchronized (MicroLoader.class) {
 			TAB_SUITES.remove(tabId);
+			TAB_SLOTS.remove(tabId);
 		}
 		ProxyRouting.unbindTab(tabId);
 		if (!suiteHasLiveTabs(appDirName)) {
@@ -844,6 +855,7 @@ public class MicroLoader {
 			}
 			synchronized (MicroLoader.class) {
 				TAB_SUITES.put(tabId, new SuiteKeys(appDir.getPath(), appDirName));
+				TAB_SLOTS.put(tabId, slotIndex);
 				ProxyRouting.bindTab(tabId, appDirName, slotIndex);
 				// A suite installs its VFS/permission session once; later tabs of the same
 				// suite reuse it, while a different suite installs its own beside it.
