@@ -1136,13 +1136,6 @@ public abstract class Canvas extends Displayable {
 				// One frame at the full backing height: the first layout pass can report a
 				// shorter height, and a tight frame would be replaced for the final height,
 				// allocating twice per tab for the same screen.
-				if (!visible && offscreenCopy == null) {
-					// Hidden tabs cannot draw, but the host still lays them out. Keep the
-					// geometry and let frame() build the buffer when the tab is shown again.
-					internalResolutionScale = scale;
-					lastInternalResolutionScale = scale;
-					return;
-				}
 				int physicalWidth = width * scale;
 				int physicalHeight = maxHeight * scale;
 				Image previous = offscreenCopy;
