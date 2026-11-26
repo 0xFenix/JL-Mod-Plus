@@ -473,7 +473,8 @@ androidComponents {
         variant.outputs.forEach { output ->
             val filter = output.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }
             val suffix = if (filter != null) "-${filter.identifier}" else ""
-            output.outputFileName.set("JL-Mod-Plus${suffix}.apk")
+            // Release uploads are told apart by version, so keep it in the artifact name.
+            output.outputFileName.set("JL-Mod-Plus-$appVersionName${suffix}.apk")
         }
         variant.buildConfigFields?.put(
             "FULL_EMULATOR",
