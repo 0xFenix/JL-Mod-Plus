@@ -518,7 +518,11 @@ public class MicroLoader {
 
 	/** Applies only the theme-owned colors for a linked built-in profile at runtime. */
 	private void applyLinkedBuiltInTheme() {
-		if (!builtInThemeLinked || params.screenBackgroundMode != io.github.h3nb.jlmodplus.config.BackgroundMode.THEME) {
+		if (params.screenBackgroundMode != io.github.h3nb.jlmodplus.config.BackgroundMode.THEME) {
+			return;
+		}
+		// Installations that predate the link marker keep a frozen copy of the built-in palette.
+		if (!builtInThemeLinked && !ProfileModel.usesBuiltInPalette(params)) {
 			return;
 		}
 		ProfileModel.applyBuiltInTheme(

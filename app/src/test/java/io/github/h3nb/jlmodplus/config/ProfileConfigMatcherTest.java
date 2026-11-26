@@ -258,16 +258,30 @@ public class ProfileConfigMatcherTest {
 		ProfileModel profile = new ProfileModel();
 		profile.screenWidth = 360;
 		profile.screenBackgroundColor = 0x123456;
+		profile.vkBgColor = 0x000000;
+		profile.vkFgColor = 0xFFFFFF;
+		profile.vkBgColorSelected = 0xFFFFFF;
+		profile.vkFgColorSelected = 0x000000;
+		profile.vkOutlineColor = 0xFFFFFF;
+		assertTrue(ProfileModel.usesBuiltInPalette(profile));
 
 		ProfileModel.applyBuiltInTheme(profile, true);
 		assertEquals(360, profile.screenWidth);
 		assertEquals(0x123456, profile.screenBackgroundColor);
-		assertEquals(0xFFFFFF, profile.vkFgColor);
+		assertEquals(0xE6EBEF, profile.vkFgColor);
+		assertEquals(0x1A2024, profile.vkBgColor);
+		assertEquals(0x3D4A53, profile.vkBgColorSelected);
+		assertTrue(ProfileModel.usesBuiltInPalette(profile));
 
 		ProfileModel.applyBuiltInTheme(profile, false);
 		assertEquals(360, profile.screenWidth);
 		assertEquals(0x123456, profile.screenBackgroundColor);
 		assertEquals(0x000000, profile.vkFgColor);
+		assertTrue(ProfileModel.usesBuiltInPalette(profile));
+
+		// A single edited color takes the palette out of theme ownership.
+		profile.vkBgColor = 0x445566;
+		assertFalse(ProfileModel.usesBuiltInPalette(profile));
 	}
 
 	@Test

@@ -127,16 +127,48 @@ data class ProfileModel(
             systemPropertyDefaults = defaultSystemProperties,
         )
 
+        private const val THEME_DARK_KEY_BACKGROUND = 0x1A2024
+        private const val THEME_DARK_KEY_FOREGROUND = 0xE6EBEF
+        private const val THEME_DARK_KEY_PRESSED = 0x3D4A53
+        private const val THEME_DARK_KEY_OUTLINE = 0x46545D
+
+        /**
+         * Dark keys sit one step above the #111518 page background and the pressed key is a lifted
+         * slate instead of a white flash, matching the dark Compose surfaces.
+         */
         @JvmStatic fun applyBuiltInTheme(profile: ProfileModel, darkTheme: Boolean) {
-            val background = if (darkTheme) 0x000000 else 0xFFFFFF
-            val foreground = if (darkTheme) 0xFFFFFF else 0x000000
+            val background = if (darkTheme) THEME_DARK_KEY_BACKGROUND else 0xFFFFFF
+            val foreground = if (darkTheme) THEME_DARK_KEY_FOREGROUND else 0x000000
+            val selectedBackground = if (darkTheme) THEME_DARK_KEY_PRESSED else 0x000000
+            val outline = if (darkTheme) THEME_DARK_KEY_OUTLINE else 0x000000
             profile.vkAlpha = 255
             profile.vkBgColor = background
             profile.vkFgColor = foreground
-            profile.vkBgColorSelected = foreground
-            profile.vkFgColorSelected = background
-            profile.vkOutlineColor = foreground
+            profile.vkBgColorSelected = selectedBackground
+            profile.vkFgColorSelected = 0xFFFFFF
+            profile.vkOutlineColor = outline
         }
+
+        /**
+         * True when the stored palette is an untouched built-in theme palette, including the pure
+         * black one that older installs wrote before it was softened.
+         */
+        @JvmStatic fun usesBuiltInPalette(profile: ProfileModel): Boolean {
+            val palette = intArrayOf(
+                profile.vkBgColor, profile.vkFgColor, profile.vkBgColorSelected,
+                profile.vkFgColorSelected, profile.vkOutlineColor,
+            )
+            return BUILT_IN_PALETTES.any { it.contentEquals(palette) }
+        }
+
+        private val BUILT_IN_PALETTES = listOf(
+            intArrayOf(0x000000, 0xFFFFFF, 0xFFFFFF, 0x000000, 0xFFFFFF),
+            intArrayOf(0xFFFFFF, 0x000000, 0x000000, 0xFFFFFF, 0x000000),
+            intArrayOf(
+                THEME_DARK_KEY_BACKGROUND, THEME_DARK_KEY_FOREGROUND,
+                THEME_DARK_KEY_PRESSED, 0xFFFFFF, THEME_DARK_KEY_OUTLINE,
+            ),
+        )
 
         @JvmStatic fun isDarkTheme(context: Context): Boolean = isDarkTheme(
             PreferenceManager.getDefaultSharedPreferences(context)
@@ -156,7 +188,7 @@ data class ProfileModel(
 
         @JvmStatic fun createBuiltIn(darkTheme: Boolean, defaultSystemProperties: String): ProfileModel =
             fresh(defaultSystemProperties).apply {
-                vkType = VirtualKeyboard.TYPE_PHONE_ARROWS
+                vkType = VirtualKeyboard.TYPE_NUMBERS_ARROWS
                 screenBackgroundMode = BackgroundMode.THEME
                 screenBackgroundColor = AppBackgroundColors.rgb(darkTheme)
                 applyBuiltInTheme(this, darkTheme)
