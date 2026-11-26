@@ -581,6 +581,11 @@ public class MicroActivity extends AppCompatActivity {
 					}
 
 					@Override
+					public void onOpenWindows() {
+						if (tabBarController != null) tabBarController.openGrid();
+					}
+
+					@Override
 					public void onEditVirtualKeyboardLayout() {
 						if (runtimePreferences != null && runtimePreferences.getBoolean(
 								RuntimeUiPreferences.HIDE_LAYOUT_EDIT_GUIDE, false)) {
@@ -1146,7 +1151,6 @@ public class MicroActivity extends AppCompatActivity {
 					chrome.toolbarVisible ? View.VISIBLE : View.GONE);
 		}
 		if (tabBarController != null) {
-			tabBarController.setHeaderTitle(title == null ? fallbackTitle : title);
 			tabBarController.refresh();
 		}
 	}

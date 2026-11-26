@@ -166,6 +166,7 @@ interface RuntimeMenuActions {
     fun onToggleRuntimeMenu() {}
     fun onMemoryEditor()
     fun onProxy() {}
+    fun onOpenWindows() {}
     fun onEditVirtualKeyboardLayout()
 
     fun onFinishVirtualKeyboardLayout()
@@ -995,7 +996,7 @@ internal fun measureRuntimeSpeedWidth(resources: Resources, percent: Int): Float
     return max(RUNTIME_TOOLBAR_ACTION_WIDTH_DP, textWidthDp + 16f)
 }
 
-internal enum class RuntimeToolbarShortcut { Speed, Ime, Screenshot, Menu, Camera }
+internal enum class RuntimeToolbarShortcut { Speed, Ime, Screenshot, Windows, Menu, Camera }
 internal data class RuntimeToolbarOcclusion(val leftPx: Int, val rightPx: Int)
 internal data class RuntimeToolbarSpan(val left: Float, val right: Float) {
     val width: Float get() = (right - left).coerceAtLeast(0f)
@@ -1067,8 +1068,11 @@ internal fun runtimeToolbarLayout(state: RuntimeMenuUiState, widthDp: Float): Ru
             if (state.emulationSpeedAvailable) add(RuntimeToolbarShortcut.Speed)
             if (state.imeAvailable) add(RuntimeToolbarShortcut.Ime)
             add(RuntimeToolbarShortcut.Screenshot)
-            add(RuntimeToolbarShortcut.Menu)
         }
+        // Windows stays reachable on every screen: tab switching must not depend on
+        // the current Displayable being a Canvas.
+        add(RuntimeToolbarShortcut.Windows)
+        if (state.isCanvas) add(RuntimeToolbarShortcut.Menu)
         if (state.cameraSwitchAvailable) add(RuntimeToolbarShortcut.Camera)
     }
     candidates.forEach { candidate ->
@@ -1150,6 +1154,11 @@ private fun RuntimeToolbar(
                                 icon = R.drawable.ic_action_screenshot,
                                 label = R.string.take_screenshot,
                                 onClick = actions::onTakeScreenshot,
+                            )
+                            RuntimeToolbarShortcut.Windows -> RuntimeToolbarAction(
+                                icon = R.drawable.ic_view_grid,
+                                label = R.string.midlet_tab_windows,
+                                onClick = actions::onOpenWindows,
                             )
                             RuntimeToolbarShortcut.Camera -> RuntimeToolbarAction(
                                 icon = R.drawable.ic_camera_switch,
@@ -1475,6 +1484,9 @@ internal fun runtimeMenuEntries(
         displayLabel = R.string.runtime_memory_button_short, callback = actions::onMemoryEditor)
     action(R.string.proxy_menu_label, R.drawable.ic_swap_horiz, enabled = state.proxyAvailable,
         callback = actions::onProxy)
+    if (RuntimeToolbarShortcut.Windows !in shortcuts) {
+        action(R.string.midlet_tab_windows, R.drawable.ic_view_grid, callback = actions::onOpenWindows)
+    }
     if (state.isCanvas) {
         action(R.string.pref_runtime_fullscreen_title, R.drawable.ic_runtime_fullscreen, !state.toolbarVisible,
             callback = actions::onToggleFullscreen)

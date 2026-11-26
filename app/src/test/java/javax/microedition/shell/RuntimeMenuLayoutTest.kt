@@ -24,7 +24,8 @@ import org.junit.jupiter.api.Test
 class RuntimeMenuLayoutTest {
     private val canvasShortcuts = listOf(
         RuntimeToolbarShortcut.Speed, RuntimeToolbarShortcut.Ime,
-        RuntimeToolbarShortcut.Screenshot, RuntimeToolbarShortcut.Menu,
+        RuntimeToolbarShortcut.Screenshot, RuntimeToolbarShortcut.Windows,
+        RuntimeToolbarShortcut.Menu,
     )
     private val canvas = RuntimeMenuUiState(
         isCanvas = true,
@@ -77,7 +78,7 @@ class RuntimeMenuLayoutTest {
         assertEquals(
             listOf(
                 R.string.action_lock_orientation, R.string.memory_editor_bubble,
-                R.string.proxy_menu_label,
+                R.string.proxy_menu_label, R.string.midlet_tab_windows,
                 R.string.pref_runtime_fullscreen_title, R.string.PREF_LIMIT_FPS,
                 R.string.runtime_virtual_controls_title, R.string.save_log,
                 R.string.action_keyboard_ime, R.string.take_screenshot,
@@ -86,10 +87,10 @@ class RuntimeMenuLayoutTest {
             entries.map { it.label },
         )
         // Controller activation uses this same ordered list as the rendered rows.
-        entries[3].activate()
-        entries[7].activate()
-        entries[9].activate()
-        entries[5].activate()
+        entries[4].activate()
+        entries[8].activate()
+        entries[10].activate()
+        entries[6].activate()
         assertEquals(listOf("dismiss", "fullscreen", "dismiss", "ime", "dismiss", "speed", "virtualControls"), events)
     }
 
@@ -118,16 +119,17 @@ class RuntimeMenuLayoutTest {
     @Test
     fun unavailableCanvasActionsStayAbsentAndLargeTextConsumesRealSpace() {
         val form = canvas.copy(isCanvas = false)
-        assertTrue(runtimeToolbarShortcuts(form, 640f).isEmpty())
+        assertEquals(listOf(RuntimeToolbarShortcut.Windows), runtimeToolbarShortcuts(form, 640f))
         assertEquals(
             listOf(R.string.action_lock_orientation, R.string.memory_editor_bubble,
-                R.string.proxy_menu_label, R.string.save_log,
+                R.string.proxy_menu_label, R.string.midlet_tab_windows, R.string.save_log,
                 R.string.runtime_restart, R.string.exit),
             menu(form).map { it.label },
         )
         val incompatible = canvas.copy(emulationSpeedAvailable = false, imeAvailable = false)
         assertEquals(
-            listOf(RuntimeToolbarShortcut.Screenshot, RuntimeToolbarShortcut.Menu),
+            listOf(RuntimeToolbarShortcut.Screenshot, RuntimeToolbarShortcut.Windows,
+                RuntimeToolbarShortcut.Menu),
             runtimeToolbarShortcuts(incompatible, 360f),
         )
         assertFalse(menu(incompatible).any { it.label == R.string.PREF_EMULATION_SPEED })
@@ -212,7 +214,7 @@ class RuntimeMenuLayoutTest {
     fun centralCutoutSplitsTitleAndActionsWithoutReservingABlankTopBand() {
         val notch = canvas.copy(toolbarCutouts = listOf(RuntimeToolbarOcclusion(154, 206)))
         val layout = runtimeToolbarLayout(notch, 360f)
-        assertEquals(RuntimeToolbarSpan(8f, 110f), layout.title)
+        assertEquals(RuntimeToolbarSpan(8f, 70f), layout.title)
         assertEquals(canvasShortcuts, layout.actions.map { it.shortcut })
         assertTrue(layout.actions.all { it.span.right <= 150f || it.span.left >= 210f })
         assertTrue(layout.actions.all { it.span.right <= 356f && it.span.width >= 40f })
@@ -229,8 +231,8 @@ class RuntimeMenuLayoutTest {
         )
         val ltr = runtimeToolbarLayout(state, 360f)
         val rtl = runtimeToolbarLayout(state.copy(toolbarRtl = true), 360f)
-        assertEquals(RuntimeToolbarSpan(32f, 116f), ltr.title)
-        assertEquals(RuntimeToolbarSpan(244f, 336f), rtl.title)
+        assertEquals(RuntimeToolbarSpan(32f, 76f), ltr.title)
+        assertEquals(RuntimeToolbarSpan(284f, 336f), rtl.title)
         assertEquals(canvasShortcuts, ltr.actions.map { it.shortcut })
         assertTrue(ltr.actions.all { it.span.left >= 32f && it.span.right <= 336f &&
             (it.span.right <= 156f || it.span.left >= 204f) })
@@ -261,7 +263,12 @@ class RuntimeMenuLayoutTest {
     fun roundedVisualClearanceUsesInternalPaddingWithoutWeakeningStrictInsets() {
         val rounded = canvas.copy(toolbarRoundedLeftPx = 40, toolbarRoundedRightPx = 40)
         val layout = runtimeToolbarLayout(rounded, 240f)
-        assertEquals(canvasShortcuts, layout.actions.map { it.shortcut })
+        // Four whole targets fit here; the fifth falls back to the runtime menu.
+        assertEquals(
+            listOf(RuntimeToolbarShortcut.Speed, RuntimeToolbarShortcut.Ime,
+                RuntimeToolbarShortcut.Screenshot, RuntimeToolbarShortcut.Windows),
+            layout.actions.map { it.shortcut },
+        )
         assertEquals(RuntimeToolbarSpan(40f, 48f), layout.title)
         assertTrue(layout.actions.all { it.span.left >= 32f && it.span.right <= 208f })
         // The speed label has the smallest internal padding: 8dp, matching measured text +16dp.

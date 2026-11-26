@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,13 +43,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +64,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -91,8 +87,8 @@ interface MidletTabActions {
 data class MidletTabSuite(val title: String, val appPath: String, val expectedAppId: Long)
 
 /**
- * Interop owner for the compact runtime bar (title + window count) and its
- * card-grid window switcher. Rendering follows the app Material 3 theme;
+ * Interop owner for the card-grid window switcher. The runtime toolbar owns the
+ * entry point; this ComposeView only hosts the switcher dialogs. Rendering follows the app Material 3 theme;
  * tab bookkeeping lives in [AmsRegistry] and preview bitmaps stay here so
  * [MicroActivity] only has to supply the capture callback.
  */
@@ -105,7 +101,6 @@ class MidletTabBarController(
 ) {
     private var tabs by mutableStateOf(listOf<AmsRegistry.Tab>())
     private var selectedId by mutableIntStateOf(-1)
-    private var barTitle by mutableStateOf(appTitle.orEmpty())
     private var suitePicker by mutableStateOf<List<MidletTabSuite>?>(null)
     private var closeConfirmId by mutableStateOf<Int?>(null)
     private var gridOpen by mutableStateOf(false)
@@ -119,15 +114,6 @@ class MidletTabBarController(
         )
         composeView.setContent {
             JLModPlusTheme {
-                // A lone window with room to add still needs the bar: it is the only
-                // entry point to the grid and therefore to the add path.
-                if (tabs.size > 1 || tabs.size < AmsRegistry.MAX_TABS) {
-                    MidletTabBar(
-                        title = barTitle,
-                        tabCount = tabs.size,
-                        onOpenGrid = ::openGrid,
-                    )
-                }
                 if (gridOpen) {
                     MidletWindowGrid(
                         tabs = tabs,
@@ -181,16 +167,12 @@ class MidletTabBarController(
         prunePreviews()
     }
 
-    /** Current game title shown at the left of the compact bar. */
-    fun setHeaderTitle(title: String) {
-        barTitle = title
-    }
-
     fun showSuitePicker(suites: List<MidletTabSuite>) {
         suitePicker = suites
     }
 
-    private fun openGrid() {
+    /** Opens the switcher; called from the runtime toolbar. */
+    fun openGrid() {
         captureSelectedPreview()
         prunePreviews()
         gridPreviews = HashMap(previews)
@@ -236,72 +218,6 @@ class MidletTabBarController(
             if (!live.contains(entry.key)) {
                 iterator.remove()
                 entry.value.recycle()
-            }
-        }
-    }
-}
-
-@Composable
-private fun MidletTabBar(
-    title: String,
-    tabCount: Int,
-    onOpenGrid: () -> Unit,
-) {
-    val windowsDescription = stringResource(R.string.midlet_tab_windows_description, tabCount)
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 2.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("midlet_tab_bar"),
-    ) {
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("midlet_tab_title"),
-                )
-                Surface(
-                    onClick = onOpenGrid,
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .defaultMinSize(minWidth = 44.dp, minHeight = 32.dp)
-                        .semantics {
-                            contentDescription = windowsDescription
-                        }
-                        .testTag("midlet_tab_open_grid"),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_view_grid),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = tabCount.toString(),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
             }
         }
     }

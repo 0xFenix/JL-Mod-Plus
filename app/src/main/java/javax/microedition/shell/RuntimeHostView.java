@@ -44,7 +44,7 @@ public final class RuntimeHostView {
 	public final FrameLayout root;
 	public final LinearLayout virtualDisplay;
 	public final ComposeView toolbar;
-	/** Always-visible multi-MIDlet tab strip below the runtime toolbar. */
+	/** Hosts the multi-MIDlet window switcher dialogs; it renders no visible bar. */
 	public final ComposeView tabBar;
 	public final FrameLayout displayableContainer;
 	public final OverlayView overlay;
