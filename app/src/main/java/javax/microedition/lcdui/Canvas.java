@@ -841,9 +841,8 @@ public abstract class Canvas extends Displayable {
 	private Image frame() {
 		synchronized (bufferLock) {
 			if (offscreenCopy != null) return offscreenCopy;
-			int scale = Math.max(1, internalResolutionScale);
-			boolean tight = scale > 1 || (settings.effects != null && !settings.effects.isEmpty());
-			Image next = Image.createDisplayTarget(width, tight ? height : maxHeight, scale);
+			Image next = Image.createDisplayTarget(width, maxHeight,
+					Math.max(1, internalResolutionScale));
 			if (next.getHeight() != height) next.setSize(width, height);
 			offscreenCopy = next;
 			return next;
@@ -1134,19 +1133,24 @@ public abstract class Canvas extends Displayable {
 					requested, width, height, maxHeight, onWidth, onHeight);
 			int previousScale = internalResolutionScale;
 			int resolvedScale = InternalResolution.allocateWithFallback(maximum, scale -> {
-				boolean tight = scale > 1
-						|| (settings.effects != null && !settings.effects.isEmpty());
+				// One frame at the full backing height: the first layout pass can report a
+				// shorter height, and a tight frame would be replaced for the final height,
+				// allocating twice per tab for the same screen.
+				if (!visible && offscreenCopy == null) {
+					// Hidden tabs cannot draw, but the host still lays them out. Keep the
+					// geometry and let frame() build the buffer when the tab is shown again.
+					internalResolutionScale = scale;
+					lastInternalResolutionScale = scale;
+					return;
+				}
 				int physicalWidth = width * scale;
-				int physicalHeight = (tight ? height : maxHeight) * scale;
+				int physicalHeight = maxHeight * scale;
 				Image previous = offscreenCopy;
 				boolean replace = previous == null || previous.getPixelScale() != scale
-						|| previous.getWidth() != width || previous.getHeight() != height
 						|| previous.getBitmap().getWidth() < physicalWidth
-						|| previous.getBitmap().getHeight() < physicalHeight
-						|| (tight && (previous.getBitmap().getWidth() != physicalWidth
-								|| previous.getBitmap().getHeight() != physicalHeight));
+						|| previous.getBitmap().getHeight() < physicalHeight;
 				Image next = replace
-						? Image.createDisplayTarget(width, tight ? height : maxHeight, scale)
+						? Image.createDisplayTarget(width, maxHeight, scale)
 						: previous;
 				if (replace && previous != null) {
 					int overlapWidth = Math.min(width, previous.getWidth());
@@ -1199,7 +1203,7 @@ public abstract class Canvas extends Displayable {
 			skinLayer.resize(virtualScreen, 0, 0, displayWidth, displayHeight);
 		}
 
-		if (settings.graphicsMode == 1) {
+		if (settings.graphicsMode == 1 && offscreenCopy != null) {
 			float gl = 2.0f * virtualScreen.left / displayWidth - 1.0f;
 			float gt = 1.0f - 2.0f * virtualScreen.top / displayHeight;
 			float gr = 2.0f * virtualScreen.right / displayWidth - 1.0f;

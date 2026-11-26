@@ -132,7 +132,7 @@ public class MicroActivity extends AppCompatActivity {
 	static final int ORIENTATION_LANDSCAPE = 3;
 	private static final int DEFAULT_RUNTIME_TOOLBAR_HEIGHT_DP = 48;
 	/** Window-switcher previews are stored at this width; taller cards crop. */
-	private static final int PREVIEW_WIDTH = 480;
+	private static final int PREVIEW_WIDTH = 240;
 	private static final int MAX_IME_REQUEST_ATTEMPTS = 30;
 	private static final long IME_REQUEST_RETRY_DELAY_MILLIS = 100L;
 	private static final String STATE_EXPECTED_APP_ID = "expected_library_app_id";

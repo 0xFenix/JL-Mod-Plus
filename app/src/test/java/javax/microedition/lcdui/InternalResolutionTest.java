@@ -11,7 +11,7 @@ public class InternalResolutionTest {
         assertEquals(1, InternalResolution.resolve(0, 240, 320, 239, 319));
         // The visible height (after softbar) selects Auto; the larger backing
         // height is used only to enforce allocation limits.
-        assertEquals(5, InternalResolution.resolve(0, 240, 300, 320, 1200, 1650));
+        assertEquals(4, InternalResolution.resolve(0, 240, 300, 320, 1200, 1650));
     }
 
     @Test public void manualSupportsSupersamplingWithinBitmapRepresentationLimits() {

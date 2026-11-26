@@ -4,6 +4,12 @@ package javax.microedition.lcdui;
 /** Selects the physical density for runtime-owned 2D render targets. */
 final class InternalResolution {
     static final int MAX_SCALE = 10;
+    /**
+     * Automatic density stops here: matching the display exactly costs several megabytes of
+     * frame per tab and 25x pixels for every guest offscreen image. A profile that needs more
+     * can still select it explicitly.
+     */
+    static final int MAX_AUTO_SCALE = 4;
     static final long MAX_BITMAP_PIXELS = Integer.MAX_VALUE / 4L;
 
     private InternalResolution() {}
@@ -44,7 +50,8 @@ final class InternalResolution {
         if (logicalWidth <= 0 || logicalHeight <= 0 || backingHeight <= 0) return 1;
         int desired = requested == 0
                 ? viewportWidth <= 0 || viewportHeight <= 0 ? 1
-                    : Math.min(viewportWidth / logicalWidth, viewportHeight / logicalHeight)
+                    : Math.min(MAX_AUTO_SCALE,
+                        Math.min(viewportWidth / logicalWidth, viewportHeight / logicalHeight))
                 : requested;
         desired = Math.max(1, Math.min(MAX_SCALE, desired));
         for (int factor = desired; factor > 1; factor--) {
