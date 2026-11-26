@@ -14,6 +14,7 @@
 
 package javax.microedition.shell
 
+import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Typeface
 import android.text.TextPaint
@@ -37,8 +38,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -47,6 +51,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -90,6 +95,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.h3nb.jlmodplus.R
 import io.github.h3nb.jlmodplus.input.HostCommand
+import io.github.h3nb.jlmodplus.net.ProxyListActivity
+import io.github.h3nb.jlmodplus.net.ProxyStore
 import io.github.h3nb.jlmodplus.ui.AdaptiveAlertDialog as AlertDialog
 import io.github.h3nb.jlmodplus.ui.ControllerDialogInputScope
 import io.github.h3nb.jlmodplus.ui.ControllerHostCommandHandler
@@ -123,6 +130,7 @@ internal data class RuntimeMenuUiState(
     val emulationSpeedAvailable: Boolean = false,
     val emulationSpeedPercent: Int = EmulationSpeed.NORMAL_PERCENT,
     val memoryEditorBubbleEnabled: Boolean = false,
+    val proxyAvailable: Boolean = false,
     val cameraSwitchAvailable: Boolean = false,
     val cameraFrontFacing: Boolean = false,
     val cameraSwitching: Boolean = false,
@@ -157,6 +165,7 @@ interface RuntimeMenuActions {
     fun onSwitchCamera() {}
     fun onToggleRuntimeMenu() {}
     fun onMemoryEditor()
+    fun onProxy() {}
     fun onEditVirtualKeyboardLayout()
 
     fun onFinishVirtualKeyboardLayout()
@@ -183,6 +192,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     private var emulationSpeedVisible by mutableStateOf(false)
     private var filePermissionPrompt by mutableStateOf<FilePermissionPrompt?>(null)
     private var packageChoice by mutableStateOf<PlatformPackageChoice?>(null)
+    private var proxyPicker by mutableStateOf<ProxyPickerContent?>(null)
     private var hostDialogState by mutableStateOf<RuntimeHostDialogState?>(null)
     private var virtualKeyboardPage by mutableStateOf(false)
     private var controllerFocusIndex by mutableIntStateOf(0)
@@ -211,6 +221,15 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
                 menuVisible = false
                 virtualKeyboardPage = false
                 emulationSpeedVisible = true
+            }
+        }
+
+        override fun onProxy() {
+            val content = loadProxyPicker() ?: return
+            changeControllerSurface {
+                menuVisible = false
+                virtualKeyboardPage = false
+                proxyPicker = content
             }
         }
     }
@@ -291,6 +310,26 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
                                     changeControllerSurface { emulationSpeedVisible = false }
                                     actions.onResetEmulationSpeed()
                                 },
+                            )
+                        }
+                    }
+                    proxyPicker?.let { content ->
+                        ControllerDialogInputScope(
+                            onControllerKeyEvent = dialogKeyDispatcher,
+                            onControllerMotionEvent = dialogMotionDispatcher,
+                            onControllerHostCommandHandlerChanged = { dialogHostCommandHandler = it },
+                        ) {
+                            RuntimeProxyPickerDialog(
+                                entries = content.entries,
+                                selectedId = content.selectedId,
+                                onSelect = ::selectProxy,
+                                onManage = {
+                                    changeControllerSurface { proxyPicker = null }
+                                    composeView.context.startActivity(
+                                        Intent(composeView.context, ProxyListActivity::class.java),
+                                    )
+                                },
+                                onDismiss = { changeControllerSurface { proxyPicker = null } },
                             )
                         }
                     }
@@ -416,6 +455,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             toolbarFontScale = resources.configuration.fontScale,
             toolbarSpeedWidthDp = measureRuntimeSpeedWidth(resources, requested.emulationSpeedPercent),
             toolbarRtl = resources.configuration.layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL,
+            proxyAvailable = proxyPickerAvailable(),
         )
         if (state == next) return
         val focusedLabel = controllerItems().getOrNull(controllerFocusIndex)?.label
@@ -427,6 +467,8 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     }
 
     fun openMenu() {
+        // Refresh slot availability: the tab may have been registered after the last update().
+        updateState(state)
         changeControllerSurface {
             menuVisible = true
             virtualKeyboardPage = false
@@ -439,6 +481,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     fun isMenuVisible(): Boolean = menuVisible
             || limitFpsVisible
             || emulationSpeedVisible
+            || proxyPicker != null
             || hostDialogState != null
             || filePermissionPrompt != null
             || packageChoice != null
@@ -453,6 +496,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             menuVisible = false
             limitFpsVisible = false
             emulationSpeedVisible = false
+            proxyPicker = null
             hostDialogState = null
             filePermissionPrompt = null
             packageChoice = null
@@ -471,7 +515,8 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     fun handleHostCommand(command: HostCommand, pressed: Boolean): Boolean {
         if (!isMenuVisible()) return false
         if (filePermissionPrompt != null || packageChoice != null
-                || hostDialogState != null || limitFpsVisible || emulationSpeedVisible) {
+                || hostDialogState != null || limitFpsVisible || emulationSpeedVisible
+                || proxyPicker != null) {
             // Dialog semantics stay inside Compose. Preserve both DOWN and UP so a focused Compose
             // control receives a complete Activate key sequence. Consume during composition
             // hand-off as well so no controller edge can leak into the MIDlet behind the modal.
@@ -607,7 +652,46 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     fun showLayoutEditGuide() {
         changeControllerSurface { hostDialogState = RuntimeHostDialogState.LayoutEditGuide }
     }
+
+    private fun loadProxyPicker(): ProxyPickerContent? {
+        val tabId = MidletTabRouter.selectedTabId()
+        val storageKey = MicroLoader.storageKeyForTab(tabId) ?: return null
+        val slotIndex = MicroLoader.slotIndexForTab(tabId)
+        if (slotIndex < 0) return null
+        val store = ProxyStore.forApp()
+        return ProxyPickerContent(
+            storageKey = storageKey,
+            slotIndex = slotIndex,
+            entries = store.list(),
+            selectedId = store.proxyIdForTab(storageKey, slotIndex),
+        )
+    }
+
+    private fun selectProxy(id: String?) {
+        val content = proxyPicker ?: return
+        val store = ProxyStore.forApp()
+        if (id == null) {
+            store.clearProxyForTab(content.storageKey, content.slotIndex)
+        } else {
+            store.assignProxyToTab(content.storageKey, content.slotIndex, id)
+        }
+        changeControllerSurface { proxyPicker = null }
+    }
+
+    private fun proxyPickerAvailable(): Boolean {
+        val tabId = MidletTabRouter.selectedTabId()
+        return tabId != MidletTabRouter.NO_TAB &&
+                MicroLoader.storageKeyForTab(tabId) != null &&
+                MicroLoader.slotIndexForTab(tabId) >= 0
+    }
 }
+
+private data class ProxyPickerContent(
+    val storageKey: String,
+    val slotIndex: Int,
+    val entries: List<ProxyStore.Entry>,
+    val selectedId: String?,
+)
 
 private data class PlatformPackageChoice(
     val onInstall: Runnable,
@@ -617,6 +701,107 @@ private data class PlatformPackageChoice(
 
 @Composable
 private fun runtimeMenuDialogContentHeight() = adaptiveDialogLayout().maxHeight
+
+@Composable
+private fun RuntimeProxyPickerDialog(
+    entries: List<ProxyStore.Entry>,
+    selectedId: String?,
+    onSelect: (String?) -> Unit,
+    onManage: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val listState = rememberLazyListState()
+    val maxListHeight = runtimeMenuDialogContentHeight()
+    val canScrollForward = rememberLazyListCanScrollForward(listState)
+    AlertDialog(
+        textScrollable = false,
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.proxy_menu_label)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(R.string.proxy_picker_note),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxListHeight),
+                ) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = maxListHeight)
+                            .selectableGroup(),
+                        state = listState,
+                    ) {
+                        item(key = "direct") {
+                            ProxyChoiceRow(
+                                title = stringResource(R.string.proxy_picker_direct),
+                                detail = null,
+                                selected = selectedId == null,
+                                onClick = { onSelect(null) },
+                            )
+                        }
+                        items(entries, key = { it.id }) { entry ->
+                            ProxyChoiceRow(
+                                title = "${entry.host}:${entry.port}",
+                                detail = if (entry.user.isEmpty()) {
+                                    stringResource(R.string.proxy_row_no_login)
+                                } else {
+                                    stringResource(R.string.proxy_row_user, entry.user)
+                                },
+                                selected = entry.id == selectedId,
+                                onClick = { onSelect(entry.id) },
+                            )
+                        }
+                    }
+                    ScrollableContentHint(
+                        visible = canScrollForward,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onManage) { Text(stringResource(R.string.proxy_manage)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProxyChoiceRow(
+    title: String,
+    detail: String?,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.size(12.dp))
+        Column {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            if (detail != null) {
+                Text(
+                    text = detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 internal fun RuntimeLimitFpsDialog(
@@ -1288,6 +1473,8 @@ internal fun runtimeMenuEntries(
     action(R.string.action_lock_orientation, R.drawable.ic_screen_lock_rotation, state.orientationLocked, callback = actions::onToggleOrientationLock)
     action(R.string.memory_editor_bubble, R.drawable.ic_runtime_memory, state.memoryEditorBubbleEnabled,
         displayLabel = R.string.runtime_memory_button_short, callback = actions::onMemoryEditor)
+    action(R.string.proxy_menu_label, R.drawable.ic_swap_horiz, enabled = state.proxyAvailable,
+        callback = actions::onProxy)
     if (state.isCanvas) {
         action(R.string.pref_runtime_fullscreen_title, R.drawable.ic_runtime_fullscreen, !state.toolbarVisible,
             callback = actions::onToggleFullscreen)

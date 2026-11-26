@@ -57,6 +57,12 @@ Guest sockets are Java (`org.microemu.cldc.socket.SocketConnection`), so the pro
 Credential storage is the plain SharedPreferences file, same as the iOS runtime. The liveness probe
 connects through the saved proxy to `1.1.1.1:80`, so a proxy that filters that address reads as dead.
 
+The list screen (`ProxyListActivity`, opened from Settings → SOCKS5 proxy or the runtime Proxy
+dialog's Manage action) runs in the `:midlet` process, so its writes and `ProxyRouting`'s reads
+share one SharedPreferences cache. The Settings subtitle count is read from the main process and can
+lag until that process restarts. The runtime menu's Proxy entry assigns the selected tab's slot and
+applies to its next connection; already-open sockets keep their route.
+
 ## State that follows the selected tab
 
 These are process-wide today and apply last-tab-wins; while two tabs run they can leak one tab's
@@ -103,8 +109,8 @@ Ordered so each step is shippable alone:
 4. Verify that closing a tab releases the guest's sockets and network threads (gap 5); add an
    explicit close path for the runtime if it does not.
 5. ~~Decide storage isolation~~ — done: per-slot data directories, first slot keeps the old path.
-6. ~~Per-tab proxy list and routing~~ — core done (tunnel, store, routing, slot binding); the
-   proxy list screen and the per-tab picker UI are the remaining piece.
+6. ~~Per-tab proxy list and routing~~ — done: tunnel, store, routing, slot binding, the proxy list
+   screen, and the runtime per-tab picker.
 
 Out of scope until the above lands: more than 10 tabs, per-tab processes, per-tab audio mixing
 (one tab is audible at a time), and restoring tabs after process death.

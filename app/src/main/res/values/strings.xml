@@ -1007,6 +1007,7 @@
     <string name="library_load_error_title">Library unavailable</string>
     <string name="library_retry">Retry</string>
     <string name="library_reinstall_source_missing">The saved JAR is unavailable for reinstall.</string>
+    <string name="library_running_title" tools:ignore="MissingTranslation">Playing (%1$d)</string>
     <string name="library_action_select">Select</string>
     <string name="library_selection_select_all">Select all</string>
     <string name="library_selection_unselect_all">Deselect all</string>
@@ -1574,4 +1575,33 @@
     <string name="profile_stop_following" tools:ignore="MissingTranslation">Stop following profile</string>
     <string name="profile_follow_again" tools:ignore="MissingTranslation">Follow profile again</string>
     <string name="profile_follow_again_summary" tools:ignore="MissingTranslation">Replace this MIDlet’s local settings and virtual controls with the latest %1$s profile, and follow its future updates?</string>
+    <string name="proxy_title" tools:ignore="MissingTranslation">SOCKS5 proxy</string>
+    <string name="proxy_menu_label" tools:ignore="MissingTranslation">Proxy</string>
+    <string name="proxy_picker_direct" tools:ignore="MissingTranslation">Direct (no proxy)</string>
+    <string name="proxy_picker_note" tools:ignore="MissingTranslation">Applies to this tab’s next connection. Open connections keep their current route.</string>
+    <string name="proxy_manage" tools:ignore="MissingTranslation">Manage proxies…</string>
+    <string name="proxy_add" tools:ignore="MissingTranslation">Add proxy</string>
+    <string name="proxy_add_one" tools:ignore="MissingTranslation">Add one</string>
+    <string name="proxy_paste" tools:ignore="MissingTranslation">Paste list</string>
+    <string name="proxy_add_action" tools:ignore="MissingTranslation">Add</string>
+    <string name="proxy_import_action" tools:ignore="MissingTranslation">Import</string>
+    <string name="proxy_field_address" tools:ignore="MissingTranslation">Address</string>
+    <string name="proxy_field_port" tools:ignore="MissingTranslation">Port</string>
+    <string name="proxy_field_username" tools:ignore="MissingTranslation">Username (optional)</string>
+    <string name="proxy_field_password" tools:ignore="MissingTranslation">Password (optional)</string>
+    <string name="proxy_paste_helper" tools:ignore="MissingTranslation">One proxy per line: host:port:user:pass</string>
+    <string name="proxy_paste_placeholder" tools:ignore="MissingTranslation">host:port:user:pass\nhost:port</string>
+    <string name="proxy_delete_title" tools:ignore="MissingTranslation">Delete proxy?</string>
+    <string name="proxy_delete_message" tools:ignore="MissingTranslation">Remove %1$s from the saved proxies?</string>
+    <string name="proxy_row_user" tools:ignore="MissingTranslation">SOCKS5 · %1$s</string>
+    <string name="proxy_row_no_login" tools:ignore="MissingTranslation">SOCKS5 · no login</string>
+    <string name="proxy_test_all" tools:ignore="MissingTranslation">Test all</string>
+    <string name="proxy_testing" tools:ignore="MissingTranslation">Testing…</string>
+    <string name="proxy_test_summary" tools:ignore="MissingTranslation">%1$d alive · %2$d dead</string>
+    <string name="proxy_test_hint" tools:ignore="MissingTranslation">Tap to check whether each proxy is reachable.</string>
+    <string name="proxy_empty_title" tools:ignore="MissingTranslation">No proxies saved</string>
+    <string name="proxy_empty_detail" tools:ignore="MissingTranslation">Only SOCKS5 proxies are supported. Add one or paste a list with host:port:user:pass per line.</string>
+    <string name="proxy_plaintext_warning" tools:ignore="MissingTranslation">Credentials are stored in plain SharedPreferences on this device.</string>
+    <string name="proxy_saved_count" tools:ignore="MissingTranslation">%1$d saved</string>
+    <string name="proxy_settings_section" tools:ignore="MissingTranslation">Network</string>
 </resources>

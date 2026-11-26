@@ -74,6 +74,8 @@ import io.github.h3nb.jlmodplus.applist.LibraryIconShape;
 import io.github.h3nb.jlmodplus.applist.LibraryGridIconSize;
 import io.github.h3nb.jlmodplus.config.ProfilesActivity;
 import io.github.h3nb.jlmodplus.crashes.CrashReportsActivity;
+import io.github.h3nb.jlmodplus.net.ProxyListActivity;
+import io.github.h3nb.jlmodplus.net.ProxyStore;
 import io.github.h3nb.jlmodplus.util.EdgeToEdgeCompat;
 import io.github.h3nb.jlmodplus.util.FileUtils;
 import io.github.h3nb.jlmodplus.util.PickDirResultContract;
@@ -214,6 +216,11 @@ public class SettingsActivity extends AppCompatActivity {
 			@Override
 			public void onOpenProfiles() {
 				startActivity(new Intent(SettingsActivity.this, ProfilesActivity.class));
+			}
+
+			@Override
+			public void onOpenProxyList() {
+				startActivity(new Intent(SettingsActivity.this, ProxyListActivity.class));
 			}
 
 			@Override
@@ -360,7 +367,8 @@ public class SettingsActivity extends AppCompatActivity {
 				selectedAccent,
 				accents,
 				buildLibraryChoices(),
-				buildLibrarySwitches());
+				buildLibrarySwitches(),
+				ProxyStore.forApp().list().size());
 	}
 
 	private List<SettingsChoice> buildLibraryChoices() {

@@ -314,6 +314,7 @@
     <string name="library_reinstall_source_missing">JAR đã lưu không khả dụng để cài đặt lại.</string>
     <string name="library_remove_from_favorites_action">Xóa khỏi mục yêu thích</string>
     <string name="library_retry">Thử lại</string>
+    <string name="library_running_title">Đang chơi (%1$d)</string>
     <string name="library_search_clear">Xóa nội dung tìm kiếm</string>
     <string name="library_search_placeholder">Tìm ứng dụng…</string>
     <string name="library_selection_checkbox_description">Chọn %1$s</string>

@@ -316,6 +316,12 @@
             android:theme="@style/AppTheme.NavigationPage"
             android:windowSoftInputMode="stateHidden|adjustResize" />
         <activity
+            android:name=".net.ProxyListActivity"
+            android:exported="false"
+            android:process=":midlet"
+            android:theme="@style/AppTheme.NavigationPage"
+            android:windowSoftInputMode="stateHidden|adjustResize" />
+        <activity
             android:name=".crashes.CrashReportsActivity"
             android:exported="false"
             android:theme="@style/AppTheme.NavigationPage" />

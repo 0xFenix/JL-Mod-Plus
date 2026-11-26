@@ -127,6 +127,7 @@ data class SettingsUiState(
     val accents: List<SettingsOption> = emptyList(),
     val libraryChoices: List<SettingsChoice> = emptyList(),
     val librarySwitches: List<SettingsSwitch> = emptyList(),
+    val proxySavedCount: Int = 0,
 )
 
 interface SettingsActions {
@@ -137,6 +138,7 @@ interface SettingsActions {
     fun onLibraryChoiceChanged(key: String, value: String) = Unit
     fun onToggle(key: String, checked: Boolean)
     fun onOpenProfiles()
+    fun onOpenProxyList() = Unit
     fun onChooseDirectory()
     fun onDismissDirectoryError()
     fun onOpenCrashReports() = Unit
@@ -313,6 +315,23 @@ fun SettingsScreen(
                     onChoice = { libraryChoiceDialog = it },
                     onToggle = { setting, checked -> actions.onToggle(setting.key, checked) },
                 )
+                settingsSection(
+                    key = "network",
+                    title = R.string.proxy_settings_section,
+                    rowCount = 1,
+                    rowKey = { "proxy" },
+                    rowType = { SettingsItemType.Action },
+                ) {
+                    SettingsActionRow(
+                        title = stringResource(R.string.proxy_title),
+                        summary = if (state.proxySavedCount > 0) {
+                            stringResource(R.string.proxy_saved_count, state.proxySavedCount)
+                        } else {
+                            null
+                        },
+                        onClick = actions::onOpenProxyList,
+                    )
+                }
                 settingsSection(
                     key = "storage-and-profiles",
                     title = R.string.settings_section_storage_profiles,
