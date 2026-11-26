@@ -118,7 +118,6 @@ class MidletTabBarController(
                         selectedId = selectedId,
                         previews = gridPreviews,
                         fallbackTitle = appTitle,
-                        canAdd = tabs.size < AmsRegistry.MAX_TABS,
                         onDismiss = ::dismissGrid,
                         onSelectTab = ::selectFromGrid,
                         onCloseTab = { closeConfirmId = it },
@@ -227,7 +226,6 @@ private fun MidletWindowGrid(
     selectedId: Int,
     previews: Map<Int, Bitmap>,
     fallbackTitle: String?,
-    canAdd: Boolean,
     onDismiss: () -> Unit,
     onSelectTab: (Int) -> Unit,
     onCloseTab: (Int) -> Unit,
@@ -264,7 +262,6 @@ private fun MidletWindowGrid(
                     )
                     IconButton(
                         onClick = onOpenSuitePicker,
-                        enabled = canAdd,
                         modifier = Modifier.testTag("midlet_tab_pick"),
                     ) {
                         Icon(
@@ -312,7 +309,6 @@ private fun MidletWindowGrid(
                         item(key = "add") {
                             AddWindowCard(
                                 cardHeight = cardHeight,
-                                enabled = canAdd,
                                 onAdd = onAddTab,
                             )
                         }
@@ -420,12 +416,10 @@ private fun WindowCard(
 @Composable
 private fun AddWindowCard(
     cardHeight: Dp,
-    enabled: Boolean,
     onAdd: () -> Unit,
 ) {
     Surface(
         onClick = onAdd,
-        enabled = enabled,
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

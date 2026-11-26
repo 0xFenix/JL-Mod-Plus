@@ -815,11 +815,6 @@ public class MicroActivity extends AppCompatActivity {
 		int previous = amsRegistry.selectedId();
 		AmsRegistry.Tab tab = amsRegistry.addTab(
 				String.valueOf(amsRegistry.size() + 1), path, expectedAppId, null, title);
-		if (tab == null) {
-			toast(R.string.error);
-			tabBarController.refresh();
-			return;
-		}
 		amsRegistry.selectTab(previous);
 		tabBarController.refresh();
 		publishRuntimeSession();

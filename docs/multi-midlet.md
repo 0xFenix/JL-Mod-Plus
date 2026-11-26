@@ -6,8 +6,9 @@ shared by design, the gaps the current implementation leaves, and the plan for c
 
 ## What ships today
 
-- Up to 10 tabs (`AmsRegistry.MAX_TABS`, `AmsRegistry.java:32`); tabs can come from different
-  suites or repeat one suite (`MicroActivity.duplicateSelectedTab`, `MicroActivity.java:750`).
+- No tab cap: a runtime can host any number of tabs (`AmsRegistry.addTab` never refuses); tabs can
+  come from different suites or repeat one suite (`MicroActivity.duplicateSelectedTab`,
+  `MicroActivity.java:750`).
 - Each tab has its own `MicroLoader`, guest thread `MidletMain-<tab>` (`MidletThread.java:100`),
   `Display`, foreground state and event queue. Thread-to-tab routing is `MidletTabRouter`.
 - The activity hosts every tab in one `RuntimeHostView`. Only the selected tab presents a
@@ -121,8 +122,8 @@ Ordered so each step is shippable alone:
 6. ~~Per-tab proxy list and routing~~ — done: tunnel, store, routing, slot binding, the proxy list
    screen, and the runtime per-tab picker.
 
-Out of scope until the above lands: more than 10 tabs, per-tab processes, per-tab audio mixing
-(one tab is audible at a time), and restoring tabs after process death.
+Out of scope until the above lands: per-tab processes, per-tab audio mixing (one tab is audible at
+a time), and restoring tabs after process death.
 
 ## Contracts this feature must keep
 

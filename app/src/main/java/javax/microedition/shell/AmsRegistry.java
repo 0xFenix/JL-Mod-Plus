@@ -24,12 +24,10 @@ import java.util.List;
  * <p>One entry per running MIDlet tab in the same JVM/process. The registry is
  * UI-thread agnostic: every method is synchronized so host callbacks and the
  * Compose tab bar can share one instance. It owns no Android types so plain
- * JVM unit tests can cover the tab policy (default max 10 tabs, at least one
- * tab always present).
+ * JVM unit tests can cover the tab policy (no tab cap, at least one tab
+ * always present).
  */
 public final class AmsRegistry {
-	/** Default cap for concurrent MIDlet tabs in one runtime. */
-	public static final int MAX_TABS = 10;
 
 	/** Immutable snapshot of a single MIDlet tab. */
 	public static final class Tab {
@@ -64,21 +62,12 @@ public final class AmsRegistry {
 		}
 	}
 
-	private final int maxTabs;
 	private final List<Tab> tabs = new ArrayList<>();
 	private int nextId = 1;
 	private int selectedId = -1;
 
-	public AmsRegistry() {
-		this(MAX_TABS);
-	}
-
-	public AmsRegistry(int maxTabs) {
-		this.maxTabs = Math.max(1, maxTabs);
-	}
-
 	/**
-	 * Adds a tab and selects it. Returns null when the tab cap is reached.
+	 * Adds a tab and selects it.
 	 */
 	public synchronized Tab addTab(String label) {
 		return addTab(label, null, 0L, null);
@@ -86,7 +75,6 @@ public final class AmsRegistry {
 
 	/**
 	 * Adds a tab carrying its suite identity and selects it.
-	 * Returns null when the tab cap is reached.
 	 */
 	public synchronized Tab addTab(String label, String appPath, long expectedAppId,
 			String mainClass) {
@@ -95,13 +83,9 @@ public final class AmsRegistry {
 
 	/**
 	 * Adds a tab carrying its suite identity and display title, and selects it.
-	 * Returns null when the tab cap is reached.
 	 */
 	public synchronized Tab addTab(String label, String appPath, long expectedAppId,
 			String mainClass, String title) {
-		if (tabs.size() >= maxTabs) {
-			return null;
-		}
 		Tab tab = new Tab(nextId++, label, appPath, expectedAppId, mainClass, title);
 		tabs.add(tab);
 		selectedId = tab.id;
@@ -187,9 +171,5 @@ public final class AmsRegistry {
 
 	public synchronized int size() {
 		return tabs.size();
-	}
-
-	public synchronized boolean isFull() {
-		return tabs.size() >= maxTabs;
 	}
 }

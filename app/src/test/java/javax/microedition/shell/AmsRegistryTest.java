@@ -6,7 +6,6 @@ package javax.microedition.shell;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.List;
@@ -29,23 +28,13 @@ public class AmsRegistryTest {
 	}
 
 	@Test
-	public void addTabRespectsMaxTabs() {
-		AmsRegistry registry = new AmsRegistry(2);
-		assertNotNull(registry.addTab("1"));
-		assertNotNull(registry.addTab("2"));
-		assertNull(registry.addTab("3"));
-		assertTrue(registry.isFull());
-		assertEquals(2, registry.size());
-	}
-
-	@Test
-	public void defaultMaxTabsIsSix() {
+	public void addTabHasNoCap() {
 		AmsRegistry registry = new AmsRegistry();
-		for (int i = 0; i < AmsRegistry.MAX_TABS; i++) {
+		for (int i = 0; i < 32; i++) {
 			assertNotNull(registry.addTab(String.valueOf(i + 1)));
 		}
-		assertNull(registry.addTab("overflow"));
-		assertEquals(10, AmsRegistry.MAX_TABS);
+		assertEquals(32, registry.size());
+		assertEquals(32, registry.selectedId());
 	}
 
 	@Test
