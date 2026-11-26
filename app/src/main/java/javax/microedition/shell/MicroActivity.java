@@ -376,6 +376,7 @@ public class MicroActivity extends AppCompatActivity {
 			// its tab id; otherwise the guest mounts under tab 0 while the host
 			// presents tab 1 and SetCurrentEvent drops every presentation request.
 			ensurePrimaryTabSelection();
+			if (tabBarController != null) tabBarController.refresh();
 			microLoader = new MicroLoader(
 					appPath, expectedAppId, prepared.builtInThemeLinked(), guestLocale);
 			if (!microLoader.init()) {
@@ -803,7 +804,8 @@ public class MicroActivity extends AppCompatActivity {
 		int selected = amsRegistry.selectedId();
 		for (AmsRegistry.Tab current : amsRegistry.snapshot()) {
 			if (current.id == selected) {
-				addTabAndLaunch(current.title, current.appPath, current.expectedAppId);
+				addTabAndLaunch(current.title != null ? current.title : appName,
+						current.appPath, current.expectedAppId);
 				return;
 			}
 		}
@@ -864,12 +866,18 @@ public class MicroActivity extends AppCompatActivity {
 		tabBarController.showSuitePicker(picks);
 	}
 
-	/** Ensures the primary tab exists and owns the router selection. */	private int ensurePrimaryTabSelection() {
+	/** Ensures the primary tab exists and owns the router selection. */
+	private int ensurePrimaryTabSelection() {
 		if (amsRegistry == null) {
 			amsRegistry = new AmsRegistry();
 		}
 		if (amsRegistry.size() == 0) {
-			amsRegistry.addTab("1", appPath, expectedAppId, null);
+			if (appPath == null) {
+				// The Compose host installs the primary tab before the launch intent is
+				// parsed, so wait until the suite identity and display name are known.
+				return MidletTabRouter.NO_TAB;
+			}
+			amsRegistry.addTab("1", appPath, expectedAppId, null, appName);
 		}
 		int selected = MidletTabRouter.selectedTabId();
 		if (selected == MidletTabRouter.NO_TAB || !amsRegistry.selectTab(selected)) {
