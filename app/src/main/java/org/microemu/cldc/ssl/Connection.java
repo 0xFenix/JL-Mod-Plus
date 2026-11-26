@@ -26,14 +26,18 @@
 
 package org.microemu.cldc.ssl;
 
+import io.github.h3nb.jlmodplus.net.ProxyRouting;
+
 import org.microemu.cldc.CertificateImpl;
 import org.microemu.cldc.ConnectionEndpoint;
 import org.microemu.cldc.GcfIoExceptionMapper;
 import org.microemu.cldc.SecurityInfoImpl;
 import org.microemu.cldc.TlsExceptionMapper;
+import org.microemu.cldc.net.Socks5Tunnel;
 import org.microemu.microedition.io.ConnectionImplementation;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 
@@ -66,10 +70,18 @@ public class Connection extends org.microemu.cldc.socket.SocketConnection
 		}
 
 		SSLSocket sslSocket = null;
+		Socket tunnel = null;
 		javax.microedition.pki.Certificate midpCertificate = null;
 		try {
 			SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
-			sslSocket = (SSLSocket) factory.createSocket(host, port);
+			ProxyRouting.Socks5Config proxy = ProxyRouting.currentForThread();
+			if (proxy != null) {
+				tunnel = Socks5Tunnel.connect(host, port, proxy.host, proxy.port,
+						proxy.user, proxy.pass, 0, 0);
+				sslSocket = (SSLSocket) factory.createSocket(tunnel, host, port, true);
+			} else {
+				sslSocket = (SSLSocket) factory.createSocket(host, port);
+			}
 			sslSocket.startHandshake();
 
 			SSLSession session = sslSocket.getSession();
@@ -94,6 +106,13 @@ public class Connection extends org.microemu.cldc.socket.SocketConnection
 			if (sslSocket != null) {
 				try {
 					sslSocket.close();
+				} catch (IOException ignored) {
+					// Preserve the original connection failure.
+				}
+			}
+			if (tunnel != null) {
+				try {
+					tunnel.close();
 				} catch (IOException ignored) {
 					// Preserve the original connection failure.
 				}

@@ -27,22 +27,35 @@ Two identifiers must not be confused:
 | installed suite (`storageKey`, `LibraryAppEntity.id`) | installed app | Library (Room) | JAR, `converted/`, `configs/`, `data/`, storage lease |
 | tab id | running session | `AmsRegistry` | guest thread, `Display`, UI state |
 
-Storage is keyed by the installed suite, not by tab. Two tabs of the same suite therefore share
-`workdir/data/<storageKey>` (RMS files, `fileconn.dir.private`, cache), the same profile snapshot
-and one ref-counted OS lease (`RuntimeStorageLease.acquireShared`). RMS managers are per tab but
-write into that one directory, so two tabs of one suite see and overwrite the same record stores.
+Storage is keyed by the installed suite **and the launch slot**. Two tabs of one suite each get
+their own data directory: the first tab keeps `workdir/data/<storageKey>` so existing saves load
+unchanged, and later tabs use `<storageKey>#2`, `#3`, … (`AppClassLoader.bindTab(tabId, slotIndex)`).
+RMS files, `fileconn.dir.private` and the private file root therefore belong to a tab, which is
+what makes two accounts of one game possible. The OS storage lease, the profile snapshot and the
+JAR stay per installed suite — two tabs are still one install.
 
-That is the central open decision of this feature:
+Slot order is open order, so closing tab 1 and opening another gives the new tab slot 2 and its
+proxy/save directory. Clearing a game's data clears every `<storageKey>#N` directory beside it.
 
-1. **Share (today).** Two tabs of one game behave like one installed copy: same accounts, same
-   saved data. Cheap, matches what users already have, and a second tab is a second view of the
-   same install.
-2. **Isolate per tab.** Each tab gets `<storageKey>#<tab>`-style data. Required if a tab is meant
-   to host a different account of the same game, and it is how the iOS runtime behaves (one save
-   directory per slot). It changes where existing data lives or needs a per-game opt-in.
+## Per-slot SOCKS5 proxy
 
-Until a decision is recorded here, storage stays shared; isolation must not be introduced
-silently for a game whose saves already exist.
+Guest sockets are Java (`org.microemu.cldc.socket.SocketConnection`), so the proxy lives above
+`java.net`, not in native code:
+
+- `org.microemu.cldc.net.Socks5Tunnel` performs RFC 1928 CONNECT (ATYP 1 for dotted IPv4, ATYP 3
+  for hostnames so the proxy resolves DNS) and RFC 1929 user/password auth.
+- `io.github.h3nb.jlmodplus.net.ProxyStore` keeps the saved proxies and the per-install slot list
+  (`proxy_slots_<storageKey>`), imported as `host:port[:user[:pass]]` lines or one entry at a time.
+- `io.github.h3nb.jlmodplus.net.ProxyRouting` maps the calling guest thread to its tab, the tab to
+  its installed suite and slot (`MicroLoader` binds both at tab creation), and returns the proxy or
+  `null` for a direct connection. A slot with no assignment always connects directly; nothing
+  inherits another slot's proxy.
+- `SocketConnection` tunnels when a proxy applies, and `ssl/Connection` tunnels first and then wraps
+  the socket with `createSocket(plain, host, port, true)`, so `socket://`, `http://` and `https://`
+  all leave through the proxy. Serverside sockets and datagrams do not.
+
+Credential storage is the plain SharedPreferences file, same as the iOS runtime. The liveness probe
+connects through the saved proxy to `1.1.1.1:80`, so a proxy that filters that address reads as dead.
 
 ## State that follows the selected tab
 
@@ -75,7 +88,7 @@ setting changed from the runtime menu applies to the tab it was made in, not to 
    guest never closed can stay open, which is exactly how a character stayed online on iOS until
    the engine was patched to close a destroyed runtime's sockets. Android needs the same
    verification.
-6. No SOCKS proxy support exists on Android at all; iOS routes each tab through a saved proxy,
+6. ~~No SOCKS proxy support exists on Android at all~~ — implemented, see "Per-slot SOCKS5 proxy";
    which is what makes several accounts of one online game usable.
 
 ## Plan
@@ -89,9 +102,9 @@ Ordered so each step is shippable alone:
    system properties (section above).
 4. Verify that closing a tab releases the guest's sockets and network threads (gap 5); add an
    explicit close path for the runtime if it does not.
-5. Decide storage isolation (above) and implement it only for the chosen default.
-6. Per-tab proxy list and routing, following the iOS behaviour: proxies stored once, assigned to
-   a tab, remembered per slot, a slot without one goes direct.
+5. ~~Decide storage isolation~~ — done: per-slot data directories, first slot keeps the old path.
+6. ~~Per-tab proxy list and routing~~ — core done (tunnel, store, routing, slot binding); the
+   proxy list screen and the per-tab picker UI are the remaining piece.
 
 Out of scope until the above lands: more than 10 tabs, per-tab processes, per-tab audio mixing
 (one tab is audible at a time), and restoring tabs after process death.

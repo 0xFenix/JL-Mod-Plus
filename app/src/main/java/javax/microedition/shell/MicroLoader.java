@@ -63,6 +63,7 @@ import kotlin.io.FilesKt;
 import io.github.h3nb.jlmodplus.BuildConfig;
 import io.github.h3nb.jlmodplus.R;
 import io.github.h3nb.jlmodplus.config.Config;
+import io.github.h3nb.jlmodplus.net.ProxyRouting;
 import io.github.h3nb.jlmodplus.config.ProfileModel;
 import io.github.h3nb.jlmodplus.config.ProfilesManager;
 import io.github.h3nb.jlmodplus.crashes.CrashReporter;
@@ -115,6 +116,12 @@ public class MicroLoader {
 	private boolean timingTransformCompatible;
 	/** Tab owning this loader; the AMS registry assigns it before init(). */
 	private final int tabId;
+
+	/**
+	 * Launch order of this tab among the tabs of the same install: 0 for the
+	 * first one. It selects both the proxy slot and the data directory suffix.
+	 */
+	private final int slotIndex;
 	/**
 	 * Shared timing/audio/camera/memory session for same-process tabs. The first tab creates
 	 * it; later tabs attach with a reference count and only the last teardown closes it.
@@ -190,6 +197,20 @@ public class MicroLoader {
 			throw new NullPointerException("Can't access to parent of " + appPath);
 		workDir = converted.getParent();
 		appDirName = appDir.getName();
+		slotIndex = liveSlotIndex(appDirName);
+	}
+
+	/** Tabs of the same install are numbered by the order they were opened. */
+	private static int liveSlotIndex(String storageKey) {
+		int count = 0;
+		synchronized (MicroLoader.class) {
+			for (SuiteKeys keys : TAB_SUITES.values()) {
+				if (keys.storageKey.equals(storageKey)) {
+					count++;
+				}
+			}
+		}
+		return count;
 	}
 
 	boolean matchesRuntime(String appPath, long appId) {
@@ -401,6 +422,7 @@ public class MicroLoader {
 		synchronized (MicroLoader.class) {
 			TAB_SUITES.remove(tabId);
 		}
+		ProxyRouting.unbindTab(tabId);
 		if (!suiteHasLiveTabs(appDirName)) {
 			MidletPermissionManager.clearSuite(appDir.getPath());
 			VirtualFileSystem.clearSuite(appDirName);
@@ -593,7 +615,7 @@ public class MicroLoader {
 			}
 			ClassLoader loader = new AppClassLoader(dexSource.getAbsolutePath(),
 					dexOptDir.getAbsolutePath(), ContextHolder.getActivity().getClassLoader(), appDir);
-			AppClassLoader.bindTab(tabId);
+			AppClassLoader.bindTab(tabId, slotIndex);
 			if (timingTransformCompatible) {
 				// The bridge must exist before loading the main class: its static initializer may be the
 				// first converted class to publish a lifecycle tail.
@@ -621,7 +643,7 @@ public class MicroLoader {
 			return midlet;
 		} else {
 			AppClassLoader.setDataDir(appDir);
-			AppClassLoader.bindTab(tabId);
+			AppClassLoader.bindTab(tabId, slotIndex);
 			//noinspection unchecked
 			Class<MIDlet> clazz = (Class<MIDlet>) Class.forName(mainClass);
 			midletClassLoader = clazz.getClassLoader();
@@ -822,6 +844,7 @@ public class MicroLoader {
 			}
 			synchronized (MicroLoader.class) {
 				TAB_SUITES.put(tabId, new SuiteKeys(appDir.getPath(), appDirName));
+				ProxyRouting.bindTab(tabId, appDirName, slotIndex);
 				// A suite installs its VFS/permission session once; later tabs of the same
 				// suite reuse it, while a different suite installs its own beside it.
 				ownsVirtualStorage = !VirtualFileSystem.hasSession(appDirName);

@@ -25,8 +25,11 @@
 
 package org.microemu.cldc.socket;
 
+import io.github.h3nb.jlmodplus.net.ProxyRouting;
+
 import org.microemu.cldc.GcfIoExceptionMapper;
 import org.microemu.cldc.NetworkAddressUtil;
+import org.microemu.cldc.net.Socks5Tunnel;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -61,15 +64,24 @@ public class SocketConnection implements javax.microedition.io.SocketConnection 
 
 	public SocketConnection(String host, int port, int mode, boolean timeouts) throws IOException {
 		validateMode(mode);
-		Socket created = new Socket();
+		Socket created = null;
 		try {
-			created.connect(new InetSocketAddress(host, port));
+			ProxyRouting.Socks5Config proxy = ProxyRouting.currentForThread();
+			if (proxy != null) {
+				created = Socks5Tunnel.connect(host, port, proxy.host, proxy.port,
+						proxy.user, proxy.pass, 0, 0);
+			} else {
+				created = new Socket();
+				created.connect(new InetSocketAddress(host, port));
+			}
 			initialize(created, mode, timeouts);
 		} catch (IOException ex) {
-			try {
-				created.close();
-			} catch (IOException ignored) {
-				// Preserve the original connection failure.
+			if (created != null) {
+				try {
+					created.close();
+				} catch (IOException ignored) {
+					// Preserve the original connection failure.
+				}
 			}
 			throw translate(ex, timeouts);
 		}

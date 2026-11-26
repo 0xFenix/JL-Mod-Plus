@@ -65,8 +65,16 @@ public class AppClassLoader extends DexClassLoader {
 
 	private static final Map<Integer, TabResources> TAB_RESOURCES = new HashMap<>();
 
-	/** Snapshots the just-constructed static roots under the loader's own tab id. */
-	static synchronized void bindTab(int tabId) {
+	/**
+	 * Snapshots the just-constructed static roots under the loader's own tab id.
+	 * A later launch of the same install gets its own data directory so two tabs
+	 * cannot overwrite each other's RecordStores; the first launch keeps the
+	 * unsuffixed path so existing saves still load.
+	 */
+	static synchronized void bindTab(int tabId, int slotIndex) {
+		if (slotIndex > 0) {
+			sDataDir = sDataDir + '#' + Integer.toString(slotIndex + 1);
+		}
 		TAB_RESOURCES.put(tabId, new TabResources(zipFile, sDataDir, sOldResDir));
 	}
 

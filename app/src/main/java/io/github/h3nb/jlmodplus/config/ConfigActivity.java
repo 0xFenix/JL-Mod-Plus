@@ -613,6 +613,19 @@ public class ConfigActivity extends AppCompatActivity {
 						if (dataDir != null) {
 							boolean cleared = isProfile || runInstalledWrite(() -> {
 								FileUtils.clearDirectory(dataDir);
+								// Later tabs of the same install keep their own
+								// "<name>#2" data directory; clearing the game must
+								// not leave those behind.
+								File parent = dataDir.getParentFile();
+								File[] siblings = parent == null ? null : parent.listFiles();
+								if (siblings != null) {
+									String prefix = dataDir.getName() + '#';
+									for (File sibling : siblings) {
+										if (sibling.isDirectory() && sibling.getName().startsWith(prefix)) {
+											FileUtils.clearDirectory(sibling);
+										}
+									}
+								}
 								return true;
 							});
 							if (!cleared) {
