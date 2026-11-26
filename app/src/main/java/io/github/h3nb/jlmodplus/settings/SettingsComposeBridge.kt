@@ -73,6 +73,8 @@ import io.github.h3nb.jlmodplus.util.Constants.PREF_APPS_ENHANCED_ICONS
 import io.github.h3nb.jlmodplus.util.Constants.PREF_APPS_ICON_RATIO
 import io.github.h3nb.jlmodplus.util.Constants.PREF_APPS_ICON_SHAPE
 import io.github.h3nb.jlmodplus.util.Constants.PREF_KEEP_SCREEN
+import io.github.h3nb.jlmodplus.util.Constants.PREF_MEMORY_TRIM_MINUTES
+import io.github.h3nb.jlmodplus.util.Constants.PREF_PERIODIC_GC_MINUTES
 import io.github.h3nb.jlmodplus.util.Constants.PREF_STATUSBAR
 import io.github.h3nb.jlmodplus.util.Constants.PREF_TOOLBAR
 import io.github.h3nb.jlmodplus.applist.LibraryAboutScreen
@@ -205,13 +207,16 @@ fun SettingsScreen(
     val libraryOptions = state.libraryChoices.map { SettingsOptionEntry.Choice(it) } +
         state.librarySwitches.map { SettingsOptionEntry.Toggle(it) }
     val libraryIconOptions = libraryOptions.filter { it.key in libraryIconKeys }
-    val libraryGridOptions = libraryOptions.filterNot { it.key in libraryIconKeys }
+    val memoryOptions = libraryOptions.filter { it.key in memoryOptionKeys }
+    val libraryGridOptions = libraryOptions.filterNot {
+        it.key in libraryIconKeys || it.key in memoryOptionKeys
+    }
     val runtimeScreenOptions = state.switches
         .filter { it.key in runtimeScreenKeys }
         .map { SettingsOptionEntry.Toggle(it) }
     val runtimeFeatureOptions = state.switches
         .filterNot { it.key in runtimeScreenKeys }
-        .map { SettingsOptionEntry.Toggle(it) }
+        .map { SettingsOptionEntry.Toggle(it) } + memoryOptions
 
     val onChildBack: () -> Unit = {
         if (openUpdates) actions.onBack() else page = SettingsPage.Main
@@ -531,6 +536,7 @@ private val libraryIconKeys = setOf(
     PREF_APPS_ICON_RATIO, PREF_APPS_ICON_SHAPE, PREF_APPS_ENHANCED_ICONS,
 )
 private val runtimeScreenKeys = setOf(PREF_TOOLBAR, PREF_STATUSBAR, PREF_KEEP_SCREEN)
+private val memoryOptionKeys = setOf(PREF_MEMORY_TRIM_MINUTES, PREF_PERIODIC_GC_MINUTES)
 
 private sealed interface SettingsOptionEntry {
     val key: String
