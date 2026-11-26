@@ -12,11 +12,9 @@ import io.github.h3nb.jlmodplus.config.ProfilesActivity
 import io.github.h3nb.jlmodplus.crashes.CrashReportDetailsActivity
 import io.github.h3nb.jlmodplus.crashes.CrashReportsActivity
 import io.github.h3nb.jlmodplus.filepicker.FilteredFilePickerActivity
-import io.github.h3nb.jlmodplus.memory.MemoryEditorActivity
 import io.github.h3nb.jlmodplus.settings.KeyMapperActivity
 import io.github.h3nb.jlmodplus.settings.SettingsActivity
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -48,6 +46,5 @@ class AppPageMotionContractTest {
         val expected = styleOf(pages.first())
         assertEquals(R.style.AppPageWindowAnimations, expected)
         pages.drop(1).forEach { assertEquals(it.simpleName, expected, styleOf(it)) }
-        assertNotEquals(expected, styleOf(MemoryEditorActivity::class.java))
     }
 }

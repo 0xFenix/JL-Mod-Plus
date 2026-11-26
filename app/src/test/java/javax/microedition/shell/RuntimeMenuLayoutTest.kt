@@ -77,8 +77,8 @@ class RuntimeMenuLayoutTest {
         )
         assertEquals(
             listOf(
-                R.string.action_lock_orientation, R.string.memory_editor_bubble,
-                R.string.proxy_menu_label, R.string.midlet_tab_windows,
+                R.string.action_lock_orientation, R.string.proxy_menu_label,
+                R.string.midlet_tab_windows,
                 R.string.pref_runtime_fullscreen_title, R.string.PREF_LIMIT_FPS,
                 R.string.runtime_virtual_controls_title, R.string.save_log,
                 R.string.action_keyboard_ime, R.string.take_screenshot,
@@ -87,10 +87,10 @@ class RuntimeMenuLayoutTest {
             entries.map { it.label },
         )
         // Controller activation uses this same ordered list as the rendered rows.
-        entries[4].activate()
-        entries[8].activate()
-        entries[10].activate()
-        entries[6].activate()
+        entries[3].activate()
+        entries[7].activate()
+        entries[9].activate()
+        entries[5].activate()
         assertEquals(listOf("dismiss", "fullscreen", "dismiss", "ime", "dismiss", "speed", "virtualControls"), events)
     }
 
@@ -121,7 +121,7 @@ class RuntimeMenuLayoutTest {
         val form = canvas.copy(isCanvas = false)
         assertEquals(listOf(RuntimeToolbarShortcut.Windows), runtimeToolbarShortcuts(form, 640f))
         assertEquals(
-            listOf(R.string.action_lock_orientation, R.string.memory_editor_bubble,
+            listOf(R.string.action_lock_orientation,
                 R.string.proxy_menu_label, R.string.midlet_tab_windows, R.string.save_log,
                 R.string.runtime_restart, R.string.exit),
             menu(form).map { it.label },
@@ -294,7 +294,6 @@ class RuntimeMenuLayoutTest {
         override fun onEmulationSpeed() = Unit
         override fun onSetEmulationSpeed(value: Int) = Unit
         override fun onResetEmulationSpeed() = Unit
-        override fun onMemoryEditor() = Unit
         override fun onEditVirtualKeyboardLayout() = Unit
         override fun onFinishVirtualKeyboardLayout() = Unit
         override fun onSwitchVirtualKeyboardLayout() = Unit

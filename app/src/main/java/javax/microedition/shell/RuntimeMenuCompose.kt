@@ -129,7 +129,6 @@ internal data class RuntimeMenuUiState(
     val orientationLocked: Boolean = false,
     val emulationSpeedAvailable: Boolean = false,
     val emulationSpeedPercent: Int = EmulationSpeed.NORMAL_PERCENT,
-    val memoryEditorBubbleEnabled: Boolean = false,
     val proxyAvailable: Boolean = false,
     val cameraSwitchAvailable: Boolean = false,
     val cameraFrontFacing: Boolean = false,
@@ -164,7 +163,6 @@ interface RuntimeMenuActions {
     fun onResetEmulationSpeed()
     fun onSwitchCamera() {}
     fun onToggleRuntimeMenu() {}
-    fun onMemoryEditor()
     fun onProxy() {}
     fun onOpenWindows() {}
     fun onEditVirtualKeyboardLayout()
@@ -391,7 +389,6 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
         orientationLocked: Boolean,
         emulationSpeedAvailable: Boolean,
         emulationSpeedPercent: Int,
-        memoryEditorBubbleEnabled: Boolean,
     ) {
         updateState(state.copy(
             title = title,
@@ -406,7 +403,6 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             orientationLocked = orientationLocked,
             emulationSpeedAvailable = emulationSpeedAvailable,
             emulationSpeedPercent = emulationSpeedPercent,
-            memoryEditorBubbleEnabled = memoryEditorBubbleEnabled,
         ))
     }
 
@@ -1480,8 +1476,6 @@ internal fun runtimeMenuEntries(
         return@buildList
     }
     action(R.string.action_lock_orientation, R.drawable.ic_screen_lock_rotation, state.orientationLocked, callback = actions::onToggleOrientationLock)
-    action(R.string.memory_editor_bubble, R.drawable.ic_runtime_memory, state.memoryEditorBubbleEnabled,
-        displayLabel = R.string.runtime_memory_button_short, callback = actions::onMemoryEditor)
     action(R.string.proxy_menu_label, R.drawable.ic_swap_horiz, enabled = state.proxyAvailable,
         callback = actions::onProxy)
     if (RuntimeToolbarShortcut.Windows !in shortcuts) {

@@ -16,12 +16,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.int
 
 /**
- * Portable Saved document contract shared by the authority and the bundle importer.
+ * Portable Saved document contract shared by the bundle importer and exporter.
  * Validation is independent of the installed game's identity and never runs guest code.
  */
 object SavedVariablesDocument {
     const val MAX_BYTES = 65_536
     private const val SCHEMA = 4
+    private const val MAX_IDENTIFIER_CHARS = 256
     private val PRIMITIVE_FIELDS = setOf("byte", "short", "char", "int", "long", "float", "double", "boolean")
     private val PRIMITIVE_ARRAYS = setOf("[B", "[S", "[C", "[I", "[J", "[F", "[D", "[Z")
 
@@ -277,5 +278,5 @@ object SavedVariablesDocument {
             ?: throw IOException("Missing or invalid Saved number: $key")
 
     private fun safe(value: String) = value.isNotEmpty() &&
-        value.length <= MemoryEngineContract.MAX_IPC_DISPLAY_CHARS
+        value.length <= MAX_IDENTIFIER_CHARS
 }

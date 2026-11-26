@@ -69,7 +69,6 @@ import io.github.h3nb.jlmodplus.config.ProfilesManager;
 import io.github.h3nb.jlmodplus.crashes.CrashReporter;
 import io.github.h3nb.jlmodplus.crashes.MidletSessionJournal;
 import io.github.h3nb.jlmodplus.crashes.MidletSessionStore;
-import io.github.h3nb.jlmodplus.memory.MemoryRuntimeSession;
 import io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator;
 import io.github.h3nb.jlmodplus.runtime.MidletKeepAliveService;
 import io.github.h3nb.jlmodplus.runtime.RuntimeStorageLease;
@@ -91,6 +90,7 @@ public class MicroLoader {
 	private static final String TAG = MicroLoader.class.getName();
 	private static final char[] HEX = "0123456789abcdef".toCharArray();
 	private static final AtomicLong NEXT_TIMING_GENERATION = new AtomicLong(1L);
+	private static final AtomicLong NEXT_DISCOVERY_TOKEN = new AtomicLong(1L);
 	private static String soundBank;
 	private final Map<String, String> midlets = new LinkedHashMap<>();
 
@@ -123,8 +123,9 @@ public class MicroLoader {
 	 */
 	private final int slotIndex;
 	/**
-	 * Shared timing/audio/camera/memory session for same-process tabs. The first tab creates
-	 * it; later tabs attach with a reference count and only the last teardown closes it.
+	 * Shared timing/audio/camera session and guest-memory discovery token for same-process tabs.
+	 * The first tab creates it; later tabs attach with a reference count and only the last
+	 * teardown closes it.
 	 */
 	private static final class SharedRuntimeState {
 		TimingSession session;
@@ -303,7 +304,7 @@ public class MicroLoader {
 						? TimingMode.sanitize(params.timingMode)
 						: TimingMode.FULL_GUEST_TIME);
 		RuntimeAudioCoordinator audio = null;
-		long memoryToken = 0L;
+		long memoryToken = NEXT_DISCOVERY_TOKEN.getAndIncrement();
 		boolean cameraBegun = false;
 		try {
 			GuestTimingBridge.install(session);
@@ -311,7 +312,6 @@ public class MicroLoader {
 			io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime.beginRuntime(
 					cameraDefaultDimensions, params.cameraDefaultFacing);
 			cameraBegun = true;
-			memoryToken = MemoryRuntimeSession.start();
 		} catch (RuntimeException e) {
 			releaseCreated(session, audio, cameraBegun, memoryToken);
 			throw e;
@@ -372,7 +372,6 @@ public class MicroLoader {
 		}
 		if (!sharedSurvives || memoryToken != published.memoryToken) {
 			MemoryDiscoveryBridge.close(memoryToken);
-			MemoryRuntimeSession.close(memoryToken);
 		}
 	}
 
@@ -405,7 +404,6 @@ public class MicroLoader {
 		long token = memoryRuntimeToken;
 		memoryRuntimeToken = 0L;
 		MemoryDiscoveryBridge.close(token);
-		MemoryRuntimeSession.close(token);
 	}
 
 	private void closeStorageLease() {

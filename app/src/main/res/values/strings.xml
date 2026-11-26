@@ -566,122 +566,9 @@
     <string name="library_description_more">… More</string>
     <string name="library_description_less">Less</string>
 
-    <string name="memory_editor_bubble">Memory Editor floating button</string>
-    <string name="runtime_memory_button_short" tools:ignore="MissingTranslation">Memory button</string>
     <string name="runtime_action_on" tools:ignore="MissingTranslation">On</string>
     <string name="runtime_action_off" tools:ignore="MissingTranslation">Off</string>
-    <string name="memory_editor_bubble_content_description">Open Memory Editor</string>
-    <string name="memory_editor_previous_results_page_action">Previous results page</string>
-    <string name="memory_editor_next_results_page_action">Next results page</string>
-    <string name="memory_editor">Memory Editor</string>
-    <string name="memory_editor_search_hint">Value</string>
-    <string name="memory_editor_next_scan">Next scan</string>
-    <string name="memory_editor_new_search">New search</string>
-    <plurals name="memory_editor_results">
-        <item quantity="one">%1$d result</item>
-        <item quantity="other">%1$d results</item>
-    </plurals>
-    <plurals name="memory_editor_candidates">
-        <item quantity="one">%1$d candidate</item>
-        <item quantity="other">%1$d candidates</item>
-    </plurals>
-    <plurals name="memory_editor_search_complete">
-        <item quantity="one">Search finished · %1$d candidate</item>
-        <item quantity="other">Search finished · %1$d candidates</item>
-    </plurals>
-    <string name="memory_editor_no_results">No results</string>
-    <string name="memory_editor_no_watch">Watch is empty</string>
-    <string name="memory_editor_unsupported">Memory Editor is unavailable for this runtime.</string>
-    <string name="memory_editor_engine_unavailable">The Memory Editor engine is unavailable.</string>
-    <string name="memory_editor_engine_reconnecting">Memory Editor is reconnecting…</string>
-    <string name="memory_editor_refresh">Refresh</string>
-    <string name="memory_editor_undo">Undo scan</string>
-    <string name="memory_variables_tab">Saved</string>
-    <string name="memory_editor_back" tools:ignore="MissingTranslation">Back</string>
-    <string name="memory_list_keep" tools:ignore="MissingTranslation">Keep for next launch</string>
-    <string name="memory_list_stop_keeping" tools:ignore="MissingTranslation">Stop keeping</string>
-    <string name="memory_list_kept" tools:ignore="MissingTranslation">Kept for next launch</string>
-    <string name="memory_list_empty" tools:ignore="MissingTranslation">Your list is empty</string>
-    <string name="memory_list_empty_hint" tools:ignore="MissingTranslation">Bookmark a Search or Inspector variable to track it here.</string>
-    <string name="memory_list_remove_confirm" tools:ignore="MissingTranslation">Remove selected bookmarks? Their active Freeze will stop.</string>
-    <string name="memory_list_add" tools:ignore="MissingTranslation">Bookmark</string>
-    <string name="memory_bookmark_relink" tools:ignore="MissingTranslation">Relink</string>
-    <string name="memory_bookmark_relink_hint" tools:ignore="MissingTranslation">Select the replacement variable in Search, then choose Relink.</string>
-    <string name="memory_bookmark_relink_confirm" tools:ignore="MissingTranslation">Link this Bookmark to the selected variable? The previous Freeze will stop.</string>
-    <string name="memory_bookmark_unavailable" tools:ignore="MissingTranslation">Unavailable — select Relink to choose a target</string>
-    <string name="memory_editor_watch">Watch</string>
-    <string name="memory_editor_search_tab">Search</string>
-    <string name="memory_editor_search_known_values">Search known values</string>
-    <string name="memory_editor_search_unknown_values">Search unknown values</string>
-    <string name="memory_editor_add_to_watch">Bookmark selected values</string>
-    <string name="memory_editor_no_candidates">No searchable values found</string>
-    <string name="memory_editor_edit">Edit</string>
-    <plurals name="memory_editor_edit_batch">
-        <item quantity="one">Edit %1$d value</item>
-        <item quantity="other">Edit %1$d values</item>
-    </plurals>
-    <string name="memory_editor_edit_batch_no_common_type">The selected results do not support the chosen data type. Edit compatible results separately.</string>
-    <string name="memory_editor_save">Apply</string>
-    <string name="memory_editor_replacement">Replacement value</string>
-    <string name="memory_editor_freeze">Freeze</string>
-    <string name="memory_editor_remove">Remove</string>
-    <string name="memory_editor_select_visible">Select visible</string>
-    <string name="memory_editor_clear_selection">Clear selection</string>
-    <plurals name="memory_editor_selected">
-        <item quantity="one">%1$d selected</item>
-        <item quantity="other">%1$d selected</item>
-    </plurals>
-    <string name="memory_editor_close">Close Memory Editor</string>
-    <string name="memory_editor_searching">Searching memory…</string>
-    <string name="memory_editor_working">Applying operation…</string>
-    <string name="memory_editor_search_progress">Scanned %1$d of %2$d MiB</string>
-    <string name="memory_editor_candidate_moved">Address updated</string>
-    <string name="memory_editor_candidate_relocating">Revalidating</string>
-    <string name="memory_editor_candidate_ambiguous">Ambiguous — writes paused</string>
-    <string name="memory_editor_candidate_lost">Lost — writes paused</string>
-    <string name="memory_editor_apply">Apply</string>
-    <string name="memory_editor_min_value">Minimum value</string>
-    <string name="memory_editor_max_value">Maximum value</string>
-    <string name="memory_editor_change_amount">Change amount</string>
-    <string name="memory_editor_min_change">Minimum change</string>
-    <string name="memory_editor_max_change">Maximum change</string>
-    <string name="memory_editor_unfreeze">Unfreeze</string>
-    <string name="memory_editor_cancelled">Operation canceled.</string>
-    <string name="memory_editor_resource_limit">Memory Editor reached a safe resource limit. Try a more specific data type or search value.</string>
-    <string name="memory_editor_identity_unsafe">The selected value or search state could not be verified. Refresh the results or reopen Inspector, then try again.</string>
-    <string name="memory_editor_safety_limit">Too many values are selected for this operation. Select fewer and try again.</string>
-    <string name="memory_editor_invalid_request">The value or operation is invalid.</string>
-    <string name="memory_editor_freeze_paused">Paused for safety</string>
-    <string name="memory_editor_predicate_between">Between</string>
-    <string name="memory_editor_predicate_changed">Changed</string>
-    <string name="memory_editor_predicate_unchanged">Unchanged</string>
-    <string name="memory_editor_predicate_increased">Increased</string>
-    <string name="memory_editor_predicate_decreased">Decreased</string>
-    <string name="memory_editor_predicate_increased_by">Increased by</string>
-    <string name="memory_editor_predicate_decreased_by">Decreased by</string>
-    <string name="memory_editor_predicate_changed_by">Changed by</string>
-    <string name="memory_editor_predicate_increased_range">Increase amount in range</string>
-    <string name="memory_editor_predicate_decreased_range">Decrease amount in range</string>
-    <string name="memory_editor_inspector">Inspector</string>
-    <string name="memory_editor_inspect_memory">Inspect nearby memory</string>
-    <string name="memory_editor_inspector_loading">Verifying the result and reading nearby memory…</string>
-    <string name="memory_editor_inspector_empty">Select a result to inspect nearby memory.</string>
-    <string name="memory_editor_inspector_no_rows">No nearby memory is available to inspect.</string>
-    <string name="memory_editor_refresh_snapshot">Refresh snapshot</string>
-    <string name="memory_editor_select_result_value">Select this result</string>
-    <string name="memory_editor_freeze_after_edit">Freeze after applying</string>
-    <string name="memory_editor_freeze_after_edit_help">Locks the replacement value and automatically adds candidates to Watch.</string>
 
-    <string name="memory_editor_expression_single_hint">Enter one value, or separate group values with semicolons (;).</string>
-    <string name="memory_editor_expression_group_needs_type">Choose a specific data type for group search.</string>
-    <plurals name="memory_editor_expression_group_hint">
-        <item quantity="one">Group search · %1$d value · same Java object</item>
-        <item quantity="other">Group search · %1$d values · same Java object</item>
-    </plurals>
-    <string name="memory_editor_expression_query_help">Examples: 500 or 500;1000. Group search looks for 2–8 values in the same Java object.</string>
-    <string name="memory_editor_keypad_clear">Clear</string>
-    <string name="memory_editor_peek_underlay">Press and hold to see the MIDlet below</string>
-    <string name="memory_editor_peek_underlay_active">Showing the MIDlet below</string>
 
     <plurals name="file_picker_selected_count">
         <item quantity="one">%1$d selected</item>
@@ -1098,16 +985,9 @@
     <string name="library_collections_unavailable_title">Collections unavailable</string>
     <string name="library_load_failed_message">The Library could not be loaded. Try again.</string>
     <string name="bulk_install_prepare_failed">The selected apps could not be prepared for installation.</string>
-    <string name="memory_editor_no_runtime">No active MIDlet runtime.</string>
-    <string name="memory_editor_no_search_history">No earlier search to restore.</string>
-    <string name="memory_editor_partial_write">The write operation did not fully complete. Check the current values before trying again.</string>
     <!-- Independent write counts: confirmed, unconfirmed, skipped, not attempted, and incompatible data type. -->
-    <string name="memory_editor_write_outcome">Writes confirmed: %1$d. Unconfirmed: %2$d. Skipped: %3$d. Not attempted: %4$d. Skipped by type: %5$d.</string>
     <!-- %1$s is a localized outcome explanation; %2$d through %6$d are the same independent write counts. -->
-    <string name="memory_editor_write_failure_outcome">%1$s\nWrites confirmed: %2$d. Unconfirmed: %3$d. Skipped: %4$d. Not attempted: %5$d. Skipped by type: %6$d.</string>
     <!-- Result counts before (%1$d) and after (%2$d) the completed next scan. -->
-    <string name="memory_editor_next_scan_result">Next scan results: %1$d → %2$d</string>
-    <string name="memory_editor_type_auto">Auto</string>
     <string name="screenshot_save_failed">Could not save the screenshot.</string>
     <!-- %1$s is the saved screenshot's filesystem path. New key replaces the legacy prefix contract. -->
     <string name="screenshot_saved_path">Screenshot saved to %1$s</string>
@@ -1197,28 +1077,7 @@
     <string name="bulk_install_filter_selected">Selected</string>
     <string name="bulk_install_filter_review">Review</string>
     <string name="bulk_install_empty_filter">No matching games.</string>
-    <string name="memory_editor_remove_candidates_title">Remove selected results?</string>
-    <string name="memory_editor_remove_candidates_description">Remove: Takes the selected results off the search list. Values in game memory stay unchanged.\n\nRevert &amp; remove: Also restores the values from before their last confirmed edits, but only if the current values still match the edits. Results with conflicts stay in the list.</string>
-    <string name="memory_editor_revert_and_remove">Revert &amp; remove</string>
-    <string name="memory_editor_revert_remove_commit_failed">Values may have been restored, but results could not be removed. Refresh and retry; values changed by the game will not be overwritten.</string>
-    <string name="memory_editor_revert_remove_outcome">Restored: %1$d. Removed: %2$d. Conflicts: %3$d. Unconfirmed: %4$d. Not attempted: %5$d.</string>
-    <string name="memory_editor_set_all">Set all</string>
-    <string name="memory_editor_increment_start">Start value</string>
-    <string name="memory_editor_edit_batch_type_notice">Only values with matching data types will be changed.</string>
-    <string name="memory_editor_write_confirmed">Values confirmed by memory readback: %1$d.</string>
-    <string name="memory_editor_candidate_untraced">Array #%1$d[%2$d] · Source not traced</string>
-    <string name="memory_editor_candidate_static">%1$s · %2$s</string>
-    <string name="memory_editor_candidate_instance">%1$s · %2$s · target #%3$d</string>
-    <string name="memory_editor_reference_static">Static reference</string>
-    <string name="memory_editor_reference_instance">Instance reference</string>
-    <string name="memory_editor_path_changed">Reference path changed since scanning.</string>
-    <string name="memory_editor_path_incomplete">Reference path exceeds the inspection limit.</string>
-    <string name="memory_editor_source_unknown">Source not traced</string>
-    <string name="memory_editor_incremental_edit">Increment</string>
-    <string name="memory_editor_increment_step">Step</string>
-    <string name="memory_editor_increment_invalid">Use one integer type and values within its range.</string>
     <!-- The batch dialog title already shows the number of selected values. -->
-    <string name="memory_editor_increment_preview">Preview: %1$s</string>
     <string name="config_avoid_camera_cutout_title">Avoid camera/notch area</string>
     <string name="config_avoid_camera_cutout_summary">Enable if the camera or screen cutout covers game controls.</string>
     <string name="pref_runtime_fullscreen_title">Fullscreen</string>
@@ -1355,25 +1214,7 @@
     <string name="updates_download_apk" tools:ignore="MissingTranslation">Download APK</string>
     <string name="updates_skip_version" tools:ignore="MissingTranslation">Skip this version</string>
     <string name="updates_dialog_message" tools:ignore="MissingTranslation">JL-Mod Plus %1$s is available. You are using %2$s. Download the APK or view the release on GitHub.</string>
-    <string name="memory_editor_panel_opacity">Panel opacity</string>
-    <string name="memory_editor_panel_opacity_help">Adjust the background to see game values while searching. Text and icons remain visible.</string>
-    <string name="memory_editor_reconversion_required" tools:ignore="MissingTranslation">This MIDlet\'s installed conversion is incompatible with Memory Editor. Close the game, then reconvert or reinstall it using JL-Mod Plus.</string>
-    <string name="memory_saved_tab" tools:ignore="MissingTranslation">Saved</string>
-    <string name="memory_saved_save" tools:ignore="MissingTranslation">Save variable</string>
-    <string name="memory_saved_name" tools:ignore="MissingTranslation">Name</string>
-    <string name="memory_saved_explanation" tools:ignore="MissingTranslation">Save this verified memory path for later sessions. Values are never written automatically.</string>
-    <string name="memory_saved_empty" tools:ignore="MissingTranslation">No Saved variables yet. Select one search result to save it.</string>
-    <string name="memory_saved_not_ready" tools:ignore="MissingTranslation">Not ready</string>
-    <string name="memory_saved_retry" tools:ignore="MissingTranslation">Retry</string>
-    <string name="memory_saved_rename" tools:ignore="MissingTranslation">Rename</string>
-    <string name="memory_saved_value" tools:ignore="MissingTranslation">Value</string>
-    <string name="memory_saved_delete_confirm" tools:ignore="MissingTranslation">Remove this Saved definition? The game value will not change.</string>
-    <string name="memory_saved_changed" tools:ignore="MissingTranslation">Changed</string>
-    <string name="memory_saved_rebound" tools:ignore="MissingTranslation">Target updated</string>
     <string name="memory_saved_import_summary" tools:ignore="MissingTranslation">Saved: %1$d added, %2$d already present</string>
-    <string name="memory_saved_incompatible" tools:ignore="MissingTranslation">Incompatible</string>
-    <string name="memory_saved_failed" tools:ignore="MissingTranslation">Failed</string>
-    <string name="memory_saved_delete_many_confirm" tools:ignore="MissingTranslation">Remove %1$d Saved definitions? Game values will not change.</string>
     <string name="library_bundle_components_title" tools:ignore="MissingTranslation">Export bundle</string>
     <string name="library_bundle_components_explanation" tools:ignore="MissingTranslation">The game is always included. Close it before exporting, then choose the additional data to include.</string>
     <string name="library_bundle_config" tools:ignore="MissingTranslation">Configuration</string>
@@ -1401,91 +1242,6 @@
     <string name="bitmap_upscaling_bilinear" tools:ignore="MissingTranslation">Bilinear</string>
     <string name="bitmap_upscaling_mmpx" tools:ignore="MissingTranslation">MMPX</string>
     <string name="bitmap_upscaling_edge_aware" tools:ignore="MissingTranslation">xBR Lv3</string>
-<string name="memory_recipes_title" tools:ignore="MissingTranslation">Quick action</string>
-<string name="memory_recipes_simple_from_saved" tools:ignore="MissingTranslation">Generate from %1$s</string>
-<string name="memory_recipes_preview" tools:ignore="MissingTranslation">Preview targets</string>
-<string name="memory_recipes_stop_freeze" tools:ignore="MissingTranslation">Stop Script Freeze</string>
-<string name="memory_recipes_freeze" tools:ignore="MissingTranslation">Keep value frozen while this game runs</string>
-<string name="memory_recipes_run" tools:ignore="MissingTranslation">Run</string>
-<string name="memory_recipes_active_freezes" tools:ignore="MissingTranslation">Active Script Freeze</string>
-<string name="memory_recipes_target_unavailable" tools:ignore="MissingTranslation">Bookmark target is unavailable. Refresh or relink it before running.</string>
-<string name="memory_recipes_preview_values" tools:ignore="MissingTranslation">Current values: %1$s</string>
-<string name="memory_scripts_title" tools:ignore="MissingTranslation">Scripts</string>
-    <string name="memory_scripts_active" tools:ignore="MissingTranslation">Active</string>
-    <string name="memory_scripts_inputs" tools:ignore="MissingTranslation">Inputs</string>
-    <string name="memory_scripts_create_from_bookmarks" tools:ignore="MissingTranslation">Create script</string>
-    <string name="memory_scripts_create_failed" tools:ignore="MissingTranslation">Could not start a new script</string>
-    <string name="memory_scripts_draft_in_progress" tools:ignore="MissingTranslation">Finish or discard the current script draft first.</string>
-    <string name="memory_builder_open_saved" tools:ignore="MissingTranslation">Open Saved</string>
-    <string name="memory_builder_add_description" tools:ignore="MissingTranslation">Add description</string>
-    <string name="memory_builder_find_values" tools:ignore="MissingTranslation">Find values</string>
-    <string name="memory_scripts_description" tools:ignore="MissingTranslation">Description</string>
-<string name="memory_scripts_new" tools:ignore="MissingTranslation">New script</string>
-<string name="memory_scripts_back" tools:ignore="MissingTranslation">Back</string>
-<string name="memory_scripts_edit" tools:ignore="MissingTranslation">Edit</string>
-<string name="memory_scripts_save" tools:ignore="MissingTranslation">Save</string>
-<string name="memory_scripts_saved" tools:ignore="MissingTranslation">Script saved</string>
-<string name="memory_scripts_deleted" tools:ignore="MissingTranslation">Script deleted</string>
-<string name="memory_scripts_save_failed" tools:ignore="MissingTranslation">Could not save script</string>
-<string name="memory_scripts_editor_hint" tools:ignore="MissingTranslation">Paste an Action Script JSON document. Saving does not run it.</string>
-<string name="memory_scripts_paste_hint" tools:ignore="MissingTranslation">Paste Action Script JSON</string>
-<string name="memory_scripts_paste" tools:ignore="MissingTranslation">Paste</string>
-<string name="memory_scripts_clipboard_invalid" tools:ignore="MissingTranslation">Clipboard is empty or the document exceeds 64 KiB</string>
-<string name="memory_scripts_invalid" tools:ignore="MissingTranslation">Invalid script format</string>
-<string name="memory_scripts_freeze_active" tools:ignore="MissingTranslation">Freeze active for this script</string>
-<string name="memory_scripts_delete" tools:ignore="MissingTranslation">Delete</string>
-<string name="memory_scripts_delete_confirm" tools:ignore="MissingTranslation">Delete %1$s? Its active Freeze will be stopped.</string>
-<string name="memory_scripts_empty" tools:ignore="MissingTranslation">No scripts saved</string>
-<string name="memory_scripts_unsaved_title" tools:ignore="MissingTranslation">Discard unsaved script?</string>
-<string name="memory_scripts_unsaved_message" tools:ignore="MissingTranslation">Your script changes have not been saved.</string>
-<string name="memory_scripts_discard" tools:ignore="MissingTranslation">Discard</string>
-<string name="memory_scripts_current_title" tools:ignore="MissingTranslation">Last read</string>
-<string name="memory_scripts_refresh" tools:ignore="MissingTranslation">Refresh</string>
-<string name="memory_scripts_reading" tools:ignore="MissingTranslation">Reading current values…</string>
-<string name="memory_scripts_refresh_hint" tools:ignore="MissingTranslation">Tap Refresh to read the value from the running game.</string>
-<string name="memory_scripts_mode_toggle" tools:ignore="MissingTranslation">Freeze Values</string>
-<string name="memory_scripts_mode_form" tools:ignore="MissingTranslation">Value Editor</string>
-<string name="memory_scripts_mode_once" tools:ignore="MissingTranslation">Quick Actions</string>
-<string name="memory_scripts_mode_legacy" tools:ignore="MissingTranslation">Advanced script</string>
-<string name="memory_scripts_edit_values" tools:ignore="MissingTranslation">Edit values</string>
-<string name="memory_scripts_apply" tools:ignore="MissingTranslation">Apply changes</string>
-<string name="memory_scripts_refresh_required" tools:ignore="MissingTranslation">Refresh to verify the current values before applying.</string>
-<string name="memory_scripts_inconsistent" tools:ignore="MissingTranslation">Inconsistent copies: %1$s</string>
-<string name="memory_editor_minimize" tools:ignore="MissingTranslation">Minimize Memory Editor</string>
-    <string name="memory_scripts_choose_type" tools:ignore="MissingTranslation">New script</string>
-    <string name="memory_scripts_choose_hint" tools:ignore="MissingTranslation">Choose how this script should work.</string>
-    <string name="memory_builder_json_editor" tools:ignore="MissingTranslation">JSON Editor</string>
-    <string name="memory_builder_freeze_hint" tools:ignore="MissingTranslation">Maintain selected values while enabled. Turning off Freeze does not restore their previous values.</string>
-    <string name="memory_builder_form_hint" tools:ignore="MissingTranslation">Build a form that reads current values before applying edits.</string>
-    <string name="memory_builder_actions_hint" tools:ignore="MissingTranslation">Apply changes whenever you press Run. Each run is independent.</string>
-    <string name="memory_builder_name" tools:ignore="MissingTranslation">Script name</string>
-    <string name="memory_builder_frozen_values" tools:ignore="MissingTranslation">Frozen values</string>
-    <string name="memory_builder_fields" tools:ignore="MissingTranslation">Fields</string>
-    <string name="memory_builder_actions" tools:ignore="MissingTranslation">Actions</string>
-    <string name="memory_builder_add_bookmarks" tools:ignore="MissingTranslation">Add from Bookmarks</string>
-    <string name="memory_builder_empty" tools:ignore="MissingTranslation">Add at least one Bookmark with a verified locator.</string>
-    <string name="memory_builder_field_label" tools:ignore="MissingTranslation">Field label</string>
-    <string name="memory_builder_keep_at" tools:ignore="MissingTranslation">Keep at</string>
-    <string name="memory_builder_amount" tools:ignore="MissingTranslation">Value / amount</string>
-    <string name="memory_builder_set" tools:ignore="MissingTranslation">Set</string>
-    <string name="memory_builder_add" tools:ignore="MissingTranslation">Add</string>
-    <string name="memory_builder_subtract" tools:ignore="MissingTranslation">Subtract</string>
-    <string name="memory_builder_view_json" tools:ignore="MissingTranslation">View JSON</string>
-    <string name="memory_builder_edit_json" tools:ignore="MissingTranslation">Edit JSON</string>
-    <string name="memory_builder_search_bookmarks" tools:ignore="MissingTranslation">Search Bookmarks</string>
-    <string name="memory_builder_no_bookmarks" tools:ignore="MissingTranslation">No verified Bookmarks. Save a value from Search or relink one in Saved.</string>
-    <string name="memory_builder_needs_relink" tools:ignore="MissingTranslation">Needs relink</string>
-    <string name="memory_builder_add_selected" tools:ignore="MissingTranslation">Add selected</string>
-    <string name="memory_builder_min" tools:ignore="MissingTranslation">Minimum (optional)</string>
-    <string name="memory_builder_max" tools:ignore="MissingTranslation">Maximum (optional)</string>
-    <string name="memory_builder_add_target" tools:ignore="MissingTranslation">Add target</string>
-    <string name="memory_builder_freeze_short" tools:ignore="MissingTranslation">Keep selected values at fixed amounts</string>
-    <string name="memory_builder_form_short" tools:ignore="MissingTranslation">Adjust several values in one place</string>
-    <string name="memory_builder_actions_short" tools:ignore="MissingTranslation">Run one-time Set, Add, or Subtract actions</string>
-    <string name="memory_editor_refine_scan" tools:ignore="MissingTranslation">Refine</string>
-    <string name="memory_scripts_saved_count" tools:ignore="MissingTranslation">%1$d saved</string>
-    <string name="memory_scripts_empty_hint" tools:ignore="MissingTranslation">Create a script to edit or freeze values while playing.</string>
-    <string name="memory_builder_limits" tools:ignore="MissingTranslation">Limits (optional)</string>
     <string name="library_app_more_actions" tools:ignore="MissingTranslation">More actions for %1$s</string>
     <string name="library_actions_group_customize" tools:ignore="MissingTranslation">Customize</string>
     <string name="library_actions_group_organize" tools:ignore="MissingTranslation">Organize</string>

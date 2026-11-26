@@ -109,8 +109,6 @@ import io.github.h3nb.jlmodplus.config.ProfileModel;
 import io.github.h3nb.jlmodplus.input.ControllerHostSink;
 import io.github.h3nb.jlmodplus.input.ControllerInputRouter;
 import io.github.h3nb.jlmodplus.input.HostCommand;
-import io.github.h3nb.jlmodplus.memory.MemoryEditorActivity;
-import io.github.h3nb.jlmodplus.memory.MemoryEditorBubbleController;
 import io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator;
 import io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime;
 import io.github.h3nb.jlmodplus.runtime.MidletKeepAliveService;
@@ -208,7 +206,6 @@ public class MicroActivity extends AppCompatActivity {
 
 	private ControllerInputRouter controllerInputRouter;
 	private long controllerTargetGeneration = 1L;
-	private MemoryEditorBubbleController memoryEditorController;
 	private TransientNoticeComposeController runtimeNoticeController;
 	private WindowInsetsCompat lastWindowInsets;
 	/** True from an explicit external Android launch until this host resumes again. */
@@ -582,12 +579,6 @@ public class MicroActivity extends AppCompatActivity {
 							return;
 						}
 						CameraRuntime.switchCamera(message -> toast(R.string.runtime_camera_switch_failed));
-					}
-
-					@Override
-					public void onMemoryEditor() {
-						memoryEditorController().toggleBubble();
-						updateRuntimeMenuState(current);
 					}
 
 					@Override
@@ -1156,8 +1147,7 @@ public class MicroActivity extends AppCompatActivity {
 				vk != null && vk.isHiddenByUser(),
 				orientationLocked,
 				emulationSpeedAvailable,
-				emulationSpeedPercent,
-				memoryEditorController != null && memoryEditorController.isBubbleEnabled());
+				emulationSpeedPercent);
 		if (binding != null && binding.tabBar != null) {
 			binding.tabBar.setVisibility(
 					chrome.toolbarVisible ? View.VISIBLE : View.GONE);
@@ -1165,19 +1155,6 @@ public class MicroActivity extends AppCompatActivity {
 		if (tabBarController != null) {
 			tabBarController.refresh();
 		}
-	}
-
-	private MemoryEditorBubbleController memoryEditorController() {
-		if (memoryEditorController == null) {
-			memoryEditorController = new MemoryEditorBubbleController(
-					this, binding.memoryEditorBubble, binding.memoryEditorBubbleIcon,
-					binding.memoryEditorBubbleProgress, token -> {
-						GuestWindowPolicy.Chrome chrome = getRuntimeChrome(current);
-						return MemoryEditorActivity.createIntent(this, token,
-								chrome.statusBarVisible, chrome.navigationBarVisible);
-					});
-		}
-		return memoryEditorController;
 	}
 
 	private GuestWindowPolicy.Chrome getRuntimeChrome(@Nullable Displayable displayable) {
@@ -1320,9 +1297,6 @@ public class MicroActivity extends AppCompatActivity {
 		// fullscreen did not change and no system-bar callback is dispatched.
 		refreshRuntimeChrome();
 		applyMemoryJanitorSettings();
-		if (memoryEditorController != null) {
-			memoryEditorController.onHostResumed();
-		}
 		maybeAskBackgroundSetup();
 		publishRuntimeSession();
 	}
@@ -1393,15 +1367,11 @@ public class MicroActivity extends AppCompatActivity {
 			io.github.h3nb.jlmodplus.mmapi.capture.AudioCapturePlayer.pauseForHost();
 		}
 		CameraRuntime.onHostPaused(this);
-		if (ContextHolder.getActivity() == this
-				&& (memoryEditorController == null || !memoryEditorController.isEditorOnTop())) {
+		if (ContextHolder.getActivity() == this) {
 			io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator.onHostForegroundChanged(false);
 		}
 		if (controllerInputRouter != null) {
 			controllerInputRouter.clear();
-		}
-		if (memoryEditorController != null) {
-			memoryEditorController.onHostPaused();
 		}
 		hideSoftInput();
 		super.onPause();
@@ -1467,10 +1437,6 @@ public class MicroActivity extends AppCompatActivity {
 				chromeClient = null;
 			}
 			runtimePreferences = null;
-			if (memoryEditorController != null) {
-				memoryEditorController.destroy();
-				memoryEditorController = null;
-			}
 			// A MIDlet chooser, malformed archive, or Activity teardown can happen before a
 			// MidletThread is started. In that window MicroLoader still owns any launch session.
 			if (microLoader != null) {

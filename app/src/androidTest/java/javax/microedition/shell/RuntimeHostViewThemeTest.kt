@@ -9,7 +9,6 @@ package javax.microedition.shell
 
 import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.view.ContextThemeWrapper
-import androidx.appcompat.widget.AppCompatImageView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
@@ -35,9 +34,6 @@ class RuntimeHostViewThemeTest {
                 val colors = LegacyUiColors(accent.colorScheme(dark))
                 host.refreshTheme(colors, false, true)
                 assertEquals(colors.surfaceContainer, (host.layoutEditPanel.background as GradientDrawable).color!!.defaultColor)
-                assertEquals(colors.primary, (host.memoryEditorBubble.background as GradientDrawable).color!!.defaultColor)
-                assertEquals(colors.onPrimary, host.memoryEditorBubbleProgress.currentTextColor)
-                assertEquals(colors.onPrimary, (host.memoryEditorBubbleIcon as AppCompatImageView).imageTintList!!.defaultColor)
                 assertEquals(colors.primary, host.layoutEditDone.currentTextColor)
                 assertEquals(colors.onSurfaceVariant, host.layoutEditSnap.imageTintList!!.defaultColor)
                 assertEquals(colors.primary, host.layoutEditGroupResize.imageTintList!!.defaultColor)
