@@ -828,6 +828,25 @@ public abstract class Canvas extends Displayable {
 			if (shown && metrics != null) metrics.abandonPendingFrames(publishedFrameSequence);
 			performanceGeneration++;
 			visible = shown;
+			// A hidden tab's pixels cannot be seen, and its buffer is several megabytes at
+			// high internal resolution. Keep the geometry so frame() rebuilds the same target.
+			if (!shown && width > 0 && maxHeight > 0) offscreenCopy = null;
+		}
+	}
+
+	/**
+	 * The published frame of this tab, rebuilt after a hidden tab released it. Geometry
+	 * never changes while hidden, so the replacement has the same size as the old one.
+	 */
+	private Image frame() {
+		synchronized (bufferLock) {
+			if (offscreenCopy != null) return offscreenCopy;
+			int scale = Math.max(1, internalResolutionScale);
+			boolean tight = scale > 1 || (settings.effects != null && !settings.effects.isEmpty());
+			Image next = Image.createDisplayTarget(width, tight ? height : maxHeight, scale);
+			if (next.getHeight() != height) next.setSize(width, height);
+			offscreenCopy = next;
+			return next;
 		}
 	}
 
@@ -915,8 +934,9 @@ public abstract class Canvas extends Displayable {
 			canvas.clipRect(p, p, displayWidth - p, displayHeight - p);
 			synchronized (bufferLock) {
 				frameSequence = publishedFrameSequence;
-				offscreenCopy.getBitmap().prepareToDraw();
-				g.drawImage(offscreenCopy, virtualScreen);
+				Image target = frame();
+				target.getBitmap().prepareToDraw();
+				g.drawImage(target, virtualScreen);
 			}
 			presented = true;
 			if (metrics != null) {
@@ -942,15 +962,16 @@ public abstract class Canvas extends Displayable {
 	public Bitmap captureSoftwareScreenshot() {
 		if (screenshotRawMode) {
 			synchronized (bufferLock) {
-				return Bitmap.createBitmap(offscreenCopy.getBitmap(), 0, 0,
-						offscreenCopy.getWidth() * offscreenCopy.getPixelScale(),
-						offscreenCopy.getHeight() * offscreenCopy.getPixelScale());
+				Image target = frame();
+				return Bitmap.createBitmap(target.getBitmap(), 0, 0,
+						target.getWidth() * target.getPixelScale(),
+						target.getHeight() * target.getPixelScale());
 			}
 		}
 		Bitmap bitmap = Bitmap.createBitmap(onWidth, onHeight, Bitmap.Config.ARGB_8888);
 		canvasWrapper.bind(new android.graphics.Canvas(bitmap));
 		synchronized (bufferLock) {
-			canvasWrapper.drawImage(offscreenCopy, new RectF(0, 0, onWidth, onHeight));
+			canvasWrapper.drawImage(frame(), new RectF(0, 0, onWidth, onHeight));
 		}
 		return bitmap;
 	}
@@ -1374,7 +1395,7 @@ public abstract class Canvas extends Displayable {
 				paintEvent.paintingTarget.getSingleGraphics().flush(image, x, y, width, height);
 				return;
 			}
-			offscreenCopy.getSingleGraphics().flush(image, x, y, width, height);
+			frame().getSingleGraphics().flush(image, x, y, width, height);
 			publishFrameLocked();
 		}
 		requestFlushToScreen();
@@ -1398,7 +1419,7 @@ public abstract class Canvas extends Displayable {
 	public void flushBuffer(Image image, int x, int y) {
 		limitFps();
 		synchronized (bufferLock) {
-			image.copyTo(offscreenCopy, x, y);
+			image.copyTo(frame(), x, y);
 			publishFrameLocked();
 		}
 		requestFlushToScreen();
@@ -1564,7 +1585,7 @@ public abstract class Canvas extends Displayable {
 				lockedCanvas.clipRect(p, p, displayWidth - p, displayHeight - p);
 				synchronized (bufferLock) {
 					frameSequence = publishedFrameSequence;
-					g.drawImage(offscreenCopy, virtualScreen);
+					g.drawImage(frame(), virtualScreen);
 				}
 				try {
 					surface.unlockCanvasAndPost(lockedCanvas);
@@ -1801,7 +1822,7 @@ public abstract class Canvas extends Displayable {
 				}
 				program.use();
 			}
-			Bitmap bitmap = offscreenCopy.getBitmap();
+			Bitmap bitmap = frame().getBitmap();
 			textureValid = false;
 			lastUploadedSequence = Long.MIN_VALUE;
 			lastUploadedWidth = bitmap.getWidth();
@@ -1860,7 +1881,7 @@ public abstract class Canvas extends Displayable {
 				glBindTexture(GL_TEXTURE_2D, bgTextureId[0]);
 				int contentWidth, contentHeight;
 				synchronized (bufferLock) {
-					Image source = offscreenCopy;
+					Image source = frame();
 					Bitmap bitmap = source.getBitmap();
 					contentWidth = source.getWidth() * source.getPixelScale();
 					contentHeight = source.getHeight() * source.getPixelScale();
@@ -1981,7 +2002,7 @@ public abstract class Canvas extends Displayable {
 				mView.queueEvent(() -> {
 					if (!isStarted || program == null) return;
 					program.use();
-					Bitmap bitmap = offscreenCopy.getBitmap();
+					Bitmap bitmap = frame().getBitmap();
 					synchronized (vbo) {
 						program.loadVbo(vbo, bitmap.getWidth(), bitmap.getHeight());
 					}
@@ -2129,7 +2150,7 @@ public abstract class Canvas extends Displayable {
 					MidletThread.exitGuestExecution(enteredGuest);
 				}
 				synchronized (bufferLock) {
-					snapshot.copyTo(offscreenCopy);
+					snapshot.copyTo(frame());
 					publishFrameLocked();
 				}
 				if (surface == null || !surface.isValid()) {
