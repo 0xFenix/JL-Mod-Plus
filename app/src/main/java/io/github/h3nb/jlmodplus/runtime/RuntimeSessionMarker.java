@@ -14,6 +14,7 @@
 
 package io.github.h3nb.jlmodplus.runtime;
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.util.AtomicFile;
 
@@ -25,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,9 +34,9 @@ import java.util.regex.Pattern;
  * Cross-process marker describing the isolated runtime's live tab count, so the Library process
  * can offer a way back to a game it cannot inspect directly.
  *
- * <p>The marker is advisory. A hard process kill leaves it behind, so readers treat a stale or
- * unreadable file as "nothing running" instead of proof of a live runtime. Writes happen only on
- * tab changes and Activity lifecycle callbacks, never per frame.</p>
+ * <p>A hard process kill leaves the marker behind, so {@link #read} verifies that the runtime
+ * process is still running before trusting it. Writes happen only on tab changes and Activity
+ * lifecycle callbacks, never per frame.</p>
  */
 public final class RuntimeSessionMarker {
     private static final String FILE_NAME = "runtime_sessions.json";
@@ -58,8 +60,8 @@ public final class RuntimeSessionMarker {
             clear(context);
             return;
         }
-        // shortcut: a hard process kill can leave this marker stale; readers tolerate it and
-        // the next runtime lifecycle write replaces it.
+        // A write can be cut short by a hard kill; read() checks the runtime process before
+        // trusting what survived.
         AtomicFile atomic = new AtomicFile(stateFile(context));
         FileOutputStream output = null;
         try {
@@ -92,7 +94,31 @@ public final class RuntimeSessionMarker {
         } catch (IOException | RuntimeException ignored) {
             return null;
         }
-        return decode(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+        Session session = decode(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+        if (session != null && !runtimeProcessRunning(context)) {
+            // A hard kill leaves the marker behind; drop it instead of offering a dead session.
+            clear(context);
+            return null;
+        }
+        return session;
+    }
+
+    private static boolean runtimeProcessRunning(Context context) {
+        ActivityManager manager =
+                (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        List<ActivityManager.RunningAppProcessInfo> processes =
+                manager == null ? null : manager.getRunningAppProcesses();
+        if (processes == null || processes.isEmpty()) {
+            // Cannot inspect processes here; keep the marker rather than hide a live game.
+            return true;
+        }
+        String runtimeProcess = context.getPackageName() + ":midlet";
+        for (ActivityManager.RunningAppProcessInfo process : processes) {
+            if (runtimeProcess.equals(process.processName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void clear(@Nullable Context context) {
