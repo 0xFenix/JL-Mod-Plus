@@ -53,7 +53,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import android.widget.PopupWindow;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -90,11 +90,8 @@ import javax.microedition.shell.MicroActivity;
 import javax.microedition.shell.MidletThread;
 import javax.microedition.shell.GuestTimingBridge;
 import javax.microedition.shell.timing.TimingSession;
-import javax.microedition.shell.timing.TimingSnapshot;
-import javax.microedition.shell.timing.EmulationSpeed;
 import javax.microedition.shell.timing.FramePacer;
 import javax.microedition.shell.timing.FrameMetrics;
-import javax.microedition.shell.timing.PerformanceDiagnostics;
 import javax.microedition.shell.timing.PresentationMailbox;
 import javax.microedition.util.ContextHolder;
 
@@ -102,9 +99,9 @@ import io.github.h3nb.jlmodplus.R;
 import io.github.h3nb.jlmodplus.config.BackgroundMode;
 import io.github.h3nb.jlmodplus.gles.PostProcessRenderer;
 import io.github.h3nb.jlmodplus.ui.LegacyThemeColors;
+import io.github.h3nb.jlmodplus.ui.LegacyUiColors;
 import io.github.h3nb.jlmodplus.ui.AppBackgroundColors;
 import io.github.h3nb.jlmodplus.config.ProfileModel;
-import io.github.h3nb.jlmodplus.config.PerformanceOverlayOptions;
 import io.github.h3nb.jlmodplus.input.GuestKeyLedgerAdapter;
 import io.github.h3nb.jlmodplus.input.ControllerPointerConsumer;
 import javax.microedition.lcdui.graphics.AdaptiveSolidBackground;
@@ -159,11 +156,11 @@ public abstract class Canvas extends Displayable {
 	// Also read by the overlay sampler; guest/runtime code can change it while the surface is live.
 	private static volatile int fpsLimit;
 	private static boolean screenshotRawMode;
-	private static boolean timingOverlayEnabled;
 
 	private final Object bufferLock = new Object();
 	private final Object surfaceLock = new Object();
 	private final PaintEvent paintEvent = new PaintEvent();
+	private volatile LegacyUiColors hostColors = LegacyThemeColors.snapshot(ContextHolder.getActivity());
 	private final SoftBar softBar = new SoftBar();
 	private final CanvasWrapper canvasWrapper = new CanvasWrapper(settings.screenFilter);
 	private final RectF virtualScreen = new RectF();
@@ -223,10 +220,7 @@ public abstract class Canvas extends Displayable {
 	private static volatile Image offscreen;
 	private Image offscreenCopy;
 	private volatile long publishedFrameSequence;
-	private volatile FrameMetrics frameMetrics;
-	private volatile FrameMetrics rendererFrameMetrics;
-	private volatile PerformanceDiagnostics performanceDiagnostics;
-	private long publishedFrameNanos;
+	private volatile FrameMetrics fpsMetrics;
 	private volatile long performanceGeneration;
 	private final PresentationMailbox presentationMailbox = new PresentationMailbox();
 	private int onX, onY, onWidth, onHeight;
@@ -305,40 +299,12 @@ public abstract class Canvas extends Displayable {
 		Canvas.fpsLimit = fpsLimit == -1 ? settings.fpsLimit : fpsLimit;
 	}
 
-	public PerformanceDiagnostics getPerformanceDiagnostics() {
-		return performanceDiagnostics;
-	}
-
 	public boolean getPerformanceSourceActive() {
 		return visible;
 	}
 
 	public long getPerformanceGeneration() {
 		return performanceGeneration;
-	}
-
-	/** Configured pacing target, not achieved FPS; absent sessions pace at normal speed. */
-	public double getPerformanceFpsCap() {
-		TimingSnapshot timing = timingSession == null ? null : timingSession.snapshotIfOpen();
-		// A closed session also disables FramePacer: report OFF, not an unknown cap.
-		if (timingSession != null && timing == null) return 0.0;
-		return resolvePerformanceFpsCap(fpsLimit, displayMaximumFps,
-				timing == null ? EmulationSpeed.NORMAL_PERCENT : timing.speedPercent());
-	}
-
-	static double resolvePerformanceFpsCap(int configuredFps, int maximumFps, int speedPercent) {
-		int base = resolveFrameRateLimit(configuredFps, maximumFps);
-		return base <= 0 ? 0 : base * (speedPercent / 100.0);
-	}
-
-	public String getPerformanceRenderer() {
-		String backend = switch (settings.graphicsMode) {
-			case 1 -> "GLES";
-			case 2 -> "VIEW";
-			case 3 -> Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? "HW" : "SOFT";
-			default -> "SOFT";
-		};
-		return internalResolutionScale == 1 ? backend : backend + " " + internalResolutionScale + "x HD";
 	}
 
 	public static void setScreenshotRawMode(boolean enable) {
@@ -360,6 +326,13 @@ public abstract class Canvas extends Displayable {
 		fpsLimit = settings.fpsLimit;
 		int mode = settings.graphicsMode;
 		parallelRedraw = (mode == 0 || mode == 3) && settings.parallelRedrawScreen;
+	}
+
+	/** Refresh app-owned overlays without touching the guest framebuffer or profile colors. */
+	public void updateHostColors(LegacyUiColors colors) {
+		hostColors = colors;
+		OverlayView view = controllerOverlayView;
+		if (view != null) view.postInvalidate();
 	}
 
 	/** Receives a host-owned theme snapshot; render paths never read preferences or Compose state. */
@@ -611,11 +584,6 @@ public abstract class Canvas extends Displayable {
 		ambientHostScheduled = false;
 	}
 
-	/** Enables the diagnostic only when the loaded artifact has the current universal transform. */
-	public static void setTimingOverlayEnabled(boolean enabled) {
-		timingOverlayEnabled = enabled;
-	}
-
 	public int getKeyCode(int gameAction) {
 		int res = KeyMapper.getKeyCode(gameAction);
 		if (res != Integer.MAX_VALUE) {
@@ -856,10 +824,8 @@ public abstract class Canvas extends Displayable {
 	/** Called with visibilityLock held; frame producers never acquire it under bufferLock. */
 	private void setEffectiveVisibilityLocked(boolean shown) {
 		synchronized (bufferLock) {
-			FrameMetrics metrics = rendererFrameMetrics;
+			FrameMetrics metrics = fpsMetrics;
 			if (shown && metrics != null) metrics.abandonPendingFrames(publishedFrameSequence);
-			PerformanceDiagnostics diagnostics = performanceDiagnostics;
-			if (diagnostics != null) diagnostics.setActive(shown);
 			performanceGeneration++;
 			visible = shown;
 		}
@@ -932,12 +898,7 @@ public abstract class Canvas extends Displayable {
 			presentationMailbox.releaseAfterFailure(presentationMailbox.generation());
 			return;
 		}
-		FrameMetrics metrics = rendererFrameMetrics;
-		PerformanceDiagnostics diagnostics = performanceDiagnostics;
-		long submitStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.SUBMIT)
-				? System.nanoTime() : 0L;
-		long publicationNanos = 0L;
-		long consumptionNanos = 0L;
+		FrameMetrics metrics = fpsMetrics;
 		long frameSequence = 0L;
 		long presentationGeneration = presentationMailbox.generation();
 		long hostRevision = presentationMailbox.captureHostRevision(presentationGeneration);
@@ -954,24 +915,12 @@ public abstract class Canvas extends Displayable {
 			canvas.clipRect(p, p, displayWidth - p, displayHeight - p);
 			synchronized (bufferLock) {
 				frameSequence = publishedFrameSequence;
-				publicationNanos = publishedFrameNanos;
-				if (diagnostics != null && diagnostics.enabled(
-						PerformanceDiagnostics.FRAME_QUEUE | PerformanceDiagnostics.SUBMIT
-						| PerformanceDiagnostics.RENDER_CADENCE)) {
-					consumptionNanos = System.nanoTime();
-				}
 				offscreenCopy.getBitmap().prepareToDraw();
 				g.drawImage(offscreenCopy, virtualScreen);
 			}
 			presented = true;
 			if (metrics != null) {
 				metrics.recordRender(frameSequence);
-			}
-			if (diagnostics != null && diagnostics.enabled(
-					PerformanceDiagnostics.SUBMIT | PerformanceDiagnostics.FRAME_QUEUE
-					| PerformanceDiagnostics.RENDER_CADENCE)) {
-				diagnostics.recordRender(frameSequence, publicationNanos, consumptionNanos,
-						submitStarted, System.nanoTime());
 			}
 		} finally {
 			boolean needsAnother = presented
@@ -1421,20 +1370,11 @@ public abstract class Canvas extends Displayable {
 		}
 		limitFps();
 		synchronized (bufferLock) {
-			PerformanceDiagnostics diagnostics = performanceDiagnostics;
-			long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
-					? System.nanoTime() : 0L;
 			if (Thread.holdsLock(paintEvent)) {
 				paintEvent.paintingTarget.getSingleGraphics().flush(image, x, y, width, height);
-				if (copyStarted != 0L) {
-					diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
-				}
 				return;
 			}
 			offscreenCopy.getSingleGraphics().flush(image, x, y, width, height);
-			if (copyStarted != 0L) {
-				diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
-			}
 			publishFrameLocked();
 		}
 		requestFlushToScreen();
@@ -1458,13 +1398,7 @@ public abstract class Canvas extends Displayable {
 	public void flushBuffer(Image image, int x, int y) {
 		limitFps();
 		synchronized (bufferLock) {
-			PerformanceDiagnostics diagnostics = performanceDiagnostics;
-			long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
-					? System.nanoTime() : 0L;
 			image.copyTo(offscreenCopy, x, y);
-			if (copyStarted != 0L) {
-				diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
-			}
 			publishFrameLocked();
 		}
 		requestFlushToScreen();
@@ -1528,18 +1462,6 @@ public abstract class Canvas extends Displayable {
 			return;
 		}
 		publishedFrameSequence = sequence;
-		PerformanceDiagnostics diagnostics = performanceDiagnostics;
-		if (diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.FRAME_INTERVAL
-				| PerformanceDiagnostics.RENDER_CADENCE | PerformanceDiagnostics.SUBMIT | PerformanceDiagnostics.FRAME_QUEUE)) {
-			publishedFrameNanos = System.nanoTime();
-			if (diagnostics.enabled(PerformanceDiagnostics.FRAME_INTERVAL)) {
-				diagnostics.recordPublication(sequence, publishedFrameNanos);
-			}
-		}
-		FrameMetrics metrics = frameMetrics;
-		if (metrics != null) {
-			metrics.recordGameFrame();
-		}
 	}
 
 	@SuppressLint("NewApi")
@@ -1615,11 +1537,7 @@ public abstract class Canvas extends Displayable {
 
 	@SuppressLint("NewApi")
 	private PresentationResult presentToSurface() {
-		FrameMetrics metrics = rendererFrameMetrics;
-		PerformanceDiagnostics diagnostics = performanceDiagnostics;
-		long submitStarted = 0L;
-		long publicationNanos = 0L;
-		long consumptionNanos = 0L;
+		FrameMetrics metrics = fpsMetrics;
 		long frameSequence = 0L;
 		long presentationGeneration = presentationMailbox.generation();
 		long hostRevision = presentationMailbox.captureHostRevision(presentationGeneration);
@@ -1630,8 +1548,6 @@ public abstract class Canvas extends Displayable {
 		android.graphics.Canvas lockedCanvas = null;
 		try {
 			synchronized (surfaceLock) {
-				submitStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.SUBMIT)
-						? System.nanoTime() : 0L;
 				lockedCanvas = settings.graphicsMode == 3 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ?
 						surface.lockHardwareCanvas() : surface.lockCanvas(null);
 				if (lockedCanvas == null) {
@@ -1648,12 +1564,6 @@ public abstract class Canvas extends Displayable {
 				lockedCanvas.clipRect(p, p, displayWidth - p, displayHeight - p);
 				synchronized (bufferLock) {
 					frameSequence = publishedFrameSequence;
-					publicationNanos = publishedFrameNanos;
-					if (diagnostics != null && diagnostics.enabled(
-							PerformanceDiagnostics.FRAME_QUEUE | PerformanceDiagnostics.SUBMIT
-							| PerformanceDiagnostics.RENDER_CADENCE)) {
-						consumptionNanos = System.nanoTime();
-					}
 					g.drawImage(offscreenCopy, virtualScreen);
 				}
 				try {
@@ -1666,12 +1576,6 @@ public abstract class Canvas extends Displayable {
 			}
 			if (metrics != null) {
 				metrics.recordRender(frameSequence);
-			}
-			if (diagnostics != null && diagnostics.enabled(
-					PerformanceDiagnostics.SUBMIT | PerformanceDiagnostics.FRAME_QUEUE
-					| PerformanceDiagnostics.RENDER_CADENCE)) {
-				diagnostics.recordRender(frameSequence, publicationNanos, consumptionNanos,
-						submitStarted, System.nanoTime());
 			}
 			if (isReactiveBackground()) scheduleAmbientHostTick(AMBIENT_HOST_INTERVAL_NS);
 			return PresentationResult.presented(frameSequence, hostRevision);
@@ -1929,12 +1833,7 @@ public abstract class Canvas extends Displayable {
 
 		@Override
 		public void onDrawFrame(GL10 gl) {
-			FrameMetrics metrics = rendererFrameMetrics;
-			PerformanceDiagnostics diagnostics = performanceDiagnostics;
-			long submitStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.SUBMIT)
-					? System.nanoTime() : 0L;
-			long publicationNanos = 0L;
-			long consumptionNanos = 0L;
+			FrameMetrics metrics = fpsMetrics;
 			long frameSequence = 0L;
 			long presentationGeneration = presentationMailbox.generation();
 			long hostRevision = presentationMailbox.captureHostRevision(presentationGeneration);
@@ -1966,12 +1865,6 @@ public abstract class Canvas extends Displayable {
 					contentWidth = source.getWidth() * source.getPixelScale();
 					contentHeight = source.getHeight() * source.getPixelScale();
 					frameSequence = publishedFrameSequence;
-					publicationNanos = publishedFrameNanos;
-					if (diagnostics != null && diagnostics.enabled(
-							PerformanceDiagnostics.FRAME_QUEUE | PerformanceDiagnostics.SUBMIT
-							| PerformanceDiagnostics.RENDER_CADENCE)) {
-						consumptionNanos = System.nanoTime();
-					}
 					int bitmapWidth = bitmap.getWidth();
 					int bitmapHeight = bitmap.getHeight();
 					int scale = source.getPixelScale();
@@ -2045,12 +1938,6 @@ public abstract class Canvas extends Displayable {
 				presented = true;
 				if (metrics != null) {
 					metrics.recordRender(frameSequence);
-				}
-				if (diagnostics != null && diagnostics.enabled(
-						PerformanceDiagnostics.SUBMIT | PerformanceDiagnostics.FRAME_QUEUE
-						| PerformanceDiagnostics.RENDER_CADENCE)) {
-					diagnostics.recordRender(frameSequence, publicationNanos, consumptionNanos,
-							submitStarted, System.nanoTime());
 				}
 				capturePendingScreenshot();
 			} finally {
@@ -2231,9 +2118,6 @@ public abstract class Canvas extends Displayable {
 				Graphics g = snapshot.getSingleGraphics();
 				g.reset(l, t, r, b);
 				boolean enteredGuest = MidletThread.enterGuestExecution();
-				PerformanceDiagnostics diagnostics = performanceDiagnostics;
-				long paintStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.PAINT)
-						? System.nanoTime() : 0L;
 				try {
 					paint(g);
 				} catch (Exception e) {
@@ -2242,18 +2126,10 @@ public abstract class Canvas extends Displayable {
 					MidletThread.markEscapingGuestFailure(fatal);
 					throw fatal;
 				} finally {
-					if (paintStarted != 0L) {
-						diagnostics.recordDuration(PerformanceDiagnostics.PAINT, paintStarted, System.nanoTime());
-					}
 					MidletThread.exitGuestExecution(enteredGuest);
 				}
 				synchronized (bufferLock) {
-					long copyStarted = diagnostics != null && diagnostics.enabled(PerformanceDiagnostics.COPY)
-							? System.nanoTime() : 0L;
 					snapshot.copyTo(offscreenCopy);
-					if (copyStarted != 0L) {
-						diagnostics.recordDuration(PerformanceDiagnostics.COPY, copyStarted, System.nanoTime());
-					}
 					publishFrameLocked();
 				}
 				if (surface == null || !surface.isValid()) {
@@ -2360,16 +2236,10 @@ public abstract class Canvas extends Displayable {
 				overlayView.removeLayer(fpsCounter);
 				fpsCounter = null;
 			}
-			PerformanceDiagnostics diagnostics;
 			synchronized (bufferLock) {
-				frameMetrics = null;
-				rendererFrameMetrics = null;
-				diagnostics = performanceDiagnostics;
-				performanceDiagnostics = null;
+				fpsMetrics = null;
 				publishedFrameSequence = 0L;
-				publishedFrameNanos = 0L;
 			}
-			if (diagnostics != null) diagnostics.setActive(false);
 			overlayView.removeLayer(softBar);
 			overlayView.removeLayer(controllerJoystickOverlay);
 			controllerOverlayView = null;
@@ -2615,36 +2485,20 @@ public abstract class Canvas extends Displayable {
 				return;
 			}
 			refreshDisplayMaximumFps(mView);
-			int mask = settings.showFps
-					? PerformanceOverlayOptions.sanitize(settings.performanceOverlayMetrics) : 0;
-			FrameMetrics nextFrameMetrics = PerformanceOverlayOptions.requiresFrameMetrics(mask)
-					? new FrameMetrics() : null;
-			FrameMetrics nextRendererFrameMetrics =
-					PerformanceOverlayOptions.requiresRendererMetrics(mask) ? nextFrameMetrics : null;
-			PerformanceDiagnostics nextDiagnostics =
-					(mask & PerformanceDiagnostics.TIMING_MASK) != 0
-							? new PerformanceDiagnostics(mask) : null;
+			FrameMetrics nextMetrics = settings.showFps ? new FrameMetrics() : null;
 			surfaceAttached = true;
 			synchronized (bufferLock) {
-				frameMetrics = nextFrameMetrics;
-				rendererFrameMetrics = nextRendererFrameMetrics;
-				performanceDiagnostics = nextDiagnostics;
+				fpsMetrics = nextMetrics;
 				publishedFrameSequence = 0L;
-				publishedFrameNanos = 0L;
 				presentationMailbox.begin();
 			}
 			if (renderer != null) {
 				renderer.start();
 			}
 			surface = holder.getSurface();
-			if (mask != 0) {
-				fpsCounter = new FpsCounter(
-						overlayView,
-						nextFrameMetrics,
-						timingOverlayEnabled ? timingSession : null,
-						Canvas.this,
-						mask,
-						settings.performanceOverlayPosition);
+			if (nextMetrics != null) {
+				fpsCounter = new FpsCounter(overlayView, nextMetrics,
+						Canvas.this, settings.performanceOverlayPosition);
 				overlayView.addLayer(fpsCounter);
 			}
 			overlayView.addLayer(softBar, 0);
@@ -2757,7 +2611,7 @@ public abstract class Canvas extends Displayable {
 			float tx = onX + thumbX * scaleX;
 			float ty = onY + thumbY * scaleY;
 			float tr = Math.max(6f, rr * 0.28f);
-			g.setFillColor(active ? Color.argb(150, 80, 160, 255)
+			g.setFillColor(active ? ColorUtils.setAlphaComponent(hostColors.getPrimary(), 150)
 					: Color.argb(90, 255, 255, 255));
 			g.fillArc(new RectF(tx - tr, ty - tr, tx + tr, ty + tr), 0, 360);
 		}
@@ -2766,8 +2620,6 @@ public abstract class Canvas extends Displayable {
 	private class SoftBar extends AbstractSoftKeysBar implements Layer {
 		private final OverlayView overlayView;
 		private final float padding;
-		private final int textColor;
-		private final int bgColor;
 		private final RectF bounds = new RectF();
 
 		private String leftLabel;
@@ -2780,8 +2632,6 @@ public abstract class Canvas extends Displayable {
 			this.overlayView = activity.findViewById(R.id.overlay);
 			DisplayMetrics metrics = activity.getResources().getDisplayMetrics();
 			padding = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 5, metrics);
-			textColor = LegacyThemeColors.accent(activity);
-			bgColor = ContextCompat.getColor(activity, R.color.background);
 		}
 
 		private void showPopup() {
@@ -2864,7 +2714,8 @@ public abstract class Canvas extends Displayable {
 			if (bounds.isEmpty() || commands.isEmpty()) {
 				return;
 			}
-			g.setFillColor(bgColor);
+			LegacyUiColors colors = hostColors;
+			g.setFillColor(colors.getSurfaceContainer());
 			g.fillRect(bounds);
 
 			if (leftLabel == null) {
@@ -2872,7 +2723,7 @@ public abstract class Canvas extends Displayable {
 			}
 			g.setTextAlign(Paint.Align.LEFT);
 			g.setTextScale(textScale);
-			g.setTextColor(textColor);
+			g.setTextColor(colors.getPrimary());
 			float y = bounds.centerY();
 			g.drawString(leftLabel, bounds.left + padding * textScale, y);
 			if (rightLabel != null) {

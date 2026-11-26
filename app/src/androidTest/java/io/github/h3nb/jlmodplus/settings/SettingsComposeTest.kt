@@ -68,11 +68,14 @@ class SettingsComposeTest {
             windowSize = DpSize(480.dp, 240.dp),
         )
 
-        val languageSetting = hasText("App language") and hasClickAction()
-        composeRule.onNode(hasScrollAction())
-            .performScrollToNode(languageSetting)
-        composeRule.onNode(languageSetting).performClick()
+        val languageTitle = uiString(R.string.pref_language)
+        scrollSettingsTo(languageTitle)
+        composeRule.onNode(hasText(languageTitle) and hasClickAction())
+            .assertIsDisplayed()
+            .performClick()
 
+        composeRule.onNode(hasText("Language option 1") and hasAnyAncestor(isDialog()))
+            .assertIsDisplayed()
         val lastLanguage = hasText("Language option 20")
         composeRule.onNode(hasScrollAction() and hasAnyAncestor(isDialog()))
             .performScrollToNode(lastLanguage)
@@ -269,7 +272,7 @@ class SettingsComposeTest {
 
         scrollSettingsTo(uiString(R.string.updates_title))
         composeRule.onNodeWithText(uiString(R.string.updates_title)).performClick()
-        composeRule.onNodeWithText(uiString(R.string.updates_channel)).assertIsDisplayed()
+        composeRule.onNodeWithText(uiString(R.string.updates_automatic)).assertIsDisplayed()
         composeRule.onNodeWithContentDescription(uiString(R.string.action_back)).performClick()
 
         scrollSettingsTo(uiString(R.string.about))

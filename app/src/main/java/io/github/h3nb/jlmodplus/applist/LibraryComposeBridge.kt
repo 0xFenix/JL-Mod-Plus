@@ -23,8 +23,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -38,6 +37,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.gestures.stopScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -57,7 +58,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -91,12 +91,13 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -145,7 +146,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -941,7 +941,7 @@ fun LibraryScreen(
         !libraryOverlayVisible && !selectionActiveHere && !searchOpen &&
         !collectionManageAppsActive
     LaunchedEffect(availableUpdate, updateDialogReady, updateRepository?.automaticChecks,
-        sessionDismissedUpdate, updateRepository?.channel) {
+        sessionDismissedUpdate) {
         val repository = updateRepository
         val candidate = availableUpdate
         if (BuildConfig.DEBUG || repository == null || !repository.automaticChecks ||
@@ -1266,6 +1266,7 @@ fun LibraryScreen(
                             },
                             onOpenSearch = { searchOpen = true },
                             onOpenNotifications = { notificationsPageVisible = true },
+                            notificationCount = if (availableUpdate != null) 1 else 0,
                             onOpenGlobalSettings = actions::onOpenSettings,
                             searchActive = searchOpen && destination == LibraryDestinationKey.Apps,
                             searchQuery = searchQuery,
@@ -1359,7 +1360,11 @@ fun LibraryScreen(
                 color = MaterialTheme.colorScheme.background,
                 contentColor = MaterialTheme.colorScheme.onBackground,
             ) {
-                LibraryNotificationsScreen(onBack = { notificationsPageVisible = false })
+                LibraryNotificationsScreen(
+                    update = availableUpdate,
+                    onBack = { notificationsPageVisible = false },
+                    onOpenUpdate = actions::onOpenUpdates,
+                )
                 if (!notificationsPageVisible) {
                     Box(
                         Modifier.matchParentSize()
@@ -1741,6 +1746,7 @@ internal fun LibraryAppsDestination(
     onManageCollections: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
+    notificationCount: Int = 0,
     onOpenGlobalSettings: () -> Unit = {},
     searchActive: Boolean = false,
     searchQuery: String = "",
@@ -1938,6 +1944,7 @@ internal fun LibraryAppsDestination(
             onManageCollections = onManageCollections,
             onOpenSearch = onOpenSearch,
             onOpenNotifications = onOpenNotifications,
+            notificationCount = notificationCount,
             onOpenGlobalSettings = onOpenGlobalSettings,
             searchActive = searchActive,
             searchQuery = searchQuery,
@@ -2129,12 +2136,21 @@ internal fun LibraryAppsDestination(
                 }
             }
         }
-        Box(
+        // A non-clickable Surface owns hit testing across the entire visible header,
+        // including padding and gaps that would otherwise expose covered MIDlets.
+        Surface(
+            color = MaterialTheme.colorScheme.background,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .graphicsLayer { translationY = headerOffsetPx.floatValue }
-                .background(MaterialTheme.colorScheme.background)
+                .scrollable(
+                    state = if (state.layout == LibraryLayout.List) listState else gridState,
+                    orientation = Orientation.Vertical,
+                    reverseDirection = true,
+                    enabled = active && !freezeViewport && !searchActive &&
+                        !state.loading && state.errorMessage == null,
+                )
                 .then(
                     if (!headerHidden) {
                         Modifier
@@ -2392,6 +2408,7 @@ private fun LibraryAppsHeader(
     onManageCollections: () -> Unit = {},
     onOpenSearch: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
+    notificationCount: Int = 0,
     onOpenGlobalSettings: () -> Unit = {},
     searchActive: Boolean = false,
     searchQuery: String = "",
@@ -2430,6 +2447,7 @@ private fun LibraryAppsHeader(
         availableWindowWidthDp() < 600.dp &&
         !selectionState.isActive && title == null && onBack == null
     val titleGate = rememberLibraryHeaderActionGate(headerOffsetPx)
+    val compactActionGate = rememberLibraryHeaderActionGate(headerOffsetPx)
     val searchGate = rememberLibraryHeaderActionGate(headerOffsetPx)
     val titleActionsEnabled = interactive && titleGate.enabled.value
     val searchActionsEnabled = interactive && searchGate.enabled.value
@@ -2444,42 +2462,36 @@ private fun LibraryAppsHeader(
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
             .padding(horizontal = 12.dp, vertical = 4.dp),
     ) {
-        AnimatedContent(
-            targetState = searchActive && !selectionState.isActive && title == null && onBack == null,
+        val searching = searchActive && !selectionState.isActive && title == null && onBack == null
+        val searchHeight = (56f + 16f * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)).dp
+        val browseActionsEnabled = titleActionsEnabled && !searching
+        val titleAlpha by animateFloatAsState(
+            targetValue = if (searching) 0f else 1f,
+            animationSpec = tween(180),
+            label = "Library title alpha",
+        )
+        // The normal header remains the sizing anchor even during Search. This also
+        // accounts for a wrapped debug wordmark and the separate large-font action row.
+        Box(
             modifier = Modifier.fillMaxWidth()
-                .then(titleGate.positionModifier)
-                .then(if (titleActionsEnabled) Modifier else Modifier.clearAndSetSemantics {}),
-            transitionSpec = {
-                (fadeIn(tween(180)) + slideInHorizontally(
-                    animationSpec = tween(220), initialOffsetX = { it / 12 },
-                )) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(
-                    animationSpec = tween(180), targetOffsetX = { -it / 12 },
-                ))
-            },
-            label = "Library search header",
-        ) { searching ->
-            if (searching) {
-                InlineSearchField(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = titleActionsEnabled,
-                    onDismissInput = { focusManager.clearFocus() },
-                    onClose = onCloseSearch,
-                    autoFocus = interactive,
-                    placeholder = stringResource(R.string.library_search_placeholder),
-                )
-            } else {
+                .then(titleGate.positionModifier),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .graphicsLayer { alpha = titleAlpha }
+                    .then(if (searching) Modifier.clearAndSetSemantics {} else Modifier),
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 56.dp),
+                        .heightIn(min = if (compactHeaderActions) 56.dp else searchHeight)
+                        .then(if (titleActionsEnabled) Modifier else Modifier.clearAndSetSemantics {}),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (selectionState.isActive || onBack != null) {
                         IconButton(
                             onClick = if (selectionState.isActive) onExitSelection else requireNotNull(onBack),
-                            enabled = titleActionsEnabled,
+                            enabled = browseActionsEnabled,
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_arrow_back),
@@ -2520,8 +2532,9 @@ private fun LibraryAppsHeader(
                                 LibraryHeaderActions(
                                     onOpenSearch = onOpenSearch,
                                     onOpenNotifications = onOpenNotifications,
+                                    notificationCount = notificationCount,
                                     onOpenSettings = onOpenGlobalSettings,
-                                    enabled = titleActionsEnabled,
+                                    enabled = browseActionsEnabled,
                                 )
                             }
                         }
@@ -2539,7 +2552,7 @@ private fun LibraryAppsHeader(
                         )
                         IconButton(
                             onClick = if (allVisibleSelected) onUnselectAll else onSelectAll,
-                            enabled = visibleAppIds.isNotEmpty() && titleActionsEnabled,
+                            enabled = visibleAppIds.isNotEmpty() && browseActionsEnabled,
                             modifier = Modifier.semantics {
                                 contentDescription = selectionToggleLabel
                             },
@@ -2557,26 +2570,48 @@ private fun LibraryAppsHeader(
                         }
                     }
                 }
-
+                if (compactHeaderActions) {
+                    val compactActionsEnabled = interactive && compactActionGate.enabled.value && !searching
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                            .then(compactActionGate.positionModifier)
+                            .then(if (compactActionsEnabled) Modifier else Modifier.clearAndSetSemantics {}),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        LibraryHeaderActions(
+                            onOpenSearch = onOpenSearch,
+                            onOpenNotifications = onOpenNotifications,
+                            notificationCount = notificationCount,
+                            onOpenSettings = onOpenGlobalSettings,
+                            enabled = compactActionsEnabled,
+                        )
+                    }
+                }
             }
-        }
-        AnimatedVisibility(
-            visible = compactHeaderActions && !searchActive,
-            enter = fadeIn(tween(180)) + expandVertically(animationSpec = tween(220)),
-            exit = fadeOut(tween(120)) + shrinkVertically(animationSpec = tween(180)),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                    .then(titleGate.positionModifier)
-                    .then(if (titleActionsEnabled) Modifier else Modifier.clearAndSetSemantics {}),
-                horizontalArrangement = Arrangement.End,
+            androidx.compose.animation.AnimatedVisibility(
+                visible = searching,
+                modifier = Modifier.matchParentSize(),
+                enter = fadeIn(tween(180)) + slideInHorizontally(
+                    animationSpec = tween(220), initialOffsetX = { it / 12 },
+                ),
+                exit = fadeOut(tween(120)) + slideOutHorizontally(
+                    animationSpec = tween(180), targetOffsetX = { -it / 12 },
+                ),
             ) {
-                LibraryHeaderActions(
-                    onOpenSearch = onOpenSearch,
-                    onOpenNotifications = onOpenNotifications,
-                    onOpenSettings = onOpenGlobalSettings,
-                    enabled = titleActionsEnabled,
-                )
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    InlineSearchField(
+                        query = searchQuery,
+                        onQueryChange = onSearchQueryChange,
+                        modifier = Modifier.fillMaxWidth()
+                            .then(if (searching && titleActionsEnabled) Modifier else Modifier.clearAndSetSemantics {}),
+                        enabled = titleActionsEnabled && searching,
+                        onDismissInput = { focusManager.clearFocus() },
+                        onClose = onCloseSearch,
+                        autoFocus = interactive && searching,
+                        placeholder = stringResource(R.string.library_search_placeholder),
+                        controlHeight = searchHeight,
+                    )
+                }
             }
         }
         Row(
@@ -2749,10 +2784,11 @@ private fun LibraryAppsHeader(
                                     if (view == null) {
                                         Spacer(Modifier.weight(1f))
                                     } else {
-                                        LibraryScopeChoiceTile(
+                                        LibrarySheetTile(
                                             title = stringResource(view.second),
                                             icon = view.third,
                                             selected = selectedCollection == null && state.quickView == view.first,
+                                            titleMaxLines = 2,
                                             enabled = view.first == LibraryQuickView.All || state.databaseControlsReady,
                                             onClick = {
                                                 closeScopeThen {
@@ -2791,7 +2827,7 @@ private fun LibraryAppsHeader(
                                     if (collection == null) {
                                         Spacer(Modifier.weight(1f))
                                     } else {
-                                        LibraryScopeChoiceTile(
+                                        LibrarySheetTile(
                                             title = collection.name,
                                             supporting = pluralStringResource(
                                                 R.plurals.library_collection_member_count,
@@ -2800,6 +2836,7 @@ private fun LibraryAppsHeader(
                                             ),
                                             icon = R.drawable.ic_folder,
                                             selected = selectedCollection?.id == collection.id,
+                                            titleMaxLines = 2,
                                             onClick = {
                                                 closeScopeThen { onSelectCollection(collection.id) }
                                             },
@@ -2841,7 +2878,7 @@ private fun LibraryAppsHeader(
                 confirmButton = null,
             )
         } else {
-            ModalBottomSheet(
+            LibraryModalBottomSheet(
                 onDismissRequest = { scopePickerVisible = false },
                 sheetState = scopeSheetState,
                 contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
@@ -2859,7 +2896,7 @@ private fun LibraryHeaderActions(
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
     enabled: Boolean,
-    hasUnreadNotifications: Boolean = false,
+    notificationCount: Int = 0,
 ) {
     IconButton(onClick = onOpenSearch, enabled = enabled) {
         Icon(
@@ -2868,24 +2905,25 @@ private fun LibraryHeaderActions(
         )
     }
     val notificationsLabel = stringResource(R.string.library_notifications_title)
+    val notificationsDescription = if (notificationCount > 0) {
+        "$notificationsLabel ($notificationCount)"
+    } else notificationsLabel
     IconButton(
         onClick = onOpenNotifications,
         enabled = enabled,
-        modifier = Modifier.semantics { contentDescription = notificationsLabel },
+        modifier = Modifier.semantics { contentDescription = notificationsDescription },
     ) {
-        Box(modifier = Modifier.size(24.dp)) {
+        BadgedBox(
+            badge = {
+                if (notificationCount > 0) {
+                    Badge { Text(if (notificationCount > 99) "99+" else notificationCount.toString()) }
+                }
+            },
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_notifications),
                 contentDescription = null,
             )
-            if (hasUnreadNotifications) {
-                Box(
-                    modifier = Modifier.align(Alignment.TopEnd)
-                        .size(7.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(MaterialTheme.colorScheme.primary),
-                )
-            }
         }
     }
     IconButton(onClick = onOpenSettings, enabled = enabled) {
@@ -2893,63 +2931,6 @@ private fun LibraryHeaderActions(
             painter = painterResource(R.drawable.ic_settings),
             contentDescription = stringResource(R.string.action_settings),
         )
-    }
-}
-
-@Composable
-private fun RowScope.LibraryScopeChoiceTile(
-    title: String,
-    icon: Int,
-    selected: Boolean,
-    onClick: () -> Unit,
-    supporting: String? = null,
-    enabled: Boolean = true,
-) {
-    val background = if (selected) MaterialTheme.colorScheme.secondaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerHigh
-    val foreground = if (selected) MaterialTheme.colorScheme.onSecondaryContainer
-        else MaterialTheme.colorScheme.onSurface
-    Row(
-        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 64.dp)
-            .clip(MaterialTheme.shapes.large).background(background)
-            .semantics { this.selected = selected }
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = foreground.copy(alpha = if (enabled) 1f else 0.38f),
-            modifier = Modifier.size(22.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = foreground.copy(alpha = if (enabled) 1f else 0.38f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (supporting != null) {
-                Text(
-                    text = supporting,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (selected) {
-            Icon(
-                painter = painterResource(R.drawable.ic_check),
-                contentDescription = null,
-                tint = foreground,
-                modifier = Modifier.size(18.dp),
-            )
-        }
     }
 }
 
