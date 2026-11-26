@@ -29,6 +29,8 @@ import static io.github.h3nb.jlmodplus.util.Constants.PREF_KEEP_SCREEN;
 import static io.github.h3nb.jlmodplus.util.Constants.PREF_SCREENSHOT_SWITCH;
 import static io.github.h3nb.jlmodplus.util.Constants.PREF_THEME;
 import static io.github.h3nb.jlmodplus.util.Constants.PREF_TOOLBAR;
+import static io.github.h3nb.jlmodplus.util.Constants.PREF_MEMORY_TRIM_MINUTES;
+import static io.github.h3nb.jlmodplus.util.Constants.PREF_PERIODIC_GC_MINUTES;
 import static io.github.h3nb.jlmodplus.util.Constants.PREF_STATUSBAR;
 import static io.github.h3nb.jlmodplus.util.Constants.PREF_VIBRATION;
 import static io.github.h3nb.jlmodplus.util.Constants.LIBRARY_GRID_SPACING_STANDARD;
@@ -189,7 +191,10 @@ public class SettingsActivity extends AppCompatActivity {
 						editor.putInt(PREF_APPS_ICON_SHAPE,
 								LibraryIconShape.fromPreferenceKey(value).getStoredValue());
 						break;
-					case PREF_APPS_GRID_ICON_SIZE:
+					case PREF_MEMORY_TRIM_MINUTES:
+					case PREF_PERIODIC_GC_MINUTES:
+						editor.putInt(key, Integer.parseInt(value));
+						break;					case PREF_APPS_GRID_ICON_SIZE:
 						editor.putInt(PREF_APPS_GRID_ICON_SIZE,
 								LibraryGridIconSize.fromPreferenceKey(value).getStoredValue());
 						break;
@@ -379,6 +384,11 @@ public class SettingsActivity extends AppCompatActivity {
 				ProxyStore.forApp().list().size());
 	}
 
+	private SettingsOption minuteOption(int minutes) {
+		return new SettingsOption(String.valueOf(minutes), minutes == 0
+				? getString(R.string.runtime_memory_off)
+				: getString(R.string.runtime_memory_minutes, minutes));
+	}
 	private List<SettingsChoice> buildLibraryChoices() {
 		List<SettingsChoice> choices = new ArrayList<>();
 		List<SettingsOption> ratioOptions = Arrays.asList(
@@ -392,6 +402,28 @@ public class SettingsActivity extends AppCompatActivity {
 								PREF_APPS_ICON_RATIO, LibraryIconRatio.Square.getStoredValue())).getPreferenceKey(),
 						ratioOptions.get(0)),
 				ratioOptions));
+
+		List<SettingsOption> trimOptions = new ArrayList<>();
+		List<SettingsOption> gcOptions = new ArrayList<>();
+		int[] trimMinutes = {0, 15, 30, 60};
+		int[] gcMinutes = {0, 5, 15, 30};
+		for (int minutes : trimMinutes) trimOptions.add(minuteOption(minutes));
+		for (int minutes : gcMinutes) gcOptions.add(minuteOption(minutes));
+		choices.add(new SettingsChoice(
+				PREF_MEMORY_TRIM_MINUTES,
+				getString(R.string.runtime_memory_trim_title),
+				findOption(trimOptions,
+						String.valueOf(preferences.getInt(PREF_MEMORY_TRIM_MINUTES, 30)),
+						trimOptions.get(0)),
+				trimOptions));
+		choices.add(new SettingsChoice(
+				PREF_PERIODIC_GC_MINUTES,
+				getString(R.string.runtime_memory_gc_title),
+				findOption(gcOptions,
+						String.valueOf(preferences.getInt(PREF_PERIODIC_GC_MINUTES, 0)),
+						gcOptions.get(0)),
+				gcOptions,
+				getString(R.string.runtime_memory_gc_warning)));
 
 		List<SettingsOption> shapeOptions = Arrays.asList(
 				new SettingsOption("round", getString(R.string.library_icon_shape_round)),

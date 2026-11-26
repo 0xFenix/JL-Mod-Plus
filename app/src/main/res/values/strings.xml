@@ -160,6 +160,11 @@
     <string name="library_vendor_version">%1$s · %2$s</string>
     <string name="library_view_list">List</string>
     <string name="library_view_grid">Grid</string>
+    <string name="runtime_memory_trim_title">Dọn bộ nhớ tự động</string>
+    <string name="runtime_memory_gc_title">GC định kỳ</string>
+    <string name="runtime_memory_gc_warning">Có thể giật vài trăm ms khi đang chơi, chỉ dùng khi bạn thực sự cần.</string>
+    <string name="runtime_memory_off">Tắt</string>
+    <string name="runtime_memory_minutes">%1$d phút</string>
     <string name="library_icon_ratio_title">Icon aspect ratio</string>
     <string name="library_icon_ratio_square">Square (1:1)</string>
     <string name="library_icon_ratio_portrait">Portrait (3:4)</string>

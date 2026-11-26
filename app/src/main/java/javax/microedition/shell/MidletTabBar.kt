@@ -183,6 +183,15 @@ class MidletTabBarController(
         prunePreviews()
     }
 
+    /** Drops cached previews; they are recaptured the next time the switcher opens. */
+    fun clearPreviews() {
+        // The grid draws these bitmaps; recycling them mid-draw would crash the sheet.
+        if (gridOpen) return
+        previews.values.forEach { it.recycle() }
+        previews.clear()
+        gridPreviews = emptyMap()
+    }
+
     private fun selectFromGrid(tabId: Int) {
         // The outgoing guest is still mounted here, so this is the last frame
         // that can be captured for its card.

@@ -59,6 +59,8 @@ public class Constants {
 	public static final String PREF_STATUSBAR = "pref_statusbar_switch";
 	public static final String PREF_VIBRATION = "pref_vibration_switch";
 	public static final String PREF_SCREENSHOT_SWITCH = "pref_screenshot_switch";
+	public static final String PREF_MEMORY_TRIM_MINUTES = "pref_memory_trim_minutes";
+	public static final String PREF_PERIODIC_GC_MINUTES = "pref_periodic_gc_minutes";
 
 	private Constants(){}
 }

@@ -25,6 +25,7 @@ import static io.github.h3nb.jlmodplus.util.Constants.*;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
+import android.content.ComponentCallbacks2;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
@@ -147,6 +148,9 @@ public class MicroActivity extends AppCompatActivity {
 	private Runnable pendingTerminalProcessCleanup;
 	private boolean runtimeToolbarEnabled;
 	private boolean showStatusBar;
+
+	/** Trims runtime caches on a timer and when Android reports memory pressure. */
+	private RuntimeMemoryJanitor memoryJanitor;
 	private RuntimeChromeClient chromeClient;
 	private boolean orientationLocked;
 	private MicroLoader microLoader;
@@ -1315,6 +1319,7 @@ public class MicroActivity extends AppCompatActivity {
 		// Returning to the runtime must apply the current cutout policy even when
 		// fullscreen did not change and no system-bar callback is dispatched.
 		refreshRuntimeChrome();
+		applyMemoryJanitorSettings();
 		if (memoryEditorController != null) {
 			memoryEditorController.onHostResumed();
 		}
@@ -1322,6 +1327,33 @@ public class MicroActivity extends AppCompatActivity {
 		publishRuntimeSession();
 	}
 
+	/**
+	 * Starts the memory janitor and applies the intervals stored in preferences. Settings
+	 * runs in another process, so the values are re-read here rather than observed.
+	 */
+	private void applyMemoryJanitorSettings() {
+		if (memoryJanitor == null) {
+			memoryJanitor = new RuntimeMemoryJanitor(() -> runOnUiThread(() -> {
+				if (tabBarController != null) tabBarController.clearPreviews();
+			}));
+		}
+		// shortcut: interval changes apply on the next resume, not immediately.
+		SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+		memoryJanitor.setIntervals(
+				sp.getInt(PREF_MEMORY_TRIM_MINUTES, 30),
+				sp.getInt(PREF_PERIODIC_GC_MINUTES, 0));
+	}
+
+	@Override
+	public void onTrimMemory(int level) {
+		super.onTrimMemory(level);
+		if (memoryJanitor == null) return;
+		if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
+				|| level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+				|| level == ComponentCallbacks2.TRIM_MEMORY_COMPLETE) {
+			memoryJanitor.trimNow();
+		}
+	}
 	private static boolean backgroundSetupAsked;
 
 	/**
@@ -1399,6 +1431,9 @@ public class MicroActivity extends AppCompatActivity {
 		}
 		Runnable processCleanup = pendingTerminalProcessCleanup;
 		pendingTerminalProcessCleanup = null;
+		if (memoryJanitor != null) {
+			memoryJanitor.stop();
+		}
 		try {
 			PlatformRequestHandler.cancelForHost(this);
 			CameraRuntime.onHostDestroyed(this);
