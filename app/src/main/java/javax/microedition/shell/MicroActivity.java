@@ -28,6 +28,7 @@ import android.app.ActivityManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Point;
@@ -126,6 +127,8 @@ public class MicroActivity extends AppCompatActivity {
 	static final int ORIENTATION_PORTRAIT = 2;
 	static final int ORIENTATION_LANDSCAPE = 3;
 	private static final int DEFAULT_RUNTIME_TOOLBAR_HEIGHT_DP = 48;
+	/** Window-switcher previews are stored at this width; taller cards crop. */
+	private static final int PREVIEW_WIDTH = 480;
 	private static final int MAX_IME_REQUEST_ATTEMPTS = 30;
 	private static final long IME_REQUEST_RETRY_DELAY_MILLIS = 100L;
 	private static final String STATE_EXPECTED_APP_ID = "expected_library_app_id";
@@ -743,7 +746,44 @@ public class MicroActivity extends AppCompatActivity {
 					public void onCloseTab(int tabId) {
 						closeTab(tabId);
 					}
-				});
+				}, this::captureTabPreview, appName);
+	}
+
+	/**
+	 * Captures the mounted guest frame for the window switcher. Canvas content is
+	 * a SurfaceView, so View.draw alone would only capture the host background.
+	 */
+	@Nullable
+	private Bitmap captureTabPreview() {
+		Displayable shown = presentedDisplayable;
+		if (shown instanceof Canvas) {
+			try {
+				return scalePreview(((Canvas) shown).captureSoftwareScreenshot());
+			} catch (RuntimeException failure) {
+				Log.w("MicroActivity", "Could not capture tab preview", failure);
+			}
+		}
+		View content = binding == null ? null : binding.displayableContainer;
+		int width = content == null ? 0 : content.getWidth();
+		int height = content == null ? 0 : content.getHeight();
+		if (width <= 0 || height <= 0) {
+			return null;
+		}
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		content.draw(new android.graphics.Canvas(bitmap));
+		return scalePreview(bitmap);
+	}
+
+	private static Bitmap scalePreview(Bitmap source) {
+		int width = source.getWidth();
+		int height = source.getHeight();
+		if (width <= PREVIEW_WIDTH || height <= 0) {
+			return source;
+		}
+		int scaledHeight = Math.max(1, Math.round(height * PREVIEW_WIDTH / (float) width));
+		Bitmap scaled = Bitmap.createScaledBitmap(source, PREVIEW_WIDTH, scaledHeight, true);
+		source.recycle();
+		return scaled;
 	}
 
 	/** Opens another tab running the game already shown in the selected tab. */
@@ -1076,6 +1116,7 @@ public class MicroActivity extends AppCompatActivity {
 					chrome.toolbarVisible ? View.VISIBLE : View.GONE);
 		}
 		if (tabBarController != null) {
+			tabBarController.setHeaderTitle(title == null ? fallbackTitle : title);
 			tabBarController.refresh();
 		}
 	}
