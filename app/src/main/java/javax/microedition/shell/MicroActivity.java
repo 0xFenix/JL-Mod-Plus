@@ -114,6 +114,7 @@ import io.github.h3nb.jlmodplus.mmapi.RuntimeAudioCoordinator;
 import io.github.h3nb.jlmodplus.mmapi.camera.CameraRuntime;
 import io.github.h3nb.jlmodplus.runtime.MidletKeepAliveService;
 import io.github.h3nb.jlmodplus.runtime.RuntimeReplacementActivity;
+import io.github.h3nb.jlmodplus.runtime.RuntimeSessionMarker;
 import io.github.h3nb.jlmodplus.settings.RuntimeChromeClient;
 import io.github.h3nb.jlmodplus.settings.RuntimeChromeState;
 import io.github.h3nb.jlmodplus.util.EdgeToEdgeCompat;
@@ -484,6 +485,7 @@ public class MicroActivity extends AppCompatActivity {
 			// has resumed this host so API 35+ focus eligibility is already established.
 			pendingMidletLaunch = true;
 		}
+		publishRuntimeSession();
 	}
 
 	private void initializeRuntimeMenu() {
@@ -808,6 +810,7 @@ public class MicroActivity extends AppCompatActivity {
 		}
 		amsRegistry.selectTab(previous);
 		tabBarController.refresh();
+		publishRuntimeSession();
 		launchTabMidlet(tab.id);
 	}
 
@@ -867,6 +870,29 @@ public class MicroActivity extends AppCompatActivity {
 		return selected;
 	}
 
+	/**
+	 * Publishes the live tab count and selected suite for the Library's running entry. Called
+	 * only from tab mutations and Activity lifecycle callbacks, never from a frame loop.
+	 */
+	private void publishRuntimeSession() {
+		if (amsRegistry == null) {
+			return;
+		}
+		String lastAppPath = appPath;
+		String lastAppName = appName;
+		for (AmsRegistry.Tab tab : amsRegistry.snapshot()) {
+			if (tab.id == amsRegistry.selectedId()) {
+				if (tab.appPath != null) lastAppPath = tab.appPath;
+				if (tab.title != null) lastAppName = tab.title;
+				break;
+			}
+		}
+		if (lastAppPath == null) {
+			return;
+		}
+		RuntimeSessionMarker.write(this, amsRegistry.size(), lastAppPath, lastAppName);
+	}
+
 	/** Records the launched MIDlet on the selected tab for per-tab suite identity. */
 	private void noteLaunchedSuite(String mainClass) {
 		launchedMainClass = mainClass;
@@ -923,6 +949,7 @@ public class MicroActivity extends AppCompatActivity {
 			toast(R.string.error);
 			amsRegistry.closeTab(tabId);
 			tabBarController.refresh();
+			publishRuntimeSession();
 			return;
 		}
 		MicroLoader tabLoader = new MicroLoader(
@@ -1038,6 +1065,7 @@ public class MicroActivity extends AppCompatActivity {
 			display.refreshHostPresentation();
 		}
 		tabBarController.refresh();
+		publishRuntimeSession();
 		updateRuntimeMenuState(current);
 	}
 
@@ -1061,9 +1089,11 @@ public class MicroActivity extends AppCompatActivity {
 		runOnUiThread(() -> {
 			amsRegistry.closeTab(tabId);
 			if (amsRegistry.size() == 0) {
+				RuntimeSessionMarker.clear(this);
 				leaveRuntimeHost(returnToLibrary, null);
 				return;
 			}
+			publishRuntimeSession();
 			switchToTab(amsRegistry.selectedId());
 		});
 	}
@@ -1276,6 +1306,7 @@ public class MicroActivity extends AppCompatActivity {
 			memoryEditorController.onHostResumed();
 		}
 		maybeAskBackgroundSetup();
+		publishRuntimeSession();
 	}
 
 	private static boolean backgroundSetupAsked;
@@ -1345,6 +1376,13 @@ public class MicroActivity extends AppCompatActivity {
 
 	@Override
 	protected void onDestroy() {
+		// A resident runtime that merely yielded its host must keep the Library's running entry.
+		// The registry always retains one tab, so the live runtime count is the real "not finished".
+		if (isFinishing() && MidletThread.liveTabCount() == 0) {
+			RuntimeSessionMarker.clear(this);
+		} else {
+			publishRuntimeSession();
+		}
 		Runnable processCleanup = pendingTerminalProcessCleanup;
 		pendingTerminalProcessCleanup = null;
 		try {
@@ -1426,6 +1464,10 @@ public class MicroActivity extends AppCompatActivity {
 			}
 			if (processCleanup != null && pendingTerminalProcessCleanup == null) {
 				pendingTerminalProcessCleanup = processCleanup;
+			}
+			if (processCleanup != null) {
+				// Terminal departure: hide the Library's running entry before it can be resumed.
+				RuntimeSessionMarker.clear(this);
 			}
 			if (isDestroyed()) {
 				runPendingTerminalProcessCleanup();

@@ -14,7 +14,9 @@
 
 package io.github.h3nb.jlmodplus.applist
 
+import android.content.Intent
 import android.view.KeyEvent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
@@ -172,6 +174,8 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import io.github.h3nb.jlmodplus.R
 import io.github.h3nb.jlmodplus.librarydb.LibraryQuickView
+import io.github.h3nb.jlmodplus.runtime.RuntimeSessionMarker
+import io.github.h3nb.jlmodplus.util.Constants
 import io.github.h3nb.jlmodplus.updates.UpdateCandidate
 import io.github.h3nb.jlmodplus.updates.UpdateRepository
 import io.github.h3nb.jlmodplus.updates.UpdateStatus
@@ -184,6 +188,7 @@ import io.github.h3nb.jlmodplus.ui.pageEnter
 import io.github.h3nb.jlmodplus.ui.pageExit
 import io.github.h3nb.jlmodplus.ui.clearNavigationFocusOnTouch
 import io.github.h3nb.jlmodplus.ui.showNavigationFocusForKey
+import javax.microedition.shell.MicroActivity
 import kotlin.math.roundToInt
 import kotlin.math.abs
 
@@ -313,6 +318,26 @@ fun LibraryScreen(
     }
     val hostResumed = hostLifecycle?.currentStateFlow?.collectAsState()?.value
         ?.isAtLeast(Lifecycle.State.RESUMED) == true
+    // The runtime lives in another process; its marker is the only view this screen has of it.
+    var runningSession by remember { mutableStateOf<RuntimeSessionMarker.Session?>(null) }
+    LaunchedEffect(hostResumed, isInspection) {
+        if (isInspection) return@LaunchedEffect
+        runningSession = if (hostResumed) RuntimeSessionMarker.read(context) else null
+    }
+    val launchContext = LocalContext.current
+    val openRuntime = {
+        val session = runningSession
+        if (session != null) {
+            val intent = Intent(launchContext, MicroActivity::class.java)
+                .setAction(Intent.ACTION_MAIN)
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            // The suite path lets a torn-down host relaunch instead of showing an invalid intent;
+            // a live runtime reattaches in MicroActivity.onCreate.
+            session.appPath?.let { intent.data = Uri.parse(it) }
+            session.appName?.let { intent.putExtra(Constants.KEY_MIDLET_NAME, it) }
+            launchContext.startActivity(intent)
+        }
+    }
     LaunchedEffect(hostResumed, updateRepository?.automaticChecks) {
         val repository = updateRepository ?: return@LaunchedEffect
         if (BuildConfig.DEBUG || !hostResumed || !repository.automaticChecks) return@LaunchedEffect
@@ -1266,6 +1291,8 @@ fun LibraryScreen(
                             },
                             active = destination == LibraryDestinationKey.Apps &&
                                 !collectionManageAppsActive,
+                            runningSession = runningSession,
+                            onOpenRuntime = openRuntime,
                         )
                         LibraryDestinationKey.Collections -> if (collectionsHost != null) {
                             LibraryCollectionsManagementDestination(
@@ -1728,6 +1755,8 @@ internal fun LibraryAppsDestination(
     freezeViewport: Boolean = false,
     preserveImePaddingWhileFrozen: Boolean = false,
     active: Boolean = true,
+    runningSession: RuntimeSessionMarker.Session? = null,
+    onOpenRuntime: () -> Unit = {},
 ) {
     val sortFocus = remember { FocusRequester() }
     val listState = viewportState.listState
@@ -1959,6 +1988,11 @@ internal fun LibraryAppsDestination(
                             LibraryChromeSpacer(headerHeightPx, headerOffsetPx)
                         }
                     }
+                    runningSession?.let { session ->
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            LibraryRunningSessionBanner(session, onOpen = onOpenRuntime)
+                        }
+                    }
                     when {
                         state.errorMessage != null -> item(span = { GridItemSpan(maxLineSpan) }) {
                             LibraryErrorState(retry)
@@ -2032,6 +2066,11 @@ internal fun LibraryAppsDestination(
                         )
                     } else {
                         LibraryChromeSpacer(headerHeightPx, headerOffsetPx)
+                    }
+                }
+                runningSession?.let { session ->
+                    item {
+                        LibraryRunningSessionBanner(session, onOpen = onOpenRuntime)
                     }
                 }
                 when {
@@ -2109,6 +2148,52 @@ internal fun LibraryAppsDestination(
         }
         val scrimVisible by remember(headerOffsetPx) { derivedStateOf { headerOffsetPx.floatValue < -1f } }
         GlassSystemBarScrim(visible = scrimVisible)
+    }
+}
+
+@Composable
+private fun LibraryRunningSessionBanner(
+    session: RuntimeSessionMarker.Session,
+    onOpen: () -> Unit,
+) {
+    Surface(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_play),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(
+                    text = stringResource(R.string.library_running_title, session.tabs),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                session.appName?.takeIf { it.isNotBlank() }?.let { name ->
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+        }
     }
 }
 
