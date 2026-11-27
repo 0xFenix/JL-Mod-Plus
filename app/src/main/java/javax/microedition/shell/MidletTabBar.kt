@@ -29,17 +29,22 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import io.github.h3nb.jlmodplus.ui.AdaptiveAlertDialog as AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +67,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -70,6 +76,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.h3nb.jlmodplus.R
 import io.github.h3nb.jlmodplus.ui.JLModPlusTheme
+import io.github.h3nb.jlmodplus.ui.ScrollableContentHint
+import io.github.h3nb.jlmodplus.ui.adaptiveDialogLayout
+import io.github.h3nb.jlmodplus.ui.rememberLazyListCanScrollForward
 
 /** Host actions for the multi-MIDlet window switcher. Actual tab launching stays in [MicroActivity]. */
 interface MidletTabActions {
@@ -260,40 +269,68 @@ private fun MidletWindowGrid(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 8.dp, top = 8.dp),
+                        .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.midlet_tab_windows),
-                        style = MaterialTheme.typography.titleLarge,
+                    Row(
                         modifier = Modifier.weight(1f),
-                    )
-                    IconButton(
-                        onClick = onOpenSuitePicker,
-                        modifier = Modifier.testTag("midlet_tab_pick"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_apps),
-                            contentDescription = stringResource(R.string.midlet_tab_pick_description),
-                            modifier = Modifier.size(20.dp),
+                        Text(
+                            text = stringResource(R.string.midlet_tab_windows),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = CircleShape,
+                        ) {
+                            Text(
+                                text = tabs.size.toString(),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = onOpenSuitePicker,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("midlet_tab_pick"),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_apps),
+                                contentDescription = stringResource(R.string.midlet_tab_pick_description),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                     TextButton(onClick = onDismiss) {
                         Text(stringResource(R.string.midlet_tab_windows_done))
                     }
                 }
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                )
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
                 ) {
-                    val spacing = 12.dp
-                    // Two rows exactly fill the viewport; the fifth card scrolls.
-                    val cardHeight = ((maxHeight - spacing * 3) / 2).coerceAtLeast(120.dp)
+                    val spacing = 10.dp
+                    val cardHeight = 208.dp
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(spacing),
+                        columns = GridCells.Adaptive(minSize = 152.dp),
+                        contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(spacing),
                         verticalArrangement = Arrangement.spacedBy(spacing),
                         modifier = Modifier
@@ -304,6 +341,7 @@ private fun MidletWindowGrid(
                             val index = tabs.indexOfFirst { it.id == tab.id }
                             WindowCard(
                                 tab = tab,
+                                slotNumber = index + 1,
                                 title = tab.title ?: fallbackTitle ?: tab.label,
                                 preview = previews[tab.id],
                                 selected = tab.id == selectedId,
@@ -331,6 +369,7 @@ private fun MidletWindowGrid(
 @Composable
 private fun WindowCard(
     tab: AmsRegistry.Tab,
+    slotNumber: Int,
     title: String,
     preview: Bitmap?,
     selected: Boolean,
@@ -340,16 +379,17 @@ private fun WindowCard(
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Surface(
         selected = selected,
         onClick = onSelect,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        contentColor = colors.onSurface,
         border = if (selected) {
-            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            BorderStroke(2.dp, colors.primary)
         } else {
-            null
+            BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.45f))
         },
         modifier = Modifier
             .fillMaxWidth()
@@ -370,12 +410,12 @@ private fun WindowCard(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                            .background(colors.surfaceContainerHigh),
                     ) {
                         Text(
                             text = title,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colors.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -383,38 +423,59 @@ private fun WindowCard(
                         )
                     }
                 }
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = if (selected) colors.primary else colors.surfaceContainerHighest.copy(alpha = 0.9f),
+                    contentColor = if (selected) colors.onPrimary else colors.onSurface,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp),
+                ) {
+                    Text(
+                        text = "#$slotNumber",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
             // The close affordance shares the caption band with the title: over the preview it
             // needed a scrim circle that read as a smudge on bright screenshots.
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 4.dp),
+            Surface(
+                color = if (selected) colors.primaryContainer else colors.surfaceContainer,
+                contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 8.dp),
-                )
-                if (canClose) {
-                    IconButton(
-                        onClick = onClose,
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, end = 4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .size(40.dp)
-                            .semantics { contentDescription = closeDescription }
-                            .testTag("midlet_tab_close"),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp),
-                        )
+                            .weight(1f)
+                            .padding(vertical = 8.dp),
+                    )
+                    if (canClose) {
+                        IconButton(
+                            onClick = onClose,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .semantics { contentDescription = closeDescription }
+                                .testTag("midlet_tab_close"),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = null,
+                                tint = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -427,21 +488,43 @@ private fun AddWindowCard(
     cardHeight: Dp,
     onAdd: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Surface(
         onClick = onAdd,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        color = colors.surfaceContainerLow,
+        contentColor = colors.onSurfaceVariant,
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.6f)),
         modifier = Modifier
             .fillMaxWidth()
             .height(cardHeight)
             .testTag("midlet_tab_add"),
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                painter = painterResource(R.drawable.ic_add),
-                contentDescription = stringResource(R.string.midlet_tab_add_description),
-                modifier = Modifier.size(36.dp),
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(colors.primaryContainer, CircleShape),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_add),
+                    contentDescription = null,
+                    tint = colors.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            Text(
+                text = stringResource(R.string.midlet_tab_add_description),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -455,10 +538,23 @@ private fun CloseTabConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                painter = painterResource(R.drawable.ic_warning),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+            )
+        },
         title = { Text(stringResource(R.string.midlet_tab_close_confirm_title, tabNumber)) },
         text = { Text(stringResource(R.string.midlet_tab_close_confirm_message)) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) {
                 Text(stringResource(R.string.midlet_tab_close_confirm_action))
             }
         },
@@ -476,29 +572,24 @@ private fun MidletSuitePickerDialog(
     onPick: (MidletTabSuite) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
+    val listState = rememberLazyListState()
+    val maxListHeight = adaptiveDialogLayout().maxHeight
+    val canScrollForward = rememberLazyListCanScrollForward(listState)
+    AlertDialog(
+        textScrollable = false,
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 480.dp),
-        ) {
-            Column(modifier = Modifier.padding(vertical = 24.dp)) {
-                Text(
-                    text = stringResource(R.string.midlet_tab_pick_suite),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
-                Spacer(Modifier.height(16.dp))
+        title = { Text(stringResource(R.string.midlet_tab_pick_suite)) },
+        text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = maxListHeight),
+            ) {
                 LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxListHeight),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(suites, key = { it.appPath }) { suite ->
@@ -535,22 +626,28 @@ private fun MidletSuitePickerDialog(
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_chevron_right),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
                     }
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, start = 16.dp, end = 16.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                }
+                ScrollableContentHint(
+                    visible = canScrollForward,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
-        }
-    }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
 }
