@@ -587,6 +587,24 @@ public class MicroActivity extends AppCompatActivity {
 					}
 
 					@Override
+					public void onTrimMemoryNow() {
+						// An explicit clean also collects; the scheduled GC interval stays opt-in.
+						applyMemoryJanitorSettings();
+						memoryJanitor.trimNow();
+						System.gc();
+					}
+
+					@Override
+					public void onMemoryIntervalsChanged(int trimMinutes, int gcMinutes) {
+						PreferenceManager.getDefaultSharedPreferences(getApplicationContext())
+								.edit()
+								.putInt(PREF_MEMORY_TRIM_MINUTES, trimMinutes)
+								.putInt(PREF_PERIODIC_GC_MINUTES, gcMinutes)
+								.apply();
+						applyMemoryJanitorSettings();
+					}
+
+					@Override
 					public void onEditVirtualKeyboardLayout() {
 						if (runtimePreferences != null && runtimePreferences.getBoolean(
 								RuntimeUiPreferences.HIDE_LAYOUT_EDIT_GUIDE, false)) {

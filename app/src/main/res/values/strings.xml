@@ -165,6 +165,14 @@
     <string name="runtime_memory_gc_warning">Có thể giật vài trăm ms khi đang chơi, chỉ dùng khi bạn thực sự cần.</string>
     <string name="runtime_memory_off">Tắt</string>
     <string name="runtime_memory_minutes">%1$d phút</string>
+    <string name="runtime_memory_panel_title">Dọn dẹp RAM</string>
+    <string name="runtime_memory_total">Tổng RAM</string>
+    <string name="runtime_memory_available">RAM còn trống</string>
+    <string name="runtime_memory_used">RAM đang dùng</string>
+    <string name="runtime_memory_app_usage">Bộ nhớ ứng dụng</string>
+    <string name="runtime_memory_clean_now">Dọn ngay</string>
+    <string name="runtime_memory_freed">Đã giải phóng %1$s</string>
+    <string name="runtime_memory_close">Đóng</string>
     <string name="library_icon_ratio_title">Icon aspect ratio</string>
     <string name="library_icon_ratio_square">Square (1:1)</string>
     <string name="library_icon_ratio_portrait">Portrait (3:4)</string>

@@ -14,10 +14,14 @@
 
 package javax.microedition.shell
 
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Typeface
+import android.os.Process
 import android.text.TextPaint
+import android.text.format.Formatter
 import android.util.TypedValue
 
 import androidx.compose.foundation.BorderStroke
@@ -46,6 +50,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -71,6 +77,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.draw.clipToBounds
@@ -93,6 +100,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.preference.PreferenceManager
 import io.github.h3nb.jlmodplus.R
 import io.github.h3nb.jlmodplus.input.HostCommand
 import io.github.h3nb.jlmodplus.net.ProxyListActivity
@@ -110,6 +118,8 @@ import io.github.h3nb.jlmodplus.ui.adaptiveDialogLayout
 import io.github.h3nb.jlmodplus.ui.clearNavigationFocusOnTouch
 import io.github.h3nb.jlmodplus.ui.rememberLazyListCanScrollForward
 import io.github.h3nb.jlmodplus.ui.showNavigationFocusForKey
+import io.github.h3nb.jlmodplus.util.Constants.PREF_MEMORY_TRIM_MINUTES
+import io.github.h3nb.jlmodplus.util.Constants.PREF_PERIODIC_GC_MINUTES
 import javax.microedition.shell.timing.EmulationSpeed
 import kotlin.math.max
 import kotlin.math.ceil
@@ -165,6 +175,9 @@ interface RuntimeMenuActions {
     fun onToggleRuntimeMenu() {}
     fun onProxy() {}
     fun onOpenWindows() {}
+    fun onMemoryPanel() {}
+    fun onTrimMemoryNow() {}
+    fun onMemoryIntervalsChanged(trimMinutes: Int, gcMinutes: Int) {}
     fun onEditVirtualKeyboardLayout()
 
     fun onFinishVirtualKeyboardLayout()
@@ -192,6 +205,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
     private var filePermissionPrompt by mutableStateOf<FilePermissionPrompt?>(null)
     private var packageChoice by mutableStateOf<PlatformPackageChoice?>(null)
     private var proxyPicker by mutableStateOf<ProxyPickerContent?>(null)
+    private var memoryPanel by mutableStateOf<MemoryPanelContent?>(null)
     private var hostDialogState by mutableStateOf<RuntimeHostDialogState?>(null)
     private var virtualKeyboardPage by mutableStateOf(false)
     private var controllerFocusIndex by mutableIntStateOf(0)
@@ -229,6 +243,14 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
                 menuVisible = false
                 virtualKeyboardPage = false
                 proxyPicker = content
+            }
+        }
+
+        override fun onMemoryPanel() {
+            changeControllerSurface {
+                menuVisible = false
+                virtualKeyboardPage = false
+                memoryPanel = loadMemoryPanel()
             }
         }
     }
@@ -329,6 +351,21 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
                                     )
                                 },
                                 onDismiss = { changeControllerSurface { proxyPicker = null } },
+                            )
+                        }
+                    }
+                    memoryPanel?.let { content ->
+                        ControllerDialogInputScope(
+                            onControllerKeyEvent = dialogKeyDispatcher,
+                            onControllerMotionEvent = dialogMotionDispatcher,
+                            onControllerHostCommandHandlerChanged = { dialogHostCommandHandler = it },
+                        ) {
+                            RuntimeMemoryDialog(
+                                initialTrimMinutes = content.trimMinutes,
+                                initialGcMinutes = content.gcMinutes,
+                                onTrimNow = actions::onTrimMemoryNow,
+                                onIntervalsChanged = actions::onMemoryIntervalsChanged,
+                                onDismiss = { changeControllerSurface { memoryPanel = null } },
                             )
                         }
                     }
@@ -479,6 +516,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             || limitFpsVisible
             || emulationSpeedVisible
             || proxyPicker != null
+            || memoryPanel != null
             || hostDialogState != null
             || filePermissionPrompt != null
             || packageChoice != null
@@ -494,6 +532,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
             limitFpsVisible = false
             emulationSpeedVisible = false
             proxyPicker = null
+            memoryPanel = null
             hostDialogState = null
             filePermissionPrompt = null
             packageChoice = null
@@ -513,7 +552,7 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
         if (!isMenuVisible()) return false
         if (filePermissionPrompt != null || packageChoice != null
                 || hostDialogState != null || limitFpsVisible || emulationSpeedVisible
-                || proxyPicker != null) {
+                || proxyPicker != null || memoryPanel != null) {
             // Dialog semantics stay inside Compose. Preserve both DOWN and UP so a focused Compose
             // control receives a complete Activate key sequence. Consume during composition
             // hand-off as well so no controller edge can leak into the MIDlet behind the modal.
@@ -650,6 +689,14 @@ class RuntimeMenuComposeController @JvmOverloads constructor(
         changeControllerSurface { hostDialogState = RuntimeHostDialogState.LayoutEditGuide }
     }
 
+    private fun loadMemoryPanel(): MemoryPanelContent {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(composeView.context)
+        return MemoryPanelContent(
+            trimMinutes = prefs.getInt(PREF_MEMORY_TRIM_MINUTES, 30),
+            gcMinutes = prefs.getInt(PREF_PERIODIC_GC_MINUTES, 0),
+        )
+    }
+
     private fun loadProxyPicker(): ProxyPickerContent? {
         val tabId = MidletTabRouter.selectedTabId()
         val storageKey = MicroLoader.storageKeyForTab(tabId) ?: return null
@@ -688,6 +735,11 @@ private data class ProxyPickerContent(
     val slotIndex: Int,
     val entries: List<ProxyStore.Entry>,
     val selectedId: String?,
+)
+
+private data class MemoryPanelContent(
+    val trimMinutes: Int,
+    val gcMinutes: Int,
 )
 
 private data class PlatformPackageChoice(
@@ -798,6 +850,177 @@ private fun ProxyChoiceRow(
             }
         }
     }
+}
+
+@Composable
+private fun RuntimeMemoryDialog(
+    initialTrimMinutes: Int,
+    initialGcMinutes: Int,
+    onTrimNow: () -> Unit,
+    onIntervalsChanged: (trimMinutes: Int, gcMinutes: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    var stats by remember { mutableStateOf(readRuntimeMemoryStats(context)) }
+    var freedBytes by remember { mutableStateOf<Long?>(null) }
+    var trimMinutes by remember { mutableIntStateOf(initialTrimMinutes) }
+    var gcMinutes by remember { mutableIntStateOf(initialGcMinutes) }
+    val dialogBounds = adaptiveDialogLayout()
+    val scrollState = rememberScrollState()
+    val canScrollForward by remember(scrollState) { derivedStateOf { scrollState.canScrollForward } }
+    AlertDialog(
+        textScrollable = false,
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.runtime_memory_panel_title)) },
+        text = {
+            Box(
+                modifier = Modifier.fillMaxWidth().heightIn(max = dialogBounds.maxHeight),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(scrollState),
+                ) {
+                    MemoryStatRow(
+                        label = R.string.runtime_memory_total,
+                        value = Formatter.formatFileSize(context, stats.totalBytes),
+                    )
+                    MemoryStatRow(
+                        label = R.string.runtime_memory_available,
+                        value = Formatter.formatFileSize(context, stats.availableBytes),
+                    )
+                    MemoryStatRow(
+                        label = R.string.runtime_memory_used,
+                        value = Formatter.formatFileSize(context, stats.usedBytes),
+                    )
+                    MemoryStatRow(
+                        label = R.string.runtime_memory_app_usage,
+                        value = Formatter.formatFileSize(context, stats.appBytes),
+                    )
+                    freedBytes?.takeIf { it > 0L }?.let { freed ->
+                        Text(
+                            text = stringResource(
+                                R.string.runtime_memory_freed,
+                                Formatter.formatFileSize(context, freed),
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            onTrimNow()
+                            val next = readRuntimeMemoryStats(context)
+                            // shortcut: PSS delta is a best-effort estimate; collection may finish lazily.
+                            freedBytes = (stats.appBytes - next.appBytes).coerceAtLeast(0L)
+                            stats = next
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .heightIn(min = 48.dp),
+                    ) {
+                        Text(stringResource(R.string.runtime_memory_clean_now))
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                    MemoryIntervalGroup(
+                        title = R.string.runtime_memory_trim_title,
+                        options = listOf(0, 15, 30, 60),
+                        selected = trimMinutes,
+                        onSelect = { minutes ->
+                            trimMinutes = minutes
+                            onIntervalsChanged(trimMinutes, gcMinutes)
+                        },
+                    )
+                    MemoryIntervalGroup(
+                        title = R.string.runtime_memory_gc_title,
+                        options = listOf(0, 5, 15, 30),
+                        selected = gcMinutes,
+                        onSelect = { minutes ->
+                            gcMinutes = minutes
+                            onIntervalsChanged(trimMinutes, gcMinutes)
+                        },
+                    )
+                    Text(
+                        text = stringResource(R.string.runtime_memory_gc_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                ScrollableContentHint(
+                    visible = canScrollForward,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.runtime_memory_close))
+            }
+        },
+    )
+}
+
+@Composable
+private fun MemoryStatRow(label: Int, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = stringResource(label),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun MemoryIntervalGroup(
+    title: Int,
+    options: List<Int>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    Text(
+        text = stringResource(title),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    options.forEach { minutes ->
+        ProxyChoiceRow(
+            title = if (minutes == 0) {
+                stringResource(R.string.runtime_memory_off)
+            } else {
+                stringResource(R.string.runtime_memory_minutes, minutes)
+            },
+            detail = null,
+            selected = selected == minutes,
+            onClick = { onSelect(minutes) },
+        )
+    }
+}
+
+private data class RuntimeMemoryStats(
+    val totalBytes: Long,
+    val availableBytes: Long,
+    val appBytes: Long,
+) {
+    val usedBytes: Long get() = (totalBytes - availableBytes).coerceAtLeast(0L)
+}
+
+private fun readRuntimeMemoryStats(context: Context): RuntimeMemoryStats {
+    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val memoryInfo = ActivityManager.MemoryInfo()
+    activityManager.getMemoryInfo(memoryInfo)
+    val appBytes = activityManager.getProcessMemoryInfo(intArrayOf(Process.myPid()))
+        ?.firstOrNull()?.totalPss?.toLong()?.times(1024L) ?: 0L
+    return RuntimeMemoryStats(memoryInfo.totalMem, memoryInfo.availMem, appBytes)
 }
 
 @Composable
@@ -1481,6 +1704,7 @@ internal fun runtimeMenuEntries(
     if (RuntimeToolbarShortcut.Windows !in shortcuts) {
         action(R.string.midlet_tab_windows, R.drawable.ic_view_grid, callback = actions::onOpenWindows)
     }
+    action(R.string.runtime_memory_panel_title, R.drawable.ic_delete, callback = actions::onMemoryPanel)
     if (state.isCanvas) {
         action(R.string.pref_runtime_fullscreen_title, R.drawable.ic_runtime_fullscreen, !state.toolbarVisible,
             callback = actions::onToggleFullscreen)

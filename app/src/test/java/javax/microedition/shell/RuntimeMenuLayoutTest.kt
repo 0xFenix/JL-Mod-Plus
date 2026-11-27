@@ -70,6 +70,7 @@ class RuntimeMenuLayoutTest {
             override fun onToggleFullscreen() { events += "fullscreen" }
             override fun onOpenImeKeyboard() { events += "ime" }
             override fun onEmulationSpeed() { events += "speed" }
+            override fun onMemoryPanel() { events += "memory" }
         }
         val entries = runtimeMenuEntries(
             canvas.copy(toolbarVisible = false), emptyList(), false, actions,
@@ -78,7 +79,7 @@ class RuntimeMenuLayoutTest {
         assertEquals(
             listOf(
                 R.string.action_lock_orientation, R.string.proxy_menu_label,
-                R.string.midlet_tab_windows,
+                R.string.midlet_tab_windows, R.string.runtime_memory_panel_title,
                 R.string.pref_runtime_fullscreen_title, R.string.PREF_LIMIT_FPS,
                 R.string.runtime_virtual_controls_title, R.string.save_log,
                 R.string.action_keyboard_ime, R.string.take_screenshot,
@@ -88,10 +89,15 @@ class RuntimeMenuLayoutTest {
         )
         // Controller activation uses this same ordered list as the rendered rows.
         entries[3].activate()
-        entries[7].activate()
-        entries[9].activate()
-        entries[5].activate()
-        assertEquals(listOf("dismiss", "fullscreen", "dismiss", "ime", "dismiss", "speed", "virtualControls"), events)
+        entries[4].activate()
+        entries[8].activate()
+        entries[10].activate()
+        entries[6].activate()
+        assertEquals(
+            listOf("dismiss", "memory", "dismiss", "fullscreen",
+                "dismiss", "ime", "dismiss", "speed", "virtualControls"),
+            events,
+        )
     }
 
     @Test
@@ -122,7 +128,8 @@ class RuntimeMenuLayoutTest {
         assertEquals(listOf(RuntimeToolbarShortcut.Windows), runtimeToolbarShortcuts(form, 640f))
         assertEquals(
             listOf(R.string.action_lock_orientation,
-                R.string.proxy_menu_label, R.string.midlet_tab_windows, R.string.save_log,
+                R.string.proxy_menu_label, R.string.midlet_tab_windows,
+                R.string.runtime_memory_panel_title, R.string.save_log,
                 R.string.runtime_restart, R.string.exit),
             menu(form).map { it.label },
         )
