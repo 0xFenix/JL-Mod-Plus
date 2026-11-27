@@ -92,7 +92,7 @@ internal object KeyboardLayoutValidator {
                 TYPE -> {
                     if (length < 1) return "layout type block is empty"
                     val variant = input.readUnsignedByte()
-                    if (variant > VirtualControlsKeyboard.TYPE_ANALOG_STANDARD) {
+                    if (variant > VirtualKeyboard.TYPE_ARROWS) {
                         return "layout type is invalid"
                     }
                     skipFully(input, length - 1)
@@ -178,7 +178,7 @@ internal object KeyboardLayoutValidator {
                 TYPE -> {
                     if (type != null || length != 1) return "layout type block is invalid"
                     val value = input.readUnsignedByte()
-                    if (value > VirtualControlsKeyboard.TYPE_ANALOG_STANDARD) {
+                    if (value > VirtualKeyboard.TYPE_ARROWS) {
                         return "layout type is invalid"
                     }
                     type = value
@@ -188,7 +188,7 @@ internal object KeyboardLayoutValidator {
                         return "layout base block is invalid"
                     }
                     val value = input.readUnsignedByte()
-                    if (value !in 1..VirtualControlsKeyboard.TYPE_ANALOG_STANDARD) {
+                    if (value !in 1..VirtualKeyboard.TYPE_ARROWS) {
                         return "layout base type is invalid"
                     }
                     baseVariant = value

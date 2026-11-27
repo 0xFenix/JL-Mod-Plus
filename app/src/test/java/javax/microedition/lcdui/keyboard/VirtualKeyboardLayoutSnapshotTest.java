@@ -50,53 +50,15 @@ public class VirtualKeyboardLayoutSnapshotTest {
 	}
 
 	@Test
-	public void untouchedStandardTemplateIgnoresViewportDerivedReflow() {
-		VirtualKeyboardLayoutSnapshot portrait = legacy(
-				VirtualControlsKeyboard.TYPE_DPAD_STANDARD, 3.0f).withGroupedControls(
+	public void groupedControlGeometryChangeIsDirty() {
+		VirtualKeyboardLayoutSnapshot baseline = legacy(3.0f).withGroupedControls(
 				true, false,
 				0.20f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				true, false);
-		VirtualKeyboardLayoutSnapshot landscape = legacy(
-				VirtualControlsKeyboard.TYPE_DPAD_STANDARD, 120.0f).withGroupedControls(
-				true, false,
-				0.14f, 0.55f, 0.20f,
-				0.14f, 0.55f, 0.20f,
-				true, false);
-
-		assertEquals(portrait, landscape);
-	}
-
-	@Test
-	public void nonStandardLayoutIgnoresTransientStandardTemplateFlag() {
-		VirtualKeyboardLayoutSnapshot first = legacy(3.0f).withGroupedControls(
-				true, false,
-				0.20f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				false, false);
-		VirtualKeyboardLayoutSnapshot second = legacy(3.0f).withGroupedControls(
-				true, false,
-				0.20f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				false, true);
-
-		assertEquals(first, second);
-	}
-
-	@Test
-	public void editedStandardTemplateKeepsRealGeometryInDirtyComparison() {
-		VirtualKeyboardLayoutSnapshot baseline = legacy(
-				VirtualControlsKeyboard.TYPE_DPAD_STANDARD, 3.0f).withGroupedControls(
-				true, false,
-				0.20f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				true, true);
-		VirtualKeyboardLayoutSnapshot changed = legacy(
-				VirtualControlsKeyboard.TYPE_DPAD_STANDARD, 3.0f).withGroupedControls(
+				0.20f, 0.82f, 0.16f);
+		VirtualKeyboardLayoutSnapshot changed = legacy(3.0f).withGroupedControls(
 				true, false,
 				0.25f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				true, true);
+				0.20f, 0.82f, 0.16f);
 
 		assertNotEquals(baseline, changed);
 	}

@@ -187,7 +187,7 @@ data class ProfileModel(
 
         @JvmStatic fun createBuiltIn(darkTheme: Boolean, defaultSystemProperties: String): ProfileModel =
             fresh(defaultSystemProperties).apply {
-                vkType = VirtualKeyboard.TYPE_NUMBERS_ARROWS
+                vkType = VirtualKeyboard.TYPE_ARROWS
                 screenBackgroundMode = BackgroundMode.THEME
                 screenBackgroundColor = AppBackgroundColors.rgb(darkTheme)
                 applyBuiltInTheme(this, darkTheme)

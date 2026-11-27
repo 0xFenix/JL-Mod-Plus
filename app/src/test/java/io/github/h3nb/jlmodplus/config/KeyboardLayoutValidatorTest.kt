@@ -26,11 +26,11 @@ import org.junit.jupiter.api.Test
 
 class KeyboardLayoutValidatorTest {
     @Test
-    fun standardLayoutTypesSevenAndEightAreValidButNineIsRejected() {
-        for (type in 0..8) {
+    fun supportedLayoutTypesZeroToSixAreValidButSevenIsRejected() {
+        for (type in 0..6) {
             assertNull(KeyboardLayoutValidator.validate(layoutFile(version = 3, type = type)))
         }
-        assertNotNull(KeyboardLayoutValidator.validate(layoutFile(version = 3, type = 9)))
+        assertNotNull(KeyboardLayoutValidator.validate(layoutFile(version = 3, type = 7)))
     }
 
     @Test
@@ -140,9 +140,9 @@ class KeyboardLayoutValidatorTest {
     @Test
     fun v4KeepsActiveTypeOrthogonalToDormantCustomState() {
         assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(type = 3)))
-        assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(type = 3, base = 7)))
+        assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(type = 3, base = 5)))
         assertNull(KeyboardLayoutValidator.validate(
-            orientationLayoutFile(type = 6, base = 8, portrait = true, landscape = true),
+            orientationLayoutFile(type = 6, base = 6, portrait = true, landscape = true),
         ))
 
         assertNotNull(KeyboardLayoutValidator.validate(orientationLayoutFile(type = 0)))
@@ -150,13 +150,13 @@ class KeyboardLayoutValidatorTest {
             orientationLayoutFile(type = 3, portrait = true),
         ))
         assertNotNull(KeyboardLayoutValidator.validate(
-            orientationLayoutFile(type = 3, base = 7, portrait = true, cycle = true),
+            orientationLayoutFile(type = 3, base = 5, portrait = true, cycle = true),
         ))
     }
 
     @Test
     fun v4AcceptsEverySupportedBaseWithOptionalOrientationOverrides() {
-        for (base in 1..8) {
+        for (base in 1..6) {
             assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = base)))
             assertNull(KeyboardLayoutValidator.validate(
                 orientationLayoutFile(base = base, portrait = true),
@@ -165,7 +165,7 @@ class KeyboardLayoutValidatorTest {
                 orientationLayoutFile(base = base, landscape = true),
             ))
         }
-        assertNotNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = 9)))
+        assertNotNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = 7)))
         assertNotNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = 0)))
     }
 
@@ -232,7 +232,7 @@ class KeyboardLayoutValidatorTest {
         DataOutputStream(FileOutputStream(unknown)).use { out ->
             writeHeader(out, 4)
             writeType(out, 0)
-            writeBase(out, 7)
+            writeBase(out, 6)
             out.writeInt(99)
             out.writeInt(5)
             out.write(byteArrayOf(1, 2, 3, 4, 5))
@@ -243,18 +243,18 @@ class KeyboardLayoutValidatorTest {
 
     @Test
     fun v5SupportsPerKeyScalesWithoutAcceptingWrongSnapshotSizes() {
-        val v5 = orientationLayoutFile(base = 7, portrait = true, version = 5)
+        val v5 = orientationLayoutFile(base = 6, portrait = true, version = 5)
         assertNull(KeyboardLayoutValidator.validate(v5))
         assertNull(KeyboardLayoutValidator.validateBytes(v5.readBytes()))
 
         // Version 5 writes 56 independent width/height scales, not the 12 v4 group scales.
         assertNotNull(KeyboardLayoutValidator.validate(
-            orientationLayoutFile(base = 7, portrait = true, version = 5, scaleCount = 12),
+            orientationLayoutFile(base = 6, portrait = true, version = 5, scaleCount = 12),
         ))
         assertNotNull(KeyboardLayoutValidator.validate(
-            orientationLayoutFile(base = 7, portrait = true, version = 4, scaleCount = 56),
+            orientationLayoutFile(base = 6, portrait = true, version = 4, scaleCount = 56),
         ))
-        assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = 7, portrait = true)))
+        assertNull(KeyboardLayoutValidator.validate(orientationLayoutFile(base = 6, portrait = true)))
     }
 
     @Test

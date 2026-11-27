@@ -40,7 +40,7 @@ public class ProfilesManagerLocalPublicationTest {
 		assertTrue(ProfilesManager.publishBuiltInSnapshot(target,
 				ProfileModel.createBuiltIn(false, "")));
 
-		assertEquals(VirtualKeyboard.TYPE_NUMBERS_ARROWS, readConfig(target).vkType);
+		assertEquals(VirtualKeyboard.TYPE_ARROWS, readConfig(target).vkType);
 		assertFalse(layoutFile(target).exists());
 		assertFalse(new File(target, Config.MIDLET_KEY_LAYOUT_FILE + ".bak").exists());
 	}

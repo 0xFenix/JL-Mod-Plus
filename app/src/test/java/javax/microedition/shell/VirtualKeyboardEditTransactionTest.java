@@ -232,19 +232,6 @@ public class VirtualKeyboardEditTransactionTest {
 	}
 
 	@Test
-	public void viewportOnlySemanticEquivalenceFinishesClean() {
-		VirtualKeyboardLayoutEditState portrait = edit(
-				standardSnapshot(3.0f, 0.20f, 0.82f));
-		VirtualKeyboardLayoutEditState landscape = edit(
-				standardSnapshot(120.0f, 0.14f, 0.55f));
-		VirtualKeyboardEditTransaction transaction = new VirtualKeyboardEditTransaction(portrait);
-
-		assertEquals(
-				VirtualKeyboardEditTransaction.FinishRequest.CLEAN,
-				transaction.requestFinish(landscape));
-	}
-
-	@Test
 	public void landscapeChangeRemainsDirtyAfterReturningToUnchangedPortrait() {
 		VirtualKeyboardLayoutSnapshot portrait = snapshot(3.0f).asCustomOverride();
 		VirtualKeyboardLayoutSnapshot landscape = snapshot(8.0f).asCustomOverride();
@@ -268,7 +255,7 @@ public class VirtualKeyboardEditTransactionTest {
 			VirtualKeyboardLayoutSnapshot portrait,
 			VirtualKeyboardLayoutSnapshot landscape) {
 		VirtualKeyboardLayoutState state = VirtualKeyboardLayoutState
-				.forBase(VirtualControlsKeyboard.TYPE_DPAD_STANDARD)
+				.forBase(javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_ARROWS)
 				.withOverride(VirtualLayoutOrientation.PORTRAIT, portrait.asCustomOverride())
 				.withOverride(VirtualLayoutOrientation.LANDSCAPE, landscape.asCustomOverride());
 		return VirtualKeyboardLayoutEditState.custom(state);
@@ -278,19 +265,7 @@ public class VirtualKeyboardEditTransactionTest {
 		return snapshot(3, offset).withGroupedControls(
 				true, false,
 				0.20f, 0.82f, 0.16f,
-				0.20f, 0.82f, 0.16f,
-				false, false);
-	}
-
-	private static VirtualKeyboardLayoutSnapshot standardSnapshot(
-			float offset,
-			float centerX,
-			float centerY) {
-		return snapshot(7, offset).withGroupedControls(
-				true, false,
-				centerX, centerY, 0.16f,
-				centerX, centerY, 0.16f,
-				true, false);
+				0.20f, 0.82f, 0.16f);
 	}
 
 	private static VirtualKeyboardLayoutSnapshot snapshot(int variant, float offset) {

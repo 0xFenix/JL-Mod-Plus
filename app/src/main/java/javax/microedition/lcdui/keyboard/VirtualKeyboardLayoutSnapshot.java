@@ -28,8 +28,6 @@ public final class VirtualKeyboardLayoutSnapshot {
 	final float analogCenterX;
 	final float analogCenterY;
 	final float analogRadius;
-	final boolean standardTemplate;
-	final boolean standardTemplateEdited;
 
 	private VirtualKeyboardLayoutSnapshot(
 			int layoutVariant,
@@ -47,9 +45,7 @@ public final class VirtualKeyboardLayoutSnapshot {
 			float dpadRadius,
 			float analogCenterX,
 			float analogCenterY,
-			float analogRadius,
-			boolean standardTemplate,
-			boolean standardTemplateEdited) {
+			float analogRadius) {
 		this.layoutVariant = layoutVariant;
 		this.visible = visible.clone();
 		this.snapOrigins = snapOrigins.clone();
@@ -66,8 +62,6 @@ public final class VirtualKeyboardLayoutSnapshot {
 		this.analogCenterX = analogCenterX;
 		this.analogCenterY = analogCenterY;
 		this.analogRadius = analogRadius;
-		this.standardTemplate = standardTemplate;
-		this.standardTemplateEdited = standardTemplateEdited;
 	}
 
 	public static VirtualKeyboardLayoutSnapshot legacy(
@@ -90,9 +84,7 @@ public final class VirtualKeyboardLayoutSnapshot {
 				false,
 				false,
 				0.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 0.0f,
-				false,
-				false);
+				0.0f, 0.0f, 0.0f);
 	}
 
 	public VirtualKeyboardLayoutSnapshot withGroupedControls(
@@ -103,9 +95,7 @@ public final class VirtualKeyboardLayoutSnapshot {
 			float dpadRadius,
 			float analogCenterX,
 			float analogCenterY,
-			float analogRadius,
-			boolean standardTemplate,
-			boolean standardTemplateEdited) {
+			float analogRadius) {
 		return new VirtualKeyboardLayoutSnapshot(
 				layoutVariant,
 				visible,
@@ -122,9 +112,7 @@ public final class VirtualKeyboardLayoutSnapshot {
 				dpadRadius,
 				analogCenterX,
 				analogCenterY,
-				analogRadius,
-				standardTemplate,
-				standardTemplateEdited);
+				analogRadius);
 	}
 
 	/** Returns the same semantic geometry normalized as a persisted Custom-orientation override. */
@@ -145,9 +133,7 @@ public final class VirtualKeyboardLayoutSnapshot {
 				dpadRadius,
 				analogCenterX,
 				analogCenterY,
-				analogRadius,
-				false,
-				true);
+				analogRadius);
 	}
 
 	boolean matchesLegacyShape(int keyCount, int scaleCount) {
@@ -159,23 +145,14 @@ public final class VirtualKeyboardLayoutSnapshot {
 				keyScales.length == scaleCount;
 	}
 
-	boolean isUneditedStandardTemplate() {
-		return standardTemplate && !standardTemplateEdited;
-	}
-
 	@Override
 	public boolean equals(Object other) {
 		if (this == other) return true;
 		if (!(other instanceof VirtualKeyboardLayoutSnapshot that)) return false;
 		if (layoutVariant != that.layoutVariant ||
-				hasGroupedControls != that.hasGroupedControls ||
-				standardTemplate != that.standardTemplate) {
+				hasGroupedControls != that.hasGroupedControls) {
 			return false;
 		}
-		if (standardTemplate && standardTemplateEdited != that.standardTemplateEdited) return false;
-		// Built-in standard templates are viewport-derived while untouched. Orientation/reflow may
-		// change their concrete snap/scales and normalized geometry without changing user intent.
-		if (isUneditedStandardTemplate() && that.isUneditedStandardTemplate()) return true;
 		if (!Arrays.equals(visible, that.visible) ||
 				!Arrays.equals(snapOrigins, that.snapOrigins) ||
 				!Arrays.equals(snapModes, that.snapModes) ||
@@ -198,9 +175,6 @@ public final class VirtualKeyboardLayoutSnapshot {
 	@Override
 	public int hashCode() {
 		int result = 31 * layoutVariant + Boolean.hashCode(hasGroupedControls);
-		result = 31 * result + Boolean.hashCode(standardTemplate);
-		if (standardTemplate) result = 31 * result + Boolean.hashCode(standardTemplateEdited);
-		if (isUneditedStandardTemplate()) return result;
 		result = 31 * result + Arrays.hashCode(visible);
 		result = 31 * result + Arrays.hashCode(snapOrigins);
 		result = 31 * result + Arrays.hashCode(snapModes);

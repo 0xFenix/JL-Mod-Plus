@@ -808,8 +808,7 @@ public class AppInstaller {
                             profile.screenWidth = 256;
                             profile.screenHeight = isSnesRom ? 224 : 240;
                             profile.screenScaleType = 1;
-                            profile.vkType = isSnesRom ? javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_SNES
-                                                       : javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_NES;
+                            profile.vkType = javax.microedition.lcdui.keyboard.VirtualKeyboard.TYPE_ARROWS;
                             ProfilesManager.saveConfig(freshConfigDir, profile);
                         }
                     }

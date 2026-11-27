@@ -395,12 +395,12 @@ public class ProfilesManagerPresetSaveRecoveryTest {
 
 		assertTrue(ProfilesManager.publishBuiltInSnapshot(draft,
 				ProfileModel.createBuiltIn(false, "")));
-		assertEquals(VirtualKeyboard.TYPE_NUMBERS_ARROWS, readConfig(draft).vkType);
+		assertEquals(VirtualKeyboard.TYPE_ARROWS, readConfig(draft).vkType);
 		assertFalse(layoutFile(draft).exists());
 		assertArrayEquals(originalLayout, readLayout(target));
 
 		ProfilesManager.saveEditedSnapshot(session, draft);
-		assertEquals(VirtualKeyboard.TYPE_NUMBERS_ARROWS, readConfig(target).vkType);
+		assertEquals(VirtualKeyboard.TYPE_ARROWS, readConfig(target).vkType);
 		assertFalse(layoutFile(target).exists());
 		assertFalse(staleLayoutBackup.exists());
 	}

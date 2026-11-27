@@ -44,7 +44,7 @@ public final class VirtualKeyboardLayoutState {
 	}
 
 	public static boolean isSupportedBaseVariant(int variant) {
-		return variant >= 1 && variant <= VirtualControlsKeyboard.TYPE_ANALOG_STANDARD;
+		return variant >= 1 && variant <= VirtualKeyboard.TYPE_ARROWS;
 	}
 
 	public int baseVariant() {

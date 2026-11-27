@@ -16,12 +16,12 @@ public class VirtualKeyboardLayoutStateTest {
 	public void oneBaseOverrideLeavesOtherOrientationDerived() {
 		VirtualKeyboardLayoutSnapshot portrait = snapshot(3.0f);
 		VirtualKeyboardLayoutState state = VirtualKeyboardLayoutState
-				.forBase(VirtualControlsKeyboard.TYPE_DPAD_STANDARD)
+				.forBase(VirtualKeyboard.TYPE_ARROWS)
 				.withOverride(VirtualLayoutOrientation.PORTRAIT, portrait);
 
 		assertSame(portrait, state.portraitOverride());
 		assertNull(state.landscapeOverride());
-		assertEquals(VirtualControlsKeyboard.TYPE_DPAD_STANDARD, state.baseVariant());
+		assertEquals(VirtualKeyboard.TYPE_ARROWS, state.baseVariant());
 		assertTrue(state.hasRenderableSourceFor(VirtualLayoutOrientation.LANDSCAPE));
 	}
 
@@ -65,8 +65,7 @@ public class VirtualKeyboardLayoutStateTest {
 				.withGroupedControls(
 						true, false,
 						0.20f, 0.82f, 0.16f,
-						0.20f, 0.82f, 0.16f,
-						false, true)
+						0.20f, 0.82f, 0.16f)
 				.asCustomOverride();
 	}
 }

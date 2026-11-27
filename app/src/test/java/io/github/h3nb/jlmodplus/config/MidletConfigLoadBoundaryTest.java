@@ -53,7 +53,7 @@ public class MidletConfigLoadBoundaryTest {
 		ProfileModel migrated = readConfig(target);
 		assertEquals(ProfileModel.VERSION, migrated.version);
 		assertEquals(BackgroundMode.THEME, migrated.screenBackgroundMode);
-		assertEquals(VirtualKeyboard.TYPE_NUMBERS_ARROWS, migrated.vkType);
+		assertEquals(VirtualKeyboard.TYPE_ARROWS, migrated.vkType);
 		assertTrue(preferences.getBoolean(ProfileModel.builtInThemePreferenceKey(target), false));
 		assertFalse(layoutFile(target).exists());
 	}
@@ -150,14 +150,14 @@ public class MidletConfigLoadBoundaryTest {
 		assertEquals(VirtualKeyboard.TYPE_CUSTOM, readConfig(custom).vkType);
 
 		File unexpected = tempDir("target-unexpected-built-in");
-		writeConfig(unexpected, 240, VirtualControlsKeyboard.TYPE_DPAD_STANDARD, 6);
+		writeConfig(unexpected, 240, VirtualKeyboard.TYPE_NUMBERS_ARROWS, 6);
 		FakePreferences preferences = new FakePreferences();
 		preferences.edit().putBoolean(ProfileModel.builtInThemePreferenceKey(unexpected), true).commit();
 		assertTrue(MidletConfigLoadBoundary.prepare(preferences, unexpected, profiles));
 		ProfileModel migrated = readConfig(unexpected);
 		assertEquals(ProfileModel.VERSION, migrated.version);
 		assertEquals(BackgroundMode.THEME, migrated.screenBackgroundMode);
-		assertEquals(VirtualControlsKeyboard.TYPE_DPAD_STANDARD, migrated.vkType);
+		assertEquals(VirtualKeyboard.TYPE_NUMBERS_ARROWS, migrated.vkType);
 		assertFalse(preferences.getBoolean(ProfileModel.builtInThemePreferenceKey(unexpected), false));
 	}
 

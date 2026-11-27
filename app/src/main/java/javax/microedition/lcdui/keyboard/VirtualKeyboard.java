@@ -102,9 +102,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 	public static final int TYPE_NUMBERS_ARROWS = 3;
 	private static final int TYPE_ARR_NUM = 4;
 	private static final int TYPE_NUMBERS = 5;
-	private static final int TYPE_ARROWS = 6;
-	public static final int TYPE_NES = 7;
-	public static final int TYPE_SNES = 8;
+	public static final int TYPE_ARROWS = 6;
 
 	private static final float PHONE_KEY_ROWS = 5;
 	private static final float PHONE_KEY_SCALE_X = 2.0f;
@@ -323,7 +321,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 		if (layoutVariant == -1) {
 			layoutVariant = settings.vkType;
 			if (layoutVariant == TYPE_CUSTOM) {
-				layoutVariant = TYPE_NUMBERS_ARROWS;
+				layoutVariant = TYPE_ARROWS;
 			}
 		}
 		if (loadedLayoutVersion > 0 && loadedLayoutVersion < 4 &&
@@ -347,8 +345,8 @@ public class VirtualKeyboard implements Overlay, Runnable {
 			} catch (IOException e) {
 				Log.w(TAG, "Could not load Custom virtual keyboard layout; using safe in-memory fallback", e);
 				storedCustomLayoutState = null;
-				resetLayout(TYPE_NUMBERS_ARROWS);
-				layoutVariant = TYPE_NUMBERS_ARROWS;
+				resetLayout(TYPE_ARROWS);
+				layoutVariant = TYPE_ARROWS;
 			}
 		}
 		HandlerThread thread = new HandlerThread("MidletVirtualKeyboard");
@@ -586,86 +584,6 @@ public class VirtualKeyboard implements Overlay, Runnable {
 				setSnap(KEY_C, KEY_DOWN_LEFT, RectSnap.EXT_WEST, false);
 				setSnap(KEY_D, KEY_DOWN_RIGHT, RectSnap.EXT_EAST, false);
 				setSnap(KEY_MENU, SCREEN, RectSnap.INT_NORTHEAST, false);
-			}
-			case TYPE_NES -> {
-				Arrays.fill(keyScales, 1.0f);
-
-				// D-pad on bottom-left
-				setSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);
-				setSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_WEST, true);
-				setSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_EAST, true);
-				setSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);
-				setSnap(KEY_UP_LEFT, KEY_UP, RectSnap.EXT_WEST, true);
-				setSnap(KEY_UP_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);
-				setSnap(KEY_DOWN_LEFT, KEY_DOWN, RectSnap.EXT_WEST, true);
-				setSnap(KEY_DOWN_RIGHT, KEY_DOWN, RectSnap.EXT_EAST, true);
-				setSnap(KEY_FIRE, KEY_DOWN, RectSnap.EXT_NORTH, false);
-
-				// Action buttons on bottom-right: B and A
-				setSnap(KEY_A, SCREEN, RectSnap.INT_SOUTHEAST, true);
-				setSnap(KEY_B, KEY_A, RectSnap.EXT_WEST, true);
-
-				// Select and Start at bottom-center
-				setSnap(KEY_STAR, SCREEN, RectSnap.INT_SOUTH, true);
-				setSnap(KEY_POUND, KEY_STAR, RectSnap.EXT_EAST, true);
-
-				// Hide unused keys
-				setSnap(KEY_NUM0, SCREEN, RectSnap.INT_NORTH, false);
-				setSnap(KEY_NUM1, KEY_NUM0, RectSnap.EXT_WEST, false);
-				setSnap(KEY_NUM2, KEY_NUM0, RectSnap.EXT_NORTH, false);
-				setSnap(KEY_NUM3, KEY_NUM0, RectSnap.EXT_EAST, false);
-				setSnap(KEY_NUM4, KEY_NUM1, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM5, KEY_NUM2, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM6, KEY_NUM3, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM7, KEY_NUM4, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM8, KEY_NUM5, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM9, KEY_NUM6, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_C, SCREEN, RectSnap.INT_NORTHWEST, false);
-				setSnap(KEY_D, SCREEN, RectSnap.INT_NORTHEAST, false);
-				setSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, false);
-				setSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, false);
-				setSnap(KEY_MENU, SCREEN, RectSnap.INT_NORTH, false);
-			}
-			case TYPE_SNES -> {
-				Arrays.fill(keyScales, 1.0f);
-
-				// D-pad on bottom-left
-				setSnap(KEY_DOWN, SCREEN, RectSnap.INT_SOUTHWEST, true);
-				setSnap(KEY_LEFT, KEY_DOWN, RectSnap.EXT_WEST, true);
-				setSnap(KEY_RIGHT, KEY_DOWN, RectSnap.EXT_EAST, true);
-				setSnap(KEY_UP, KEY_DOWN, RectSnap.EXT_NORTH, true);
-				setSnap(KEY_UP_LEFT, KEY_UP, RectSnap.EXT_WEST, true);
-				setSnap(KEY_UP_RIGHT, KEY_UP, RectSnap.EXT_EAST, true);
-				setSnap(KEY_DOWN_LEFT, KEY_DOWN, RectSnap.EXT_WEST, true);
-				setSnap(KEY_DOWN_RIGHT, KEY_DOWN, RectSnap.EXT_EAST, true);
-				setSnap(KEY_FIRE, KEY_DOWN, RectSnap.EXT_NORTH, false);
-
-				// 4 diamond buttons on bottom-right: B (bottom), A (right), Y/D (left), X/C (top)
-				setSnap(KEY_B, SCREEN, RectSnap.INT_SOUTHEAST, true);
-				setSnap(KEY_A, KEY_B, RectSnap.EXT_EAST, true);
-				setSnap(KEY_D, KEY_B, RectSnap.EXT_WEST, true);
-				setSnap(KEY_C, KEY_B, RectSnap.EXT_NORTH, true);
-
-				// Shoulder buttons L and R on top corners
-				setSnap(KEY_SOFT_LEFT, SCREEN, RectSnap.INT_NORTHWEST, true);
-				setSnap(KEY_SOFT_RIGHT, SCREEN, RectSnap.INT_NORTHEAST, true);
-
-				// Select and Start at bottom-center
-				setSnap(KEY_STAR, SCREEN, RectSnap.INT_SOUTH, true);
-				setSnap(KEY_POUND, KEY_STAR, RectSnap.EXT_EAST, true);
-
-				// Hide unused keys
-				setSnap(KEY_NUM0, SCREEN, RectSnap.INT_NORTH, false);
-				setSnap(KEY_NUM1, KEY_NUM0, RectSnap.EXT_WEST, false);
-				setSnap(KEY_NUM2, KEY_NUM0, RectSnap.EXT_NORTH, false);
-				setSnap(KEY_NUM3, KEY_NUM0, RectSnap.EXT_EAST, false);
-				setSnap(KEY_NUM4, KEY_NUM1, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM5, KEY_NUM2, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM6, KEY_NUM3, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM7, KEY_NUM4, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM8, KEY_NUM5, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_NUM9, KEY_NUM6, RectSnap.EXT_SOUTH, false);
-				setSnap(KEY_MENU, SCREEN, RectSnap.INT_NORTH, false);
 			}
 		}
 	}
@@ -1106,7 +1024,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 						if (typeSeen || length < 1) return -1;
 						int variant = dis.readUnsignedByte();
 						if (variant < TYPE_CUSTOM ||
-								variant > VirtualControlsKeyboard.TYPE_ANALOG_STANDARD) {
+								variant > TYPE_ARROWS) {
 							return -1;
 						}
 						skipFully(dis, length - 1);
@@ -1244,7 +1162,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 					if (typeSeen || length != 1) throw new IOException("invalid duplicate layout type");
 					activeType = dis.readUnsignedByte();
 					if (activeType < TYPE_CUSTOM ||
-							activeType > VirtualControlsKeyboard.TYPE_ANALOG_STANDARD) {
+							activeType > TYPE_ARROWS) {
 						throw new IOException("invalid layout type");
 					}
 					typeSeen = true;
@@ -1369,9 +1287,7 @@ public class VirtualKeyboard implements Overlay, Runnable {
 				dpadRadius,
 				analogCenterX,
 				analogCenterY,
-				analogRadius,
-				false,
-				true);
+				analogRadius);
 	}
 
 	private void readKeyBlock(
