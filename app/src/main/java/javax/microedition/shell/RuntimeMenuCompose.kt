@@ -25,8 +25,11 @@ import android.text.format.Formatter
 import android.util.TypedValue
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
@@ -54,6 +57,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -76,6 +80,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -785,6 +790,7 @@ private fun RuntimeProxyPickerDialog(
                             .heightIn(max = maxListHeight)
                             .selectableGroup(),
                         state = listState,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         item(key = "direct") {
                             ProxyChoiceRow(
@@ -830,23 +836,36 @@ private fun ProxyChoiceRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
+    val colors = MaterialTheme.colorScheme
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
     ) {
-        RadioButton(selected = selected, onClick = null)
-        Spacer(Modifier.size(12.dp))
-        Column {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            if (detail != null) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = selected, onClick = null)
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                 )
+                if (detail != null) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) colors.onPrimaryContainer.copy(alpha = 0.8f) else colors.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -865,144 +884,287 @@ private fun RuntimeMemoryDialog(
     var freedBytes by remember { mutableStateOf<Long?>(null) }
     var trimMinutes by remember { mutableIntStateOf(initialTrimMinutes) }
     var gcMinutes by remember { mutableIntStateOf(initialGcMinutes) }
-    val dialogBounds = adaptiveDialogLayout()
-    val scrollState = rememberScrollState()
-    val canScrollForward by remember(scrollState) { derivedStateOf { scrollState.canScrollForward } }
+    val usedFraction = if (stats.totalBytes > 0L) {
+        (stats.usedBytes.toFloat() / stats.totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val usedPercent = (usedFraction * 100f).roundToInt()
+    val progressColor = if (usedFraction >= 0.85f) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
     AlertDialog(
-        textScrollable = false,
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.runtime_memory_panel_title)) },
         text = {
-            Box(
-                modifier = Modifier.fillMaxWidth().heightIn(max = dialogBounds.maxHeight),
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().verticalScroll(scrollState),
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    MemoryStatRow(
-                        label = R.string.runtime_memory_total,
-                        value = Formatter.formatFileSize(context, stats.totalBytes),
-                    )
-                    MemoryStatRow(
-                        label = R.string.runtime_memory_available,
-                        value = Formatter.formatFileSize(context, stats.availableBytes),
-                    )
-                    MemoryStatRow(
-                        label = R.string.runtime_memory_used,
-                        value = Formatter.formatFileSize(context, stats.usedBytes),
-                    )
-                    MemoryStatRow(
-                        label = R.string.runtime_memory_app_usage,
-                        value = Formatter.formatFileSize(context, stats.appBytes),
-                    )
-                    freedBytes?.takeIf { it > 0L }?.let { freed ->
-                        Text(
-                            text = stringResource(
-                                R.string.runtime_memory_freed,
-                                Formatter.formatFileSize(context, freed),
-                            ),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                    Button(
-                        onClick = {
-                            onTrimNow()
-                            val next = readRuntimeMemoryStats(context)
-                            // shortcut: PSS delta is a best-effort estimate; collection may finish lazily.
-                            freedBytes = (stats.appBytes - next.appBytes).coerceAtLeast(0L)
-                            stats = next
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp)
-                            .heightIn(min = 48.dp),
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text(stringResource(R.string.runtime_memory_clean_now))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.runtime_memory_device),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = "$usedPercent%",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = progressColor,
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { usedFraction },
+                                modifier = Modifier.fillMaxWidth().height(8.dp),
+                                color = progressColor,
+                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                strokeCap = StrokeCap.Round,
+                                drawStopIndicator = {},
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = "${Formatter.formatFileSize(context, stats.usedBytes)} / " +
+                                        Formatter.formatFileSize(context, stats.totalBytes),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.runtime_memory_available_short,
+                                        Formatter.formatFileSize(context, stats.availableBytes),
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            MemoryMetricCell(
+                                label = R.string.runtime_memory_app_usage,
+                                value = Formatter.formatFileSize(context, stats.appBytes),
+                                modifier = Modifier.weight(1f),
+                            )
+                            MemoryMetricCell(
+                                label = R.string.runtime_memory_java_heap,
+                                value = "${Formatter.formatFileSize(context, stats.heapUsedBytes)} / " +
+                                    Formatter.formatFileSize(context, stats.heapAllocatedBytes),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        freedBytes?.takeIf { it > 0L }?.let { freed ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.runtime_memory_freed,
+                                        Formatter.formatFileSize(context, freed),
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
                     }
-                    HorizontalDivider(Modifier.padding(vertical = 12.dp))
-                    MemoryIntervalGroup(
-                        title = R.string.runtime_memory_trim_title,
-                        options = listOf(0, 15, 30, 60),
-                        selected = trimMinutes,
-                        onSelect = { minutes ->
-                            trimMinutes = minutes
-                            onIntervalsChanged(trimMinutes, gcMinutes)
-                        },
-                    )
-                    MemoryIntervalGroup(
-                        title = R.string.runtime_memory_gc_title,
-                        options = listOf(0, 5, 15, 30),
-                        selected = gcMinutes,
-                        onSelect = { minutes ->
-                            gcMinutes = minutes
-                            onIntervalsChanged(trimMinutes, gcMinutes)
-                        },
-                    )
-                    Text(
-                        text = stringResource(R.string.runtime_memory_gc_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
                 }
-                ScrollableContentHint(
-                    visible = canScrollForward,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                MemoryIntervalSelector(
+                    title = R.string.runtime_memory_trim_title,
+                    options = listOf(0, 15, 30, 60),
+                    selected = trimMinutes,
+                    onSelect = { minutes ->
+                        trimMinutes = minutes
+                        onIntervalsChanged(trimMinutes, gcMinutes)
+                    },
+                )
+                MemoryIntervalSelector(
+                    title = R.string.runtime_memory_gc_title,
+                    options = listOf(0, 5, 15, 30),
+                    selected = gcMinutes,
+                    supportingText = R.string.runtime_memory_gc_warning,
+                    onSelect = { minutes ->
+                        gcMinutes = minutes
+                        onIntervalsChanged(trimMinutes, gcMinutes)
+                    },
                 )
             }
         },
-        confirmButton = {
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.runtime_memory_close))
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onTrimNow()
+                    val next = readRuntimeMemoryStats(context)
+                    // shortcut: PSS delta is a best-effort estimate; collection may finish lazily.
+                    freedBytes = (stats.appBytes - next.appBytes).coerceAtLeast(0L)
+                    stats = next
+                },
+                modifier = Modifier.padding(start = 4.dp),
+            ) {
+                Text(stringResource(R.string.runtime_memory_clean_now))
             }
         },
     )
 }
 
 @Composable
-private fun MemoryStatRow(label: Int, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+private fun MemoryMetricCell(
+    label: Int,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = stringResource(label),
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MemoryIntervalGroup(
+private fun MemoryIntervalSelector(
     title: Int,
     options: List<Int>,
     selected: Int,
     onSelect: (Int) -> Unit,
+    supportingText: Int? = null,
 ) {
-    Text(
-        text = stringResource(title),
-        style = MaterialTheme.typography.titleSmall,
-        modifier = Modifier.padding(top = 8.dp),
-    )
-    options.forEach { minutes ->
-        ProxyChoiceRow(
-            title = if (minutes == 0) {
-                stringResource(R.string.runtime_memory_off)
-            } else {
-                stringResource(R.string.runtime_memory_minutes, minutes)
-            },
-            detail = null,
-            selected = selected == minutes,
-            onClick = { onSelect(minutes) },
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = stringResource(title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
         )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val singleRow = maxWidth >= 240.dp && LocalDensity.current.fontScale <= 1.35f
+            if (singleRow) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    options.forEach { minutes ->
+                        MemoryIntervalChip(
+                            label = memoryIntervalLabel(minutes),
+                            selected = selected == minutes,
+                            onClick = { onSelect(minutes) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            } else {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    options.forEach { minutes ->
+                        MemoryIntervalChip(
+                            label = memoryIntervalLabel(minutes),
+                            selected = selected == minutes,
+                            onClick = { onSelect(minutes) },
+                        )
+                    }
+                }
+            }
+        }
+        if (supportingText != null) {
+            Text(
+                text = stringResource(supportingText),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun memoryIntervalLabel(minutes: Int): String = if (minutes == 0) {
+    stringResource(R.string.runtime_memory_off)
+} else {
+    stringResource(R.string.runtime_memory_minutes, minutes)
+}
+
+@Composable
+private fun MemoryIntervalChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 40.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -1010,6 +1172,8 @@ private data class RuntimeMemoryStats(
     val totalBytes: Long,
     val availableBytes: Long,
     val appBytes: Long,
+    val heapUsedBytes: Long,
+    val heapAllocatedBytes: Long,
 ) {
     val usedBytes: Long get() = (totalBytes - availableBytes).coerceAtLeast(0L)
 }
@@ -1020,9 +1184,19 @@ private fun readRuntimeMemoryStats(context: Context): RuntimeMemoryStats {
     activityManager.getMemoryInfo(memoryInfo)
     val appBytes = activityManager.getProcessMemoryInfo(intArrayOf(Process.myPid()))
         ?.firstOrNull()?.totalPss?.toLong()?.times(1024L) ?: 0L
-    return RuntimeMemoryStats(memoryInfo.totalMem, memoryInfo.availMem, appBytes)
+    val runtime = Runtime.getRuntime()
+    val heapAllocated = runtime.totalMemory()
+    val heapUsed = heapAllocated - runtime.freeMemory()
+    return RuntimeMemoryStats(
+        totalBytes = memoryInfo.totalMem,
+        availableBytes = memoryInfo.availMem,
+        appBytes = appBytes,
+        heapUsedBytes = heapUsed,
+        heapAllocatedBytes = heapAllocated,
+    )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RuntimeLimitFpsDialog(
     onDismiss: () -> Unit,
@@ -1030,21 +1204,70 @@ internal fun RuntimeLimitFpsDialog(
     onReset: () -> Unit,
 ) {
     var value by remember { mutableStateOf("") }
+    val presets = listOf(15, 30, 60, 0)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.PREF_LIMIT_FPS)) },
         text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { next -> value = next.filter(Char::isDigit) },
-                modifier = Modifier.testTag("runtime_fps_input"),
-                singleLine = true,
-                placeholder = { Text(stringResource(R.string.fps_limit_maximum)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { next -> value = next.filter(Char::isDigit) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("runtime_fps_input"),
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.fps_limit_maximum)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    presets.forEach { preset ->
+                        val targetText = if (preset == 0) "" else preset.toString()
+                        val selected = value.trim() == targetText && (preset != 0 || value.isEmpty())
+                        val label = if (preset == 0) {
+                            stringResource(R.string.fps_limit_maximum)
+                        } else {
+                            preset.toString()
+                        }
+                        Surface(
+                            onClick = { value = targetText },
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                            contentColor = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.heightIn(min = 36.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(value.trim().toIntOrNull() ?: 0) }) {
+            Button(onClick = { onConfirm(value.trim().toIntOrNull() ?: 0) }) {
                 Text(stringResource(android.R.string.ok))
             }
         },
@@ -1057,6 +1280,7 @@ internal fun RuntimeLimitFpsDialog(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun RuntimeEmulationSpeedDialog(
     currentPercent: Int,
@@ -1068,6 +1292,9 @@ internal fun RuntimeEmulationSpeedDialog(
         ?: EmulationSpeed.NORMAL_PERCENT
     val presetValues = remember(manualPercent) {
         (EmulationSpeed.presets().toList() + manualPercent).distinct().sorted()
+    }
+    val quickPresets = remember(presetValues) {
+        listOf(50, 100, 200, 400).filter { it in presetValues }
     }
     val currentIndex = presetValues.indexOf(manualPercent).coerceAtLeast(0)
     var draftIndex by remember(currentIndex, presetValues) { mutableFloatStateOf(currentIndex.toFloat()) }
@@ -1086,46 +1313,100 @@ internal fun RuntimeEmulationSpeedDialog(
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
                         text = stringResource(R.string.config_help_emulation_speed),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp),
                     )
-                    Text(
-                        text = EmulationSpeed.formatMultiplier(selectedValue),
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = MaterialTheme.shapes.large,
                         modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Slider(
-                        value = draftIndex,
-                        onValueChange = { draftIndex = it },
-                        valueRange = 0f..presetValues.lastIndex.toFloat(),
-                        steps = (presetValues.size - 2).coerceAtLeast(0),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .testTag("runtime_emulation_speed_slider"),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
-                        ),
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(
-                            text = EmulationSpeed.formatMultiplier(presetValues.first()),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = EmulationSpeed.formatMultiplier(presetValues.last()),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                text = EmulationSpeed.formatMultiplier(selectedValue),
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Slider(
+                                value = draftIndex,
+                                onValueChange = { draftIndex = it },
+                                valueRange = 0f..presetValues.lastIndex.toFloat(),
+                                steps = (presetValues.size - 2).coerceAtLeast(0),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .testTag("runtime_emulation_speed_slider"),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                                ),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    text = EmulationSpeed.formatMultiplier(presetValues.first()),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = EmulationSpeed.formatMultiplier(presetValues.last()),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    if (quickPresets.isNotEmpty()) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            quickPresets.forEach { preset ->
+                                val isSelected = selectedValue == preset
+                                Surface(
+                                    onClick = {
+                                        val idx = presetValues.indexOf(preset)
+                                        if (idx >= 0) draftIndex = idx.toFloat()
+                                    },
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerLow
+                                    },
+                                    contentColor = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.heightIn(min = 36.dp),
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            text = EmulationSpeed.formatMultiplier(preset),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 ScrollableContentHint(
@@ -1135,7 +1416,7 @@ internal fun RuntimeEmulationSpeedDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(selectedValue) }) {
+            Button(onClick = { onConfirm(selectedValue) }) {
                 Text(stringResource(android.R.string.ok))
             }
         },
@@ -1533,6 +1814,9 @@ private fun RuntimeMenuDialog(
                         )
                     }
                     if (footer.isNotEmpty()) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1614,7 +1898,19 @@ private fun RuntimeActionTile(
 ) {
     val colors = MaterialTheme.colorScheme
     val active = entry.checked == true
+    val destructive = compact && entry.label == R.string.exit
     val accessibleLabel = stringResource(entry.label)
+    val containerColor = when {
+        destructive -> colors.errorContainer
+        active -> colors.primaryContainer
+        compact -> colors.surfaceContainerHigh
+        else -> colors.surfaceContainerLow
+    }
+    val border = when {
+        focused -> BorderStroke(2.dp, colors.primary)
+        !active && !destructive -> BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.4f))
+        else -> null
+    }
     Surface(
         modifier = modifier
             .then(if (focused) Modifier.testTag("runtime-controller-focus-indicator") else Modifier)
@@ -1630,30 +1926,80 @@ private fun RuntimeActionTile(
                 Modifier.clickable(enabled = entry.enabled, role = Role.Button, onClick = entry.activate)
             }),
         shape = MaterialTheme.shapes.large,
-        color = if (active) colors.primaryContainer else colors.surfaceContainerHighest,
-        border = if (focused) BorderStroke(2.dp, colors.primary) else null,
+        color = containerColor,
+        border = border,
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight()
-                .heightIn(min = if (compact) 64.dp else 88.dp)
-                .padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(
-                painter = painterResource(entry.icon),
-                contentDescription = null,
-                modifier = Modifier.size(if (compact) 20.dp else 24.dp),
-                tint = if (active) colors.primary else colors.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
-            Text(
-                text = stringResource(entry.displayLabel),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = if (active) colors.onPrimaryContainer else colors.onSurface,
-                textAlign = TextAlign.Center,
-            )
+        if (compact) {
+            val contentColor = if (destructive) colors.onErrorContainer else colors.onSurface
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    painter = painterResource(entry.icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = contentColor,
+                )
+                Text(
+                    text = stringResource(entry.displayLabel),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            val badgeColor = if (active) colors.primary else colors.surfaceContainerHigh
+            val iconTint = when {
+                active -> colors.onPrimary
+                entry.enabled -> colors.primary
+                else -> colors.onSurfaceVariant.copy(alpha = 0.38f)
+            }
+            val labelColor = when {
+                active -> colors.onPrimaryContainer
+                entry.enabled -> colors.onSurface
+                else -> colors.onSurfaceVariant.copy(alpha = 0.38f)
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .heightIn(min = 76.dp)
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(badgeColor, MaterialTheme.shapes.medium),
+                ) {
+                    Icon(
+                        painter = painterResource(entry.icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = iconTint,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(entry.displayLabel),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = labelColor,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

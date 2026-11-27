@@ -166,9 +166,9 @@
     <string name="runtime_memory_off">Tắt</string>
     <string name="runtime_memory_minutes">%1$d phút</string>
     <string name="runtime_memory_panel_title">Dọn dẹp RAM</string>
-    <string name="runtime_memory_total">Tổng RAM</string>
-    <string name="runtime_memory_available">RAM còn trống</string>
-    <string name="runtime_memory_used">RAM đang dùng</string>
+    <string name="runtime_memory_device">RAM thiết bị</string>
+    <string name="runtime_memory_available_short">Trống %1$s</string>
+    <string name="runtime_memory_java_heap">Heap Java</string>
     <string name="runtime_memory_app_usage">Bộ nhớ ứng dụng</string>
     <string name="runtime_memory_clean_now">Dọn ngay</string>
     <string name="runtime_memory_freed">Đã giải phóng %1$s</string>
