@@ -14,6 +14,8 @@
 
 package javax.microedition.shell
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,18 +23,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import io.github.h3nb.jlmodplus.ui.AdaptiveAlertDialog as AlertDialog
 import androidx.compose.material3.Button
@@ -40,9 +48,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,10 +59,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.h3nb.jlmodplus.R
@@ -190,24 +198,56 @@ private fun MidletSelectionDialog(
                         .fillMaxWidth()
                         .heightIn(max = maxListHeight),
                     state = listState,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     itemsIndexed(state.names) { index, name ->
-                        ListItem(
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            headlineContent = {
+                        Surface(
+                            onClick = {
+                                onDismiss()
+                                actions.onMidletSelected(index)
+                            },
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                            MaterialTheme.shapes.small,
+                                        ),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_play),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
                                 Text(
                                     text = name,
+                                    style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
                                 )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(role = Role.Button) {
-                                    onDismiss()
-                                    actions.onMidletSelected(index)
-                                },
-                        )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_chevron_right),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                     }
                 }
                 ScrollableContentHint(
@@ -241,26 +281,31 @@ private fun ErrorDialog(
         text = {
             val scrollState = rememberScrollState()
             val canScrollForward = rememberScrollCanScrollForward(scrollState)
-            Box(
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = runtimeDialogListHeight()),
             ) {
-                Text(
-                    text = message,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = runtimeDialogListHeight())
-                        .verticalScroll(scrollState),
-                )
-                ScrollableContentHint(
-                    visible = canScrollForward,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = message,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = runtimeDialogListHeight())
+                            .verticalScroll(scrollState)
+                            .padding(12.dp),
+                    )
+                    ScrollableContentHint(
+                        visible = canScrollForward,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onAcknowledge) {
+            Button(onClick = onAcknowledge) {
                 Text(stringResource(android.R.string.ok))
             }
         },
@@ -462,30 +507,42 @@ private fun ShowControlsGroup(
                         Spacer(Modifier.weight(1f))
                     } else {
                         val isVisible = visible.getOrNull(index) == true
-                        Row(
+                        val colors = MaterialTheme.colorScheme
+                        Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp)
+                                .heightIn(min = 44.dp)
                                 .toggleable(
                                     value = isVisible,
                                     enabled = index in visible.indices,
                                     role = Role.Checkbox,
                                 ) {
                                     onToggle(index)
-                                }
-                                .padding(horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                },
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (isVisible) colors.primaryContainer else colors.surfaceContainerLow,
+                            contentColor = if (isVisible) colors.onPrimaryContainer else colors.onSurfaceVariant,
                         ) {
-                            Checkbox(
-                                checked = isVisible,
-                                enabled = index in visible.indices,
-                                onCheckedChange = null,
-                            )
-                            Text(
-                                names[index],
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 4.dp),
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = isVisible,
+                                    enabled = index in visible.indices,
+                                    onCheckedChange = null,
+                                )
+                                Text(
+                                    names[index],
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isVisible) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -503,11 +560,17 @@ private fun PresetDestinationOptions(
 ) {
     if (updateTarget == null) return
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(titleRes))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = stringResource(titleRes),
+            style = MaterialTheme.typography.titleSmall,
+        )
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             PresetDestinationRow(
                 label = stringResource(R.string.runtime_preset_this_midlet_only),
@@ -526,8 +589,9 @@ private fun PresetDestinationOptions(
             } else {
                 stringResource(R.string.runtime_preset_local_explanation)
             },
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp, end = 4.dp),
+            modifier = Modifier.padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -538,7 +602,8 @@ private fun PresetDestinationRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    Row(
+    val colors = MaterialTheme.colorScheme
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
@@ -546,17 +611,27 @@ private fun PresetDestinationRow(
                 selected = selected,
                 role = Role.RadioButton,
                 onClick = onClick,
-            )
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            ),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
     ) {
-        RadioButton(selected = selected, onClick = null)
-        Text(
-            text = label,
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .padding(end = 8.dp),
-        )
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = selected, onClick = null)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+            )
+        }
     }
 }
 
@@ -713,31 +788,53 @@ private fun LayoutEditGuideDialog(
                     .fillMaxWidth()
                     .heightIn(max = runtimeDialogListHeight())
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    stringResource(R.string.layout_editor_guide_gestures),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(stringResource(R.string.layout_editor_guide_move))
-                Text(stringResource(R.string.layout_editor_guide_resize))
-                Text(
-                    stringResource(R.string.layout_editor_guide_tools),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                EditorGuideTool(R.drawable.ic_visibility, R.string.runtime_virtual_controls_show_controls)
-                EditorGuideTool(R.drawable.ic_editor_grid, R.string.layout_editor_grid_size)
-                EditorGuideTool(R.drawable.ic_editor_group_resize, R.string.layout_editor_group_on)
-                EditorGuideTool(R.drawable.ic_editor_snap, R.string.layout_editor_snap_grid)
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.layout_editor_guide_gestures),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(stringResource(R.string.layout_editor_guide_move))
+                        Text(stringResource(R.string.layout_editor_guide_resize))
+                    }
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.layout_editor_guide_tools),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        EditorGuideTool(R.drawable.ic_visibility, R.string.runtime_virtual_controls_show_controls)
+                        EditorGuideTool(R.drawable.ic_editor_grid, R.string.layout_editor_grid_size)
+                        EditorGuideTool(R.drawable.ic_editor_group_resize, R.string.layout_editor_group_on)
+                        EditorGuideTool(R.drawable.ic_editor_snap, R.string.layout_editor_snap_grid)
+                    }
+                }
                 Text(
                     stringResource(R.string.layout_editor_guide_done),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 44.dp)
                         .toggleable(value = dontShowAgain, role = Role.Checkbox) {
                             dontShowAgain = !dontShowAgain
                         },
@@ -749,7 +846,7 @@ private fun LayoutEditGuideDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            Button(onClick = {
                 onDismiss()
                 actions.onLayoutEditGuideConfirmed(dontShowAgain)
             }) {
@@ -795,42 +892,73 @@ private fun LayoutSelectionDialog(
             onDismissRequest = onDismiss,
             title = { Text(stringResource(R.string.layout_switch)) },
             text = {
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = maxListHeight),
                 ) {
+                    val columns = if (maxWidth >= 280.dp && LocalDensity.current.fontScale <= 1.35f) 2 else 1
+                    val useFeaturedTop = columns == 2 && state.entries.size > 1
+                    val gridEntries = remember(state.entries, useFeaturedTop) {
+                        val indexed = state.entries.withIndex().toList()
+                        if (useFeaturedTop) indexed.drop(1).chunked(2) else emptyList()
+                    }
+                    fun onSelectIndex(index: Int) {
+                        if (index == state.selected) {
+                            onDismiss()
+                        } else {
+                            updatePreset = false
+                            pendingLayout = index
+                        }
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = maxListHeight),
                         state = listState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        itemsIndexed(state.entries) { index, entry ->
-                            ListItem(
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                headlineContent = { Text(entry) },
-                                leadingContent = {
-                                    RadioButton(
-                                        selected = state.selected == index,
-                                        onClick = null,
-                                    )
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .selectable(
-                                        selected = state.selected == index,
-                                        role = Role.RadioButton,
-                                        onClick = {
-                                            if (index == state.selected) {
-                                                onDismiss()
-                                            } else {
-                                                updatePreset = false
-                                                pendingLayout = index
-                                            }
-                                        },
-                                    ),
-                            )
+                        if (useFeaturedTop) {
+                            item(key = "layout-0") {
+                                LayoutSelectionHorizontalCard(
+                                    index = 0,
+                                    label = state.entries[0],
+                                    selected = state.selected == 0,
+                                    onClick = { onSelectIndex(0) },
+                                )
+                            }
+                            itemsIndexed(gridEntries) { _, row ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(IntrinsicSize.Min),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    row.forEach { (index, entry) ->
+                                        LayoutSelectionGridCard(
+                                            index = index,
+                                            label = entry,
+                                            selected = state.selected == index,
+                                            onClick = { onSelectIndex(index) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight(),
+                                        )
+                                    }
+                                    if (row.size < 2) {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        } else {
+                            itemsIndexed(state.entries) { index, entry ->
+                                LayoutSelectionHorizontalCard(
+                                    index = index,
+                                    label = entry,
+                                    selected = state.selected == index,
+                                    onClick = { onSelectIndex(index) },
+                                )
+                            }
                         }
                     }
                     ScrollableContentHint(
@@ -890,6 +1018,224 @@ private fun LayoutSelectionDialog(
     )
 }
 
+@Composable
+private fun LayoutSelectionHorizontalCard(
+    index: Int,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
+        shape = MaterialTheme.shapes.large,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
+        border = if (selected) {
+            BorderStroke(1.5.dp, colors.primary)
+        } else {
+            BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.4f))
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            VirtualLayoutPreviewGlyph(
+                variant = index,
+                selected = selected,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_check_circle),
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutSelectionGridCard(
+    index: Int,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier
+            .heightIn(min = 96.dp)
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
+        shape = MaterialTheme.shapes.large,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        contentColor = if (selected) colors.onPrimaryContainer else colors.onSurface,
+        border = if (selected) {
+            BorderStroke(1.5.dp, colors.primary)
+        } else {
+            BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.4f))
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VirtualLayoutPreviewGlyph(
+                    variant = index,
+                    selected = selected,
+                )
+                if (selected) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_check_circle),
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VirtualLayoutPreviewGlyph(
+    variant: Int,
+    selected: Boolean,
+) {
+    val colors = MaterialTheme.colorScheme
+    val blockColor = if (selected) {
+        colors.primary.copy(alpha = 0.85f)
+    } else {
+        colors.onSurfaceVariant.copy(alpha = 0.65f)
+    }
+    val containerColor = if (selected) {
+        colors.surface.copy(alpha = 0.55f)
+    } else {
+        colors.surfaceContainerHigh
+    }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .width(48.dp)
+            .height(32.dp)
+            .background(containerColor, MaterialTheme.shapes.small)
+            .padding(4.dp),
+    ) {
+        when (variant) {
+            0 -> Icon(
+                painter = painterResource(R.drawable.ic_edit),
+                contentDescription = null,
+                tint = if (selected) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            1 -> PreviewNumberGrid(blockColor)
+            2 -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                PreviewCrossPad(blockColor)
+                PreviewNumberGrid(blockColor)
+            }
+            3 -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                PreviewNumberGrid(blockColor)
+                PreviewCrossPad(blockColor)
+            }
+            4 -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                PreviewCrossPad(blockColor)
+                PreviewNumberGrid(blockColor)
+            }
+            5 -> PreviewNumberGrid(blockColor)
+            else -> PreviewCrossPad(blockColor)
+        }
+    }
+}
+
+@Composable
+private fun PreviewNumberGrid(color: androidx.compose.ui.graphics.Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        repeat(3) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .size(4.dp)
+                            .background(color, CircleShape),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewCrossPad(color: androidx.compose.ui.graphics.Color) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(16.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(14.dp)
+                .height(4.dp)
+                .background(color, MaterialTheme.shapes.extraSmall),
+        )
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(14.dp)
+                .background(color, MaterialTheme.shapes.extraSmall),
+        )
+    }
+}
+
 internal data class FilePermissionPrompt(
     val write: Boolean,
     val onChoice: MidletPermissionManager.Choice,
@@ -907,16 +1253,34 @@ internal fun FilePermissionDialog(write: Boolean, onChoice: (Int) -> Unit) {
         onDismissRequest = { onChoice(MidletPermissionManager.CANCEL) },
         title = { Text(stringResource(R.string.midlet_file_permission_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val colors = MaterialTheme.colorScheme
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(if (write) R.string.midlet_file_permission_write
                     else R.string.midlet_file_permission_read))
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     choices.forEach { (label, choice) ->
-                        TextButton(
+                        val isDeny = choice == MidletPermissionManager.DENY
+                        Surface(
                             onClick = { onChoice(choice) },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (isDeny) colors.errorContainer else colors.surfaceContainerLow,
+                            contentColor = if (isDeny) colors.onErrorContainer else colors.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
                         ) {
-                            Text(stringResource(label), modifier = Modifier.fillMaxWidth())
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                Text(
+                                    text = stringResource(label),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
                         }
                     }
                 }

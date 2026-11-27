@@ -16,33 +16,38 @@ package io.github.h3nb.jlmodplus.net
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -58,11 +63,13 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.h3nb.jlmodplus.R
 import io.github.h3nb.jlmodplus.ui.AdaptiveAlertDialog as AlertDialog
@@ -98,8 +105,7 @@ private fun ProxyListScreen(onBack: () -> Unit) {
     var entries by remember { mutableStateOf(store.list()) }
     var probes by remember { mutableStateOf(emptyMap<String, ProxyStore.TestResult>()) }
     var testing by remember { mutableStateOf(false) }
-    var addMenuOpen by remember { mutableStateOf(false) }
-    var addMode by remember { mutableStateOf<AddProxyMode?>(null) }
+    var addDialogOpen by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProxyStore.Entry?>(null) }
 
     fun reload() {
@@ -139,158 +145,211 @@ private fun ProxyListScreen(onBack: () -> Unit) {
             )
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                DropdownMenu(
-                    expanded = addMenuOpen,
-                    onDismissRequest = { addMenuOpen = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.proxy_add_one)) },
-                        onClick = {
-                            addMenuOpen = false
-                            addMode = AddProxyMode.One
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.proxy_paste)) },
-                        onClick = {
-                            addMenuOpen = false
-                            addMode = AddProxyMode.Paste
-                        },
-                    )
-                }
-                FloatingActionButton(onClick = { addMenuOpen = true }) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_add),
-                        contentDescription = stringResource(R.string.proxy_add),
-                    )
-                }
+            FloatingActionButton(onClick = { addDialogOpen = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_add),
+                    contentDescription = stringResource(R.string.proxy_add),
+                )
             }
         },
     ) { padding ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = PaddingValues(bottom = 88.dp),
         ) {
-            item(key = "test-all") {
-                val alive = probes.values.count { it.alive }
-                val dead = probes.size - alive
-                val status = when {
-                    testing -> stringResource(R.string.proxy_testing)
-                    probes.isNotEmpty() -> stringResource(R.string.proxy_test_summary, alive, dead)
-                    else -> stringResource(R.string.proxy_test_hint)
-                }
-                Card(
-                    onClick = ::testAll,
-                    enabled = !testing && entries.isNotEmpty(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.proxy_test_all),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(text = status, style = MaterialTheme.typography.bodyMedium)
+            LazyColumn(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .widthIn(max = 720.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (entries.isNotEmpty()) {
+                    item(key = "test-all") {
+                        val alive = probes.values.count { it.alive }
+                        val dead = probes.size - alive
+                        val status = when {
+                            testing -> stringResource(R.string.proxy_testing)
+                            probes.isNotEmpty() -> stringResource(R.string.proxy_test_summary, alive, dead)
+                            else -> stringResource(R.string.proxy_test_hint)
                         }
-                        if (testing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_refresh),
-                                contentDescription = null,
-                            )
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            shape = MaterialTheme.shapes.large,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.proxy_saved_count, entries.size),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = status,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                FilledTonalButton(
+                                    onClick = ::testAll,
+                                    enabled = !testing,
+                                ) {
+                                    if (testing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_refresh),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                    Spacer(Modifier.size(6.dp))
+                                    Text(stringResource(R.string.proxy_test_all))
+                                }
+                            }
                         }
                     }
                 }
-            }
-            if (entries.isEmpty()) {
-                item(key = "empty") {
-                    Column(
+                if (entries.isEmpty()) {
+                    item(key = "empty") {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            shape = MaterialTheme.shapes.extraLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primaryContainer,
+                                            MaterialTheme.shapes.large,
+                                        ),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_swap_horiz),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.proxy_empty_title),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = stringResource(R.string.proxy_empty_detail),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Button(
+                                    onClick = { addDialogOpen = true },
+                                    modifier = Modifier.padding(top = 4.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_add),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.size(6.dp))
+                                    Text(stringResource(R.string.proxy_add))
+                                }
+                            }
+                        }
+                    }
+                }
+                items(entries, key = { it.id }) { entry ->
+                    ProxyRow(
+                        entry = entry,
+                        probe = probes[entry.id],
+                        onDelete = { pendingDelete = entry },
+                    )
+                }
+                item(key = "plaintext-warning") {
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp, vertical = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            text = stringResource(R.string.proxy_empty_title),
-                            style = MaterialTheme.typography.titleMedium,
+                        Icon(
+                            painter = painterResource(R.drawable.ic_info),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
                         )
-                        Spacer(Modifier.size(8.dp))
                         Text(
-                            text = stringResource(R.string.proxy_empty_detail),
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = stringResource(R.string.proxy_plaintext_warning),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
                         )
                     }
                 }
-            }
-            items(entries, key = { it.id }) { entry ->
-                ProxyRow(
-                    entry = entry,
-                    probe = probes[entry.id],
-                    onLongPress = { pendingDelete = entry },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            }
-            item(key = "plaintext-warning") {
-                Text(
-                    text = stringResource(R.string.proxy_plaintext_warning),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                )
             }
         }
     }
 
-    when (addMode) {
-        AddProxyMode.One -> AddOneProxyDialog(
+    if (addDialogOpen) {
+        AddProxyDialog(
             store = store,
-            onDismiss = { addMode = null },
+            onDismiss = { addDialogOpen = false },
             onChanged = ::reload,
         )
-
-        AddProxyMode.Paste -> PasteProxiesDialog(
-            store = store,
-            onDismiss = { addMode = null },
-            onChanged = ::reload,
-        )
-
-        null -> Unit
     }
 
     pendingDelete?.let { entry ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            },
             title = { Text(stringResource(R.string.proxy_delete_title)) },
             text = {
                 Text(stringResource(R.string.proxy_delete_message, "${entry.host}:${entry.port}"))
             },
             confirmButton = {
-                TextButton(onClick = {
-                    pendingDelete = null
-                    store.remove(entry.id)
-                    reload()
-                }) {
+                Button(
+                    onClick = {
+                        pendingDelete = null
+                        store.remove(entry.id)
+                        reload()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
                     Text(stringResource(R.string.action_context_delete))
                 }
             },
@@ -307,42 +366,101 @@ private fun ProxyListScreen(onBack: () -> Unit) {
 private fun ProxyRow(
     entry: ProxyStore.Entry,
     probe: ProxyStore.TestResult?,
-    onLongPress: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    Row(
+    val colors = MaterialTheme.colorScheme
+    val badgeColor = when {
+        probe == null -> colors.surfaceContainerHigh
+        probe.alive -> colors.primaryContainer
+        else -> colors.errorContainer
+    }
+    val badgeContentColor = when {
+        probe == null -> colors.onSurfaceVariant
+        probe.alive -> colors.onPrimaryContainer
+        else -> colors.onErrorContainer
+    }
+    val badgeIcon = when {
+        probe == null -> R.drawable.ic_swap_horiz
+        probe.alive -> R.drawable.ic_check_circle
+        else -> R.drawable.ic_warning
+    }
+    Surface(
+        color = colors.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = {},
                 onLongClickLabel = stringResource(R.string.proxy_delete_title),
-                onLongClick = onLongPress,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+                onLongClick = onDelete,
+            ),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "${entry.host}:${entry.port}",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                text = if (entry.user.isEmpty()) {
-                    stringResource(R.string.proxy_row_no_login)
-                } else {
-                    stringResource(R.string.proxy_row_user, entry.user)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (probe != null) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(badgeColor, MaterialTheme.shapes.medium),
+            ) {
+                Icon(
+                    painter = painterResource(badgeIcon),
+                    contentDescription = null,
+                    tint = badgeContentColor,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
-                    text = probe.verdict,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (probe.alive) {
-                        MaterialTheme.colorScheme.primary
+                    text = "${entry.host}:${entry.port}",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (entry.user.isEmpty()) {
+                        stringResource(R.string.proxy_row_no_login)
                     } else {
-                        MaterialTheme.colorScheme.error
+                        stringResource(R.string.proxy_row_user, entry.user)
                     },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (probe != null) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (probe.alive) colors.primaryContainer else colors.errorContainer,
+                        contentColor = if (probe.alive) colors.onPrimaryContainer else colors.onErrorContainer,
+                        modifier = Modifier.padding(top = 2.dp),
+                    ) {
+                        Text(
+                            text = probe.verdict,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = stringResource(R.string.action_context_delete),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }
@@ -350,108 +468,133 @@ private fun ProxyRow(
 }
 
 @Composable
-private fun AddOneProxyDialog(
+private fun AddProxyDialog(
     store: ProxyStore,
     onDismiss: () -> Unit,
     onChanged: () -> Unit,
 ) {
+    var mode by remember { mutableStateOf(AddProxyMode.One) }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
+    var pasteText by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.proxy_add_one)) },
+        title = { Text(stringResource(R.string.proxy_add)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it },
-                    label = { Text(stringResource(R.string.proxy_field_address)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                )
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter(Char::isDigit) },
-                    label = { Text(stringResource(R.string.proxy_field_port)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                OutlinedTextField(
-                    value = user,
-                    onValueChange = { user = it },
-                    label = { Text(stringResource(R.string.proxy_field_username)) },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = { pass = it },
-                    label = { Text(stringResource(R.string.proxy_field_password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                )
-                error?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                // Port 0 lets ProxyStore report its own range error for missing or invalid input.
-                val addError = store.add(host.trim(), port.toIntOrNull() ?: 0, user.trim(), pass)
-                if (addError == null) {
-                    onChanged()
-                    onDismiss()
-                } else {
-                    error = addError
-                }
-            }) {
-                Text(stringResource(R.string.proxy_add_action))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun PasteProxiesDialog(
-    store: ProxyStore,
-    onDismiss: () -> Unit,
-    onChanged: () -> Unit,
-) {
-    var text by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.proxy_paste)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 140.dp),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
-                    ),
-                    placeholder = { Text(stringResource(R.string.proxy_paste_placeholder)) },
-                    minLines = 5,
-                    supportingText = { Text(stringResource(R.string.proxy_paste_helper)) },
-                )
+                        .selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(
+                        AddProxyMode.One to R.string.proxy_add_one,
+                        AddProxyMode.Paste to R.string.proxy_paste,
+                    ).forEach { (itemMode, labelRes) ->
+                        val selected = mode == itemMode
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 40.dp)
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.Tab,
+                                    onClick = {
+                                        mode = itemMode
+                                        error = null
+                                    },
+                                ),
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                            contentColor = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = stringResource(labelRes),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+                when (mode) {
+                    AddProxyMode.One -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = host,
+                                onValueChange = { host = it },
+                                label = { Text(stringResource(R.string.proxy_field_address)) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                modifier = Modifier.weight(1.7f),
+                            )
+                            OutlinedTextField(
+                                value = port,
+                                onValueChange = { port = it.filter(Char::isDigit) },
+                                label = { Text(stringResource(R.string.proxy_field_port)) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        OutlinedTextField(
+                            value = user,
+                            onValueChange = { user = it },
+                            label = { Text(stringResource(R.string.proxy_field_username)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = pass,
+                            onValueChange = { pass = it },
+                            label = { Text(stringResource(R.string.proxy_field_password)) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    AddProxyMode.Paste -> {
+                        OutlinedTextField(
+                            value = pasteText,
+                            onValueChange = { pasteText = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 140.dp),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                            ),
+                            placeholder = { Text(stringResource(R.string.proxy_paste_placeholder)) },
+                            minLines = 5,
+                            supportingText = { Text(stringResource(R.string.proxy_paste_helper)) },
+                        )
+                    }
+                }
                 error?.let {
                     Text(
                         text = it,
@@ -462,16 +605,35 @@ private fun PasteProxiesDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                val result = store.importText(text)
-                if (result.added > 0) onChanged()
-                if (result.error != null) {
-                    error = result.error
-                } else if (result.added > 0) {
-                    onDismiss()
+            Button(onClick = {
+                when (mode) {
+                    AddProxyMode.One -> {
+                        // Port 0 lets ProxyStore report its own range error for missing or invalid input.
+                        val addError = store.add(host.trim(), port.toIntOrNull() ?: 0, user.trim(), pass)
+                        if (addError == null) {
+                            onChanged()
+                            onDismiss()
+                        } else {
+                            error = addError
+                        }
+                    }
+                    AddProxyMode.Paste -> {
+                        val result = store.importText(pasteText)
+                        if (result.added > 0) onChanged()
+                        if (result.error != null) {
+                            error = result.error
+                        } else if (result.added > 0) {
+                            onDismiss()
+                        }
+                    }
                 }
             }) {
-                Text(stringResource(R.string.proxy_import_action))
+                Text(
+                    stringResource(
+                        if (mode == AddProxyMode.One) R.string.proxy_add_action
+                        else R.string.proxy_import_action,
+                    ),
+                )
             }
         },
         dismissButton = {
