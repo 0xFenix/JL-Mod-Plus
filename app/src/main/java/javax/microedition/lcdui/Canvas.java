@@ -53,6 +53,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import android.widget.PopupWindow;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
 import java.nio.ByteBuffer;
@@ -973,6 +974,55 @@ public abstract class Canvas extends Displayable {
 			canvasWrapper.drawImage(frame(), new RectF(0, 0, onWidth, onHeight));
 		}
 		return bitmap;
+	}
+
+	/**
+	 * Renders a single 1x offscreen frame for a hidden tab's preview card without
+	 * allocating a persistent display target or altering visibility/presentation state.
+	 */
+	@Nullable
+	public Bitmap captureOffscreenPreview(int targetWidth) {
+		int paintWidth = width;
+		int paintHeight = height;
+		if (paintWidth <= 0 || paintHeight <= 0 || targetWidth <= 0) {
+			return null;
+		}
+		Image temp = Image.createDisplayTarget(paintWidth, paintHeight, 1);
+		try {
+			Graphics g = temp.getSingleGraphics();
+			g.reset(0, 0, paintWidth, paintHeight);
+			boolean enteredGuest = MidletThread.enterGuestExecution();
+			try {
+				paint(g);
+			} catch (Exception e) {
+				Log.w(TAG, "Error in offscreen preview paint()", e);
+				return null;
+			} catch (Error fatal) {
+				MidletThread.markEscapingGuestFailure(fatal);
+				throw fatal;
+			} finally {
+				MidletThread.exitGuestExecution(enteredGuest);
+			}
+			Bitmap source = temp.getBitmap();
+			if (source == null || source.isRecycled()) {
+				return null;
+			}
+			int srcW = source.getWidth();
+			int srcH = source.getHeight();
+			if (srcW <= 0 || srcH <= 0) {
+				return null;
+			}
+			if (srcW <= targetWidth) {
+				return source.copy(Bitmap.Config.ARGB_8888, false);
+			}
+			int scaledHeight = Math.max(1, Math.round(srcH * targetWidth / (float) srcW));
+			return Bitmap.createScaledBitmap(source, targetWidth, scaledHeight, true);
+		} finally {
+			Bitmap bmp = temp.getBitmap();
+			if (bmp != null && !bmp.isRecycled()) {
+				bmp.recycle();
+			}
+		}
 	}
 
 	@FunctionalInterface

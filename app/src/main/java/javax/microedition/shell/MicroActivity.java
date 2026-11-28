@@ -772,7 +772,36 @@ public class MicroActivity extends AppCompatActivity {
 					public void onCloseTab(int tabId) {
 						closeTab(tabId);
 					}
-				}, this::captureTabPreview, appName);
+				}, this::captureTabPreview, appName, this::refreshBackgroundTabPreviews);
+	}
+
+	private void refreshBackgroundTabPreviews(
+			java.util.List<Integer> tabIds,
+			BackgroundPreviewConsumer consumer) {
+		for (int tabId : tabIds) {
+			if (!MidletTabRouter.isTabRegistered(tabId)) {
+				continue;
+			}
+			Display display = Display.forTab(tabId);
+			if (display == null) {
+				continue;
+			}
+			Displayable current = display.getCurrent();
+			if (!(current instanceof Canvas canvas)) {
+				continue;
+			}
+			display.postHostTask(() -> {
+				if (!MidletTabRouter.isTabRegistered(tabId)
+						|| display.getCurrent() != canvas
+						|| canvas.isShown()) {
+					return;
+				}
+				Bitmap preview = canvas.captureOffscreenPreview(PREVIEW_WIDTH);
+				if (preview != null) {
+					runOnUiThread(() -> consumer.onPreview(tabId, preview));
+				}
+			});
+		}
 	}
 
 	/**

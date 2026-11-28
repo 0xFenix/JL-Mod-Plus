@@ -775,6 +775,11 @@ public class Display {
 		queueFor(tabId).postEvent(RunnableEvent.getInstance(r).asGuestCallback());
 	}
 
+	/** Posts a host-initiated task onto this tab's LCDUI event queue. */
+	public void postHostTask(Runnable task) {
+		queueFor(tabId).postEvent(RunnableEvent.getInstance(task));
+	}
+
 	public boolean flashBacklight(int duration) {
 		return false;
 	}

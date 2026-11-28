@@ -93,18 +93,27 @@ interface MidletTabActions {
 /** Library game offered by the new-tab picker. */
 data class MidletTabSuite(val title: String, val appPath: String, val expectedAppId: Long)
 
+fun interface BackgroundPreviewConsumer {
+    fun onPreview(tabId: Int, bitmap: Bitmap)
+}
+
+fun interface BackgroundPreviewRefresher {
+    fun refresh(tabIds: List<Int>, consumer: BackgroundPreviewConsumer)
+}
+
 /**
  * Interop owner for the card-grid window switcher. The runtime toolbar owns the
  * entry point; this ComposeView only hosts the switcher dialogs. Rendering follows the app Material 3 theme;
  * tab bookkeeping lives in [AmsRegistry] and preview bitmaps stay here so
  * [MicroActivity] only has to supply the capture callback.
  */
-class MidletTabBarController(
+class MidletTabBarController @JvmOverloads constructor(
     private val composeView: ComposeView,
     private val registry: AmsRegistry,
     private val actions: MidletTabActions,
     private val capturePreview: (() -> Bitmap?)?,
     private val appTitle: String?,
+    private val refreshBackgroundPreviews: BackgroundPreviewRefresher? = null,
 ) {
     private var tabs by mutableStateOf(listOf<AmsRegistry.Tab>())
     private var selectedId by mutableIntStateOf(-1)
@@ -114,6 +123,7 @@ class MidletTabBarController(
     /** Compose-visible copy of [previews]; cleared when the grid closes. */
     private var gridPreviews by mutableStateOf<Map<Int, Bitmap>>(emptyMap())
     private val previews = HashMap<Int, Bitmap>()
+    private var previewGeneration = 0L
 
     init {
         composeView.setViewCompositionStrategy(
@@ -183,10 +193,27 @@ class MidletTabBarController(
         prunePreviews()
         gridPreviews = HashMap(previews)
         gridOpen = true
+        val generation = ++previewGeneration
+        val backgroundIds = tabs.map { it.id }.filter { it != selectedId }
+        if (backgroundIds.isNotEmpty()) {
+            refreshBackgroundPreviews?.refresh(backgroundIds) { tabId, bitmap ->
+                onBackgroundPreviewCaptured(generation, tabId, bitmap)
+            }
+        }
+    }
+
+    private fun onBackgroundPreviewCaptured(generation: Long, tabId: Int, bitmap: Bitmap) {
+        if (!gridOpen || generation != previewGeneration || tabs.none { it.id == tabId }) {
+            bitmap.recycle()
+            return
+        }
+        previews[tabId] = bitmap
+        gridPreviews = HashMap(previews)
     }
 
     private fun dismissGrid() {
         if (!gridOpen) return
+        previewGeneration++
         gridOpen = false
         gridPreviews = emptyMap()
         prunePreviews()
@@ -327,7 +354,7 @@ private fun MidletWindowGrid(
                         .weight(1f),
                 ) {
                     val spacing = 10.dp
-                    val cardHeight = 208.dp
+                    val cardHeight = 268.dp
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 152.dp),
                         contentPadding = PaddingValues(12.dp),
@@ -397,12 +424,17 @@ private fun WindowCard(
             .testTag("midlet_tab_card_${tab.id}"),
     ) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(colors.surfaceContainerHighest),
+            ) {
                 if (preview != null) {
                     Image(
                         bitmap = preview.asImageBitmap(),
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
                 } else {
